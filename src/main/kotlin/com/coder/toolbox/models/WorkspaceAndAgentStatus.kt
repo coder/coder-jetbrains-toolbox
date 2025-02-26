@@ -5,10 +5,11 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.jetbrains.toolbox.api.core.ui.color.Color
+import com.jetbrains.toolbox.api.core.ServiceLocator
 import com.jetbrains.toolbox.api.core.ui.color.StateColor
-import com.jetbrains.toolbox.api.core.ui.color.ThemeColor
 import com.jetbrains.toolbox.api.remoteDev.states.CustomRemoteEnvironmentState
+import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
+import com.jetbrains.toolbox.api.remoteDev.states.StandardRemoteEnvironmentState
 
 /**
  * WorkspaceAndAgentStatus represents the combined status of a single agent and
@@ -57,25 +58,25 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
      * Note that a reachable environment will always display "connected" or
      * "disconnected" regardless of the label we give that status.
      */
-    fun toRemoteEnvironmentState(): CustomRemoteEnvironmentState {
-        // Use comments; no named arguments for non-Kotlin functions.
-        // TODO@JB: Is there a set of default colors we could use?
+    fun toRemoteEnvironmentState(serviceLocator: ServiceLocator): CustomRemoteEnvironmentState {
+        val stateColor = getStateColor(serviceLocator)
         return CustomRemoteEnvironmentState(
             label,
-            StateColor(
-                ThemeColor(
-                    Color(0.407f, 0.439f, 0.502f, 1.0f), // lightThemeColor
-                    Color(0.784f, 0.784f, 0.784f, 0.784f), // darkThemeColor
-                ),
-                ThemeColor(
-                    Color(0.878f, 0.878f, 0.941f, 0.102f), // darkThemeBackgroundColor
-                    Color(0.878f, 0.878f, 0.961f, 0.980f), // lightThemeBackgroundColor
-                )
-            ),
+            stateColor,
             ready(), // reachable
             // TODO@JB: How does this work?  Would like a spinner for pending states.
             null, // iconId
         )
+    }
+
+    private fun getStateColor(serviceLocator: ServiceLocator): StateColor {
+        val colorPalette = serviceLocator.getService(EnvironmentStateColorPalette::class.java)
+
+
+        return if (ready()) colorPalette.getColor(StandardRemoteEnvironmentState.Active)
+        else if (canStart()) colorPalette.getColor(StandardRemoteEnvironmentState.Failed)
+        else if (pending()) colorPalette.getColor(StandardRemoteEnvironmentState.Activating)
+        else colorPalette.getColor(StandardRemoteEnvironmentState.Unreachable)
     }
 
     /**

@@ -2,6 +2,7 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
+import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.util.humanizeConnectionError
@@ -83,8 +84,14 @@ class ConnectPage(
             try {
                 // The http client Toolbox gives us is already set up with the
                 // proxy config, so we do net need to explicitly add it.
-                // TODO: How to get the plugin version?
-                val client = CoderRestClient(url, token, settings, proxyValues = null, "production", httpClient)
+                val client = CoderRestClient(
+                    url,
+                    token,
+                    settings,
+                    proxyValues = null,
+                    PluginManager.pluginInfo.version,
+                    httpClient
+                )
                 client.authenticate()
                 updateStatus("Checking Coder binary...", error = null)
                 val cli = ensureCLI(client.url, client.buildVersion, settings) { status ->
@@ -96,6 +103,7 @@ class ConnectPage(
                     cli.login(client.token)
                 }
                 onConnect(client, cli)
+
             } catch (ex: Exception) {
                 val msg = humanizeConnectionError(url, settings.requireTokenAuth, ex)
                 notify("Failed to configure ${url.host}", ex)

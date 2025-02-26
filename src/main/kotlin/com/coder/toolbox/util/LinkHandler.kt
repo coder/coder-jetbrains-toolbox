@@ -2,6 +2,7 @@ package com.coder.toolbox.util
 
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
+import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.Workspace
@@ -146,8 +147,14 @@ open class LinkHandler(
         }
         // The http client Toolbox gives us is already set up with the
         // proxy config, so we do net need to explicitly add it.
-        // TODO: How to get the plugin version?
-        val client = CoderRestClient(deploymentURL.toURL(), token?.first, settings, proxyValues = null, "production", httpClient)
+        val client = CoderRestClient(
+            deploymentURL.toURL(),
+            token?.first,
+            settings,
+            proxyValues = null,
+            PluginManager.pluginInfo.version,
+            httpClient
+        )
         return try {
             client.authenticate()
             client

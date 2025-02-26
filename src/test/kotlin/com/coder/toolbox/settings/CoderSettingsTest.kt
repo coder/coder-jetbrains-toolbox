@@ -18,12 +18,12 @@ internal class CoderSettingsTest {
         val url = URL("http://localhost")
         val home = Path.of(System.getProperty("user.home"))
 
-        state.binaryDirectory = Path.of("~/coder-gateway-test/expand-bin-dir").toString()
-        var expected = home.resolve("coder-gateway-test/expand-bin-dir/localhost")
+        state.binaryDirectory = Path.of("~/coder-toolbox-test/expand-bin-dir").toString()
+        var expected = home.resolve("coder-toolbox-test/expand-bin-dir/localhost")
         assertEquals(expected.toAbsolutePath(), settings.binPath(url).parent)
 
-        state.dataDirectory = Path.of("~/coder-gateway-test/expand-data-dir").toString()
-        expected = home.resolve("coder-gateway-test/expand-data-dir/localhost")
+        state.dataDirectory = Path.of("~/coder-toolbox-test/expand-data-dir").toString()
+        expected = home.resolve("coder-toolbox-test/expand-data-dir/localhost")
         assertEquals(expected.toAbsolutePath(), settings.dataDir(url))
     }
 
@@ -37,17 +37,17 @@ internal class CoderSettingsTest {
                 env =
                 Environment(
                     mapOf(
-                        "LOCALAPPDATA" to "/tmp/coder-gateway-test/localappdata",
-                        "HOME" to "/tmp/coder-gateway-test/home",
-                        "XDG_DATA_HOME" to "/tmp/coder-gateway-test/xdg-data",
+                        "LOCALAPPDATA" to "/tmp/coder-toolbox-test/localappdata",
+                        "HOME" to "/tmp/coder-toolbox-test/home",
+                        "XDG_DATA_HOME" to "/tmp/coder-toolbox-test/xdg-data",
                     ),
                 ),
             )
         var expected =
             when (getOS()) {
-                OS.WINDOWS -> "/tmp/coder-gateway-test/localappdata/coder-gateway/localhost"
-                OS.MAC -> "/tmp/coder-gateway-test/home/Library/Application Support/coder-gateway/localhost"
-                else -> "/tmp/coder-gateway-test/xdg-data/coder-gateway/localhost"
+                OS.WINDOWS -> "/tmp/coder-toolbox-test/localappdata/coder-toolbox/localhost"
+                OS.MAC -> "/tmp/coder-toolbox-test/home/Library/Application Support/coder-toolbox/localhost"
+                else -> "/tmp/coder-toolbox-test/xdg-data/coder-toolbox/localhost"
             }
 
         assertEquals(Path.of(expected).toAbsolutePath(), settings.dataDir(url))
@@ -62,18 +62,18 @@ internal class CoderSettingsTest {
                     Environment(
                         mapOf(
                             "XDG_DATA_HOME" to "",
-                            "HOME" to "/tmp/coder-gateway-test/home",
+                            "HOME" to "/tmp/coder-toolbox-test/home",
                         ),
                     ),
                 )
-            expected = "/tmp/coder-gateway-test/home/.local/share/coder-gateway/localhost"
+            expected = "/tmp/coder-toolbox-test/home/.local/share/coder-toolbox/localhost"
 
             assertEquals(Path.of(expected).toAbsolutePath(), settings.dataDir(url))
             assertEquals(Path.of(expected).toAbsolutePath(), settings.binPath(url).parent)
         }
 
         // Override environment with settings.
-        state.dataDirectory = "/tmp/coder-gateway-test/data-dir"
+        state.dataDirectory = "/tmp/coder-toolbox-test/data-dir"
         settings =
             CoderSettings(
                 state,
@@ -86,15 +86,15 @@ internal class CoderSettingsTest {
                     ),
                 ),
             )
-        expected = "/tmp/coder-gateway-test/data-dir/localhost"
+        expected = "/tmp/coder-toolbox-test/data-dir/localhost"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.dataDir(url))
         assertEquals(Path.of(expected).toAbsolutePath(), settings.binPath(url).parent)
 
         // Check that the URL is encoded and includes the port, also omit environment.
         val newUrl = URL("https://dev.😉-coder.com:8080")
-        state.dataDirectory = "/tmp/coder-gateway-test/data-dir"
+        state.dataDirectory = "/tmp/coder-toolbox-test/data-dir"
         settings = CoderSettings(state)
-        expected = "/tmp/coder-gateway-test/data-dir/dev.xn---coder-vx74e.com-8080"
+        expected = "/tmp/coder-toolbox-test/data-dir/dev.xn---coder-vx74e.com-8080"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.dataDir(newUrl))
         assertEquals(Path.of(expected).toAbsolutePath(), settings.binPath(newUrl).parent)
     }
@@ -109,14 +109,14 @@ internal class CoderSettingsTest {
         val url = URL("http://localhost")
 
         // Override with settings.
-        state.binaryDirectory = "/tmp/coder-gateway-test/bin-dir"
-        var expected = "/tmp/coder-gateway-test/bin-dir/localhost"
+        state.binaryDirectory = "/tmp/coder-toolbox-test/bin-dir"
+        var expected = "/tmp/coder-toolbox-test/bin-dir/localhost"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.binPath(url).parent)
         assertEquals(Path.of(expected).toAbsolutePath(), settings2.binPath(url).parent)
 
         // Second argument bypasses override.
-        state.dataDirectory = "/tmp/coder-gateway-test/data-dir"
-        expected = "/tmp/coder-gateway-test/data-dir/localhost"
+        state.dataDirectory = "/tmp/coder-toolbox-test/data-dir"
+        expected = "/tmp/coder-toolbox-test/data-dir/localhost"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.binPath(url, true).parent)
         assertEquals(Path.of(expected).toAbsolutePath(), settings2.binPath(url, true).parent)
 
@@ -133,17 +133,17 @@ internal class CoderSettingsTest {
                 env =
                 Environment(
                     mapOf(
-                        "APPDATA" to "/tmp/coder-gateway-test/cli-appdata",
-                        "HOME" to "/tmp/coder-gateway-test/cli-home",
-                        "XDG_CONFIG_HOME" to "/tmp/coder-gateway-test/cli-xdg-config",
+                        "APPDATA" to "/tmp/coder-toolbox-test/cli-appdata",
+                        "HOME" to "/tmp/coder-toolbox-test/cli-home",
+                        "XDG_CONFIG_HOME" to "/tmp/coder-toolbox-test/cli-xdg-config",
                     ),
                 ),
             )
         var expected =
             when (getOS()) {
-                OS.WINDOWS -> "/tmp/coder-gateway-test/cli-appdata/coderv2"
-                OS.MAC -> "/tmp/coder-gateway-test/cli-home/Library/Application Support/coderv2"
-                else -> "/tmp/coder-gateway-test/cli-xdg-config/coderv2"
+                OS.WINDOWS -> "/tmp/coder-toolbox-test/cli-appdata/coderv2"
+                OS.MAC -> "/tmp/coder-toolbox-test/cli-home/Library/Application Support/coderv2"
+                else -> "/tmp/coder-toolbox-test/cli-xdg-config/coderv2"
             }
         assertEquals(Path.of(expected), settings.coderConfigDir)
 
@@ -156,11 +156,11 @@ internal class CoderSettingsTest {
                     Environment(
                         mapOf(
                             "XDG_CONFIG_HOME" to "",
-                            "HOME" to "/tmp/coder-gateway-test/cli-home",
+                            "HOME" to "/tmp/coder-toolbox-test/cli-home",
                         ),
                     ),
                 )
-            expected = "/tmp/coder-gateway-test/cli-home/.config/coderv2"
+            expected = "/tmp/coder-toolbox-test/cli-home/.config/coderv2"
             assertEquals(Path.of(expected), settings.coderConfigDir)
         }
 
@@ -171,14 +171,14 @@ internal class CoderSettingsTest {
                 env =
                 Environment(
                     mapOf(
-                        "CODER_CONFIG_DIR" to "/tmp/coder-gateway-test/coder-config-dir",
+                        "CODER_CONFIG_DIR" to "/tmp/coder-toolbox-test/coder-config-dir",
                         "APPDATA" to "/ignore",
                         "HOME" to "/ignore",
                         "XDG_CONFIG_HOME" to "/ignore",
                     ),
                 ),
             )
-        expected = "/tmp/coder-gateway-test/coder-config-dir"
+        expected = "/tmp/coder-toolbox-test/coder-config-dir"
         assertEquals(Path.of(expected), settings.coderConfigDir)
     }
 
@@ -207,18 +207,18 @@ internal class CoderSettingsTest {
     fun testReadConfig() {
         val tmp = Path.of(System.getProperty("java.io.tmpdir"))
 
-        val expected = tmp.resolve("coder-gateway-test/test-config")
+        val expected = tmp.resolve("coder-toolbox-test/test-config")
         expected.toFile().mkdirs()
-        expected.resolve("url").toFile().writeText("http://test.gateway.coder.com$expected")
+        expected.resolve("url").toFile().writeText("http://test.toolbox.coder.com$expected")
         expected.resolve("session").toFile().writeText("fake-token")
 
         var got = CoderSettings(CoderSettingsState()).readConfig(expected)
-        assertEquals(Pair("http://test.gateway.coder.com$expected", "fake-token"), got)
+        assertEquals(Pair("http://test.toolbox.coder.com$expected", "fake-token"), got)
 
         // Ignore token if missing.
         expected.resolve("session").toFile().delete()
         got = CoderSettings(CoderSettingsState()).readConfig(expected)
-        assertEquals(Pair("http://test.gateway.coder.com$expected", null), got)
+        assertEquals(Pair("http://test.toolbox.coder.com$expected", null), got)
     }
 
     @Test
@@ -260,7 +260,7 @@ internal class CoderSettingsTest {
     @Test
     fun testDefaultURL() {
         val tmp = Path.of(System.getProperty("java.io.tmpdir"))
-        val dir = tmp.resolve("coder-gateway-test/test-default-url")
+        val dir = tmp.resolve("coder-toolbox-test/test-default-url")
         var env = Environment(mapOf("CODER_CONFIG_DIR" to dir.toString()))
         dir.toFile().deleteRecursively()
 
@@ -301,7 +301,7 @@ internal class CoderSettingsTest {
     fun testToken() {
         val tmp = Path.of(System.getProperty("java.io.tmpdir"))
         val url = URL("http://test.deployment.coder.com")
-        val dir = tmp.resolve("coder-gateway-test/test-default-token")
+        val dir = tmp.resolve("coder-toolbox-test/test-default-token")
         val env =
             Environment(
                 mapOf(

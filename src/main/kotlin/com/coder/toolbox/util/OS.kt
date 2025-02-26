@@ -1,6 +1,6 @@
 package com.coder.toolbox.util
 
-import java.util.Locale
+import java.util.*
 
 fun getOS(): OS? = OS.from(System.getProperty("os.name"))
 
@@ -9,8 +9,19 @@ fun getArch(): Arch? = Arch.from(System.getProperty("os.arch").lowercase(Locale.
 enum class OS {
     WINDOWS,
     LINUX,
-    MAC,
-    ;
+    MAC;
+
+    /**
+     * The name of the current desktop environment.
+     * For Linux systems it can be GNOME, KDE, XFCE, LXDE, and so on,
+     * while for macOS it will be Aqua and Windows Shell for Windows.
+     */
+    fun getDesktopEnvironment(): String? =
+        when (this) {
+            WINDOWS -> "Windows Shell"
+            MAC -> "Aqua"
+            LINUX -> System.getenv("XDG_CURRENT_DESKTOP")
+        }
 
     companion object {
         fun from(os: String): OS? = when {

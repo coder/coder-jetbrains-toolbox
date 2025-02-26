@@ -1,5 +1,6 @@
 package com.coder.toolbox.util
 
+import com.coder.toolbox.browser.BrowserUtil
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.Source
 import com.jetbrains.toolbox.api.ui.ToolboxUi
@@ -35,7 +36,9 @@ class DialogUi(
 
     private fun openUrl(url: URL) {
         // TODO - check this later
-//        ui.openUrl(url.toString())
+        BrowserUtil.browse(url.toString()) {
+            ui.showErrorInfoPopup(it)
+        }
     }
 
     /**

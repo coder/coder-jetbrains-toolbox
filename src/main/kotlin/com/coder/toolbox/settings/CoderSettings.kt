@@ -334,14 +334,14 @@ open class CoderSettings(
     val dataDir: Path
         get() {
             return when (getOS()) {
-                OS.WINDOWS -> Paths.get(env.get("LOCALAPPDATA"), "coder-gateway")
-                OS.MAC -> Paths.get(env.get("HOME"), "Library/Application Support/coder-gateway")
+                OS.WINDOWS -> Paths.get(env.get("LOCALAPPDATA"), "coder-toolbox")
+                OS.MAC -> Paths.get(env.get("HOME"), "Library/Application Support/coder-toolbox")
                 else -> {
                     val dir = env.get("XDG_DATA_HOME")
                     if (dir.isNotBlank()) {
-                        return Paths.get(dir, "coder-gateway")
+                        return Paths.get(dir, "coder-toolbox")
                     }
-                    return Paths.get(env.get("HOME"), ".local/share/coder-gateway")
+                    return Paths.get(env.get("HOME"), ".local/share/coder-toolbox")
                 }
             }
         }

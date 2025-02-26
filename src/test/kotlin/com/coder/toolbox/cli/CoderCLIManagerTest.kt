@@ -151,7 +151,7 @@ internal class CoderCLIManagerTest {
     // download a working CLI and that it runs on each platform.
     @Test
     fun testDownloadRealCLI() {
-        var url = System.getenv("CODER_GATEWAY_TEST_DEPLOYMENT")
+        var url = System.getenv("CODER_TOOLBOX_TEST_DEPLOYMENT")
         if (url == "mock") {
             return
         } else if (url == null) {
@@ -424,11 +424,11 @@ internal class CoderCLIManagerTest {
             val expectedConf =
                 Path.of("src/test/fixtures/outputs/").resolve(it.output + ".conf").toFile().readText()
                     .replace(newlineRe, System.lineSeparator())
-                    .replace("/tmp/coder-gateway/test.coder.invalid/config", escape(coderConfigPath.toString()))
-                    .replace("/tmp/coder-gateway/test.coder.invalid/coder-linux-amd64", escape(ccm.localBinaryPath.toString()))
+                    .replace("/tmp/coder-toolbox/test.coder.invalid/config", escape(coderConfigPath.toString()))
+                    .replace("/tmp/coder-toolbox/test.coder.invalid/coder-linux-amd64", escape(ccm.localBinaryPath.toString()))
                     .let { conf ->
                         if (it.sshLogDirectory != null) {
-                            conf.replace("/tmp/coder-gateway/test.coder.invalid/logs", it.sshLogDirectory.toString())
+                            conf.replace("/tmp/coder-toolbox/test.coder.invalid/logs", it.sshLogDirectory.toString())
                         } else {
                             conf
                         }
@@ -787,7 +787,7 @@ internal class CoderCLIManagerTest {
     }
 
     companion object {
-        private val tmpdir: Path = Path.of(System.getProperty("java.io.tmpdir")).resolve("coder-gateway-test/cli-manager")
+        private val tmpdir: Path = Path.of(System.getProperty("java.io.tmpdir")).resolve("coder-toolbox-test/cli-manager")
 
         @JvmStatic
         @BeforeAll

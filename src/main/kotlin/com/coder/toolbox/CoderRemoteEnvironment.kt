@@ -1,16 +1,21 @@
 package com.coder.toolbox
 
+import com.coder.toolbox.browser.BrowserUtil
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.EnvironmentView
+import com.jetbrains.toolbox.api.core.ServiceLocator
 import com.jetbrains.toolbox.api.remoteDev.AbstractRemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateConsumer
 import com.jetbrains.toolbox.api.ui.ToolboxUi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -19,32 +24,44 @@ import java.util.concurrent.CompletableFuture
  * Used in the environment list view.
  */
 class CoderRemoteEnvironment(
+    private val serviceLocator: ServiceLocator,
     private val client: CoderRestClient,
     private var workspace: Workspace,
     private var agent: WorkspaceAgent,
-    private val ui: ToolboxUi,
+    private var cs: CoroutineScope,
 ) : AbstractRemoteProviderEnvironment() {
+    private var status = WorkspaceAndAgentStatus.from(workspace, agent)
+
+    private val ui: ToolboxUi = serviceLocator.getService(ToolboxUi::class.java)
     override fun getId(): String = "${workspace.name}.${agent.name}"
     override fun getName(): String = "${workspace.name}.${agent.name}"
-    private var status = WorkspaceAndAgentStatus.from(workspace, agent)
 
     init {
         actionsList.add(
             Action("Open web terminal") {
-                // TODO - check this later
-//                ui.openUrl(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString())
+                cs.launch {
+                    BrowserUtil.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
+                        ui.showErrorInfoPopup(it)
+                    }
+                }
             },
         )
         actionsList.add(
             Action("Open in dashboard") {
-                // TODO - check this later
-//                ui.openUrl(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString())
+                cs.launch {
+                    BrowserUtil.browse(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()) {
+                        ui.showErrorInfoPopup(it)
+                    }
+                }
             },
         )
         actionsList.add(
             Action("View template") {
-                // TODO - check this later
-//                ui.openUrl(client.url.withPath("/templates/${workspace.templateName}").toString())
+                cs.launch {
+                    BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
+                        ui.showErrorInfoPopup(it)
+                    }
+                }
             },
         )
         actionsList.add(
@@ -79,7 +96,7 @@ class CoderRemoteEnvironment(
         val newStatus = WorkspaceAndAgentStatus.from(workspace, agent)
         if (newStatus != status) {
             status = newStatus
-            val state = status.toRemoteEnvironmentState()
+            val state = status.toRemoteEnvironmentState(serviceLocator)
             listenerSet.forEach { it.consume(state) }
         }
     }
@@ -108,7 +125,7 @@ class CoderRemoteEnvironment(
         //          connected state can mask the workspace state.
         // TODO@JB: You can still press connect if the environment is
         //          unreachable.  Is that expected?
-        consumer.consume(status.toRemoteEnvironmentState())
+        consumer.consume(status.toRemoteEnvironmentState(serviceLocator))
         return super.addStateListener(consumer)
     }
 

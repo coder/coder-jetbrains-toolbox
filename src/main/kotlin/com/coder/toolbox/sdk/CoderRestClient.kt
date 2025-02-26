@@ -30,7 +30,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.HttpURLConnection
 import java.net.ProxySelector
 import java.net.URL
-import java.util.UUID
+import java.util.*
 import javax.net.ssl.X509TrustManager
 
 /**
@@ -92,7 +92,11 @@ open class CoderRestClient(
         }
 
         if (token != null) {
-            builder = builder.addInterceptor { it.proceed(it.request().newBuilder().addHeader("Coder-Session-Token", token).build()) }
+            builder = builder.addInterceptor {
+                it.proceed(
+                    it.request().newBuilder().addHeader("Coder-Session-Token", token).build()
+                )
+            }
         }
 
         httpClient =
@@ -103,7 +107,7 @@ open class CoderRestClient(
                     it.proceed(
                         it.request().newBuilder().addHeader(
                             "User-Agent",
-                            "Coder Gateway/$pluginVersion (${getOS()}; ${getArch()})",
+                            "Coder Toolbox/$pluginVersion (${getOS()}; ${getArch()})",
                         ).build(),
                     )
                 }
@@ -185,7 +189,8 @@ open class CoderRestClient(
      * @throws [APIResponseException].
      */
     fun resources(workspace: Workspace): List<WorkspaceResource> {
-        val resourcesResponse = retroRestClient.templateVersionResources(workspace.latestBuild.templateVersionID).execute()
+        val resourcesResponse =
+            retroRestClient.templateVersionResources(workspace.latestBuild.templateVersionID).execute()
         if (!resourcesResponse.isSuccessful) {
             throw APIResponseException("retrieve resources for ${workspace.name}", url, resourcesResponse)
         }

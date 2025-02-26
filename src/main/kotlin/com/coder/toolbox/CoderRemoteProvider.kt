@@ -18,10 +18,12 @@ import com.coder.toolbox.views.SignInPage
 import com.coder.toolbox.views.TokenPage
 import com.jetbrains.toolbox.api.core.PluginSecretStore
 import com.jetbrains.toolbox.api.core.PluginSettingsStore
+import com.jetbrains.toolbox.api.core.ServiceLocator
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteEnvironmentConsumer
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
+import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.AccountDropdownField
@@ -39,14 +41,16 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 
 class CoderRemoteProvider(
+    private val serviceLocator: ServiceLocator,
     private val httpClient: OkHttpClient,
-    private val consumer: RemoteEnvironmentConsumer,
-    private val coroutineScope: CoroutineScope,
-    private val ui: ToolboxUi,
-    settingsStore: PluginSettingsStore,
-    secretsStore: PluginSecretStore,
 ) : RemoteProvider {
     private val logger = LoggerFactory.getLogger(javaClass)
+
+    private val ui: ToolboxUi = serviceLocator.getService(ToolboxUi::class.java)
+    private val consumer: RemoteEnvironmentConsumer = serviceLocator.getService(RemoteEnvironmentConsumer::class.java)
+    private val coroutineScope: CoroutineScope = serviceLocator.getService(CoroutineScope::class.java)
+    private val settingsStore: PluginSettingsStore = serviceLocator.getService(PluginSettingsStore::class.java)
+    private val secretsStore: PluginSecretStore = serviceLocator.getService(PluginSecretStore::class.java)
 
     // Current polling job.
     private var pollJob: Job? = null
@@ -60,7 +64,7 @@ class CoderRemoteProvider(
     private val dialogUi = DialogUi(settings, ui)
     private val linkHandler = LinkHandler(settings, httpClient, dialogUi)
 
-    // The REST client, if we are signed in.
+    // The REST client, if we are signed in
     private var client: CoderRestClient? = null
 
     // If we have an error in the polling we store it here before going back to
@@ -96,7 +100,7 @@ class CoderRemoteProvider(
                             it.name
                         }?.map { agent ->
                             // If we have an environment already, update that.
-                            val env = CoderRemoteEnvironment(client, ws, agent, ui)
+                            val env = CoderRemoteEnvironment(serviceLocator, client, ws, agent, coroutineScope)
                             lastEnvironments?.firstOrNull { it == env }?.let {
                                 it.update(ws, agent)
                                 it
@@ -146,7 +150,6 @@ class CoderRemoteProvider(
         // rememberMe to false so we do not try to automatically log in.
         secrets.rememberMe = "false"
         close()
-        reset()
     }
 
     /**
@@ -182,7 +185,7 @@ class CoderRemoteProvider(
         consumer.consumeEnvironments(emptyList(), true)
     }
 
-    override fun getName(): String = "Coder Gateway"
+    override fun getName(): String = "Coder"
     override fun getSvgIcon(): SvgIcon =
         SvgIcon(this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf())
 
@@ -208,7 +211,7 @@ class CoderRemoteProvider(
      * Just displays the deployment URL at the moment, but we could use this as
      * a form for creating new environments.
      */
-    override fun getNewEnvironmentUiPage(): UiPage = NewEnvironmentPage(client?.url?.toString())
+    override fun getNewEnvironmentUiPage(): UiPage = NewEnvironmentPage(getDeploymentURL()?.first)
 
     /**
      * We always show a list of environments.
@@ -251,9 +254,8 @@ class CoderRemoteProvider(
      * ui.hideUiPage() which stacks and has built-in back navigation, rather
      * than using multiple root pages.
      */
-    private fun reset() {
-        // TODO - check this later
-//        ui.showPluginEnvironmentsPage()
+    private fun goToEnvironmentsPage() {
+        serviceLocator.getService(EnvironmentUiPageManager::class.java).showPluginEnvironmentsPage()
     }
 
     /**
@@ -309,7 +311,7 @@ class CoderRemoteProvider(
         settings,
         httpClient,
         coroutineScope,
-        { reset() },
+        ::goToEnvironmentsPage,
     ) { client, cli ->
         // Store the URL and token for use next time.
         secrets.lastDeploymentURL = client.url.toString()
@@ -320,7 +322,7 @@ class CoderRemoteProvider(
         pollError = null
         pollJob?.cancel()
         pollJob = poll(client, cli)
-        reset()
+        goToEnvironmentsPage()
     }
 
     /**
