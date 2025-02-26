@@ -30,7 +30,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.HttpURLConnection
 import java.net.ProxySelector
 import java.net.URL
-import java.util.*
+import java.util.UUID
 import javax.net.ssl.X509TrustManager
 
 /**
@@ -229,7 +229,6 @@ open class CoderRestClient(
     }
 
     /**
-     * @throws [APIResponseException].
      */
     fun stopWorkspace(workspace: Workspace): WorkspaceBuild {
         val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.STOP)
@@ -238,6 +237,13 @@ open class CoderRestClient(
             throw APIResponseException("stop workspace ${workspace.name}", url, buildResponse)
         }
         return buildResponse.body()!!
+    }
+
+    /**
+     * @throws [APIResponseException].
+     */
+    fun removeWorkspace(workspace: Workspace) {
+        // TODO - implement this
     }
 
     /**

@@ -107,6 +107,11 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
     fun canStart(): Boolean = listOf(STOPPED, FAILED, CANCELED)
         .contains(this)
 
+    /**
+     * Return true if the workspace can be stopped.
+     */
+    fun canStop(): Boolean = ready() || pending()
+
     // We want to check that the workspace is `running`, the agent is
     // `connected`, and the agent lifecycle state is `ready` to ensure the best
     // possible scenario for attempting a connection.

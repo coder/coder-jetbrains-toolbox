@@ -71,7 +71,7 @@ class CoderRemoteEnvironment(
             },
         )
         actionsList.add(
-            Action("Stop", enabled = { status.ready() || status.pending() }) {
+            Action("Stop", enabled = { status.canStop() }) {
                 val build = client.stopWorkspace(workspace)
                 workspace = workspace.copy(latestBuild = build)
                 update(workspace, agent)
@@ -128,7 +128,32 @@ class CoderRemoteEnvironment(
     }
 
     override fun onDelete() {
-        throw NotImplementedError()
+        cs.launch {
+            // TODO info and cancel pop-ups only appear on the main page where all environments are listed.
+            //  However, #showSnackbar works on other pages. Until JetBrains fixes this issue we are going to use the snackbar
+            val shouldDelete = if (status.canStop()) {
+                ui.showOkCancelPopup(
+                    "Delete running workspace?",
+                    "Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical.",
+                    "Delete",
+                    "Cancel"
+                )
+            } else {
+                ui.showOkCancelPopup(
+                    "Delete workspace?",
+                    "All the information in this workspace will be lost, including all files, unsaved changes and historical.",
+                    "Delete",
+                    "Cancel"
+                )
+            }
+            if (shouldDelete) {
+                if (status.canStop()) {
+                    client.stopWorkspace(workspace)
+                }
+
+                client.removeWorkspace(workspace)
+            }
+        }
     }
 
     /**
