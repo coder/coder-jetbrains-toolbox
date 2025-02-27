@@ -17,13 +17,11 @@ import java.net.URL
  * enter their own.
  */
 class TokenPage(
-    private val deploymentURL: URL,
-    private val token: Pair<String, Source>?,
+    deploymentURL: URL,
+    token: Pair<String, Source>?,
     private val onToken: ((token: String) -> Unit),
-) : CoderPage() {
+) : CoderPage("Enter your token") {
     private val tokenField = TextField("Token", token?.first ?: "", TextType.General)
-
-    override fun getTitle(): String = "Enter your token"
 
     /**
      * Fields for this page, displayed in order.
@@ -31,7 +29,7 @@ class TokenPage(
      * TODO@JB: Fields are reset when you navigate back.
      *          Ideally they remember what the user entered.
      */
-    override fun getFields(): MutableList<UiField> = listOfNotNull(
+    override val fields: MutableList<UiField> = listOfNotNull(
         tokenField,
         LabelField(
             token?.second?.description("token")
@@ -45,7 +43,7 @@ class TokenPage(
     /**
      * Buttons displayed at the bottom of the page.
      */
-    override fun getActionButtons(): MutableList<RunnableActionDescription> = mutableListOf(
+    override val actionButtons: MutableList<RunnableActionDescription> = mutableListOf(
         Action("Connect", closesPage = false) { submit(tokenField.text.value) },
     )
 

@@ -1,6 +1,7 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.logger.CoderLoggerFactory
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.services.CoderSecretsService
@@ -34,7 +35,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
-import org.slf4j.LoggerFactory
 import java.net.URI
 import java.net.URL
 import kotlin.coroutines.cancellation.CancellationException
@@ -43,8 +43,8 @@ import kotlin.time.Duration.Companion.seconds
 class CoderRemoteProvider(
     private val serviceLocator: ServiceLocator,
     private val httpClient: OkHttpClient,
-) : RemoteProvider {
-    private val logger = LoggerFactory.getLogger(javaClass)
+) : RemoteProvider("Coder") {
+    private val logger = CoderLoggerFactory.getLogger(javaClass)
 
     private val ui: ToolboxUi = serviceLocator.getService(ToolboxUi::class.java)
     private val consumer: RemoteEnvironmentConsumer = serviceLocator.getService(RemoteEnvironmentConsumer::class.java)
@@ -185,18 +185,18 @@ class CoderRemoteProvider(
         consumer.consumeEnvironments(emptyList(), true)
     }
 
-    override fun getName(): String = "Coder"
-    override fun getSvgIcon(): SvgIcon =
+    override val svgIcon: SvgIcon =
         SvgIcon(this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf())
 
-    override fun getNoEnvironmentsSvgIcon(): ByteArray =
-        this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf()
+    override val noEnvironmentsSvgIcon: SvgIcon? =
+        SvgIcon(this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf())
 
     /**
      * TODO@JB: It would be nice to show "loading workspaces" at first but it
      *          appears to be only called once.
      */
-    override fun getNoEnvironmentsDescription(): String = "No workspaces yet"
+    override val noEnvironmentsDescription: String? = "No workspaces yet"
+
 
     /**
      * TODO@JB: Supposedly, setting this to false causes the new environment
@@ -205,7 +205,7 @@ class CoderRemoteProvider(
      *          this changes it would be nice to have a new spot to show the
      *          URL.
      */
-    override fun canCreateNewEnvironments(): Boolean = false
+    override val canCreateNewEnvironments: Boolean = false
 
     /**
      * Just displays the deployment URL at the moment, but we could use this as
@@ -216,7 +216,7 @@ class CoderRemoteProvider(
     /**
      * We always show a list of environments.
      */
-    override fun isSingleEnvironment(): Boolean = false
+    override val isSingleEnvironment: Boolean = false
 
     /**
      *  TODO: Possibly a good idea to start/stop polling based on visibility, at
@@ -241,9 +241,11 @@ class CoderRemoteProvider(
      */
     override fun handleUri(uri: URI) {
         val params = uri.toQueryParameters()
-        val name = linkHandler.handle(params)
-        // TODO@JB: Now what?  How do we actually connect this workspace?
-        logger.debug("External request for {}: {}", name, uri)
+        coroutineScope.launch {
+            val name = linkHandler.handle(params)
+            // TODO@JB: Now what?  How do we actually connect this workspace?
+            logger.debug("External request for {}: {}", name, uri)
+        }
     }
 
     /**

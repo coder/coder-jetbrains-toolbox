@@ -39,7 +39,6 @@ jvmWrapper {
 dependencies {
     compileOnly(libs.bundles.toolbox.plugin.api)
     implementation(libs.slf4j)
-    implementation(libs.tinylog)
     implementation(libs.bundles.serialization)
     implementation(libs.coroutines.core)
     implementation(libs.okhttp)

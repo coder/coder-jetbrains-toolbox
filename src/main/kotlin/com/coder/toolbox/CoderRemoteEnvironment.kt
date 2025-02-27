@@ -16,7 +16,6 @@ import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateConsumer
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import java.util.concurrent.CompletableFuture
 
 /**
  * Represents an agent and workspace combination.
@@ -29,12 +28,12 @@ class CoderRemoteEnvironment(
     private var workspace: Workspace,
     private var agent: WorkspaceAgent,
     private var cs: CoroutineScope,
-) : AbstractRemoteProviderEnvironment() {
+) : AbstractRemoteProviderEnvironment("${workspace.name}.${agent.name}") {
     private var status = WorkspaceAndAgentStatus.from(workspace, agent)
 
     private val ui: ToolboxUi = serviceLocator.getService(ToolboxUi::class.java)
-    override fun getId(): String = "${workspace.name}.${agent.name}"
-    override fun getName(): String = "${workspace.name}.${agent.name}"
+
+    override var name: String = "${workspace.name}.${agent.name}"
 
     init {
         actionsList.add(
@@ -105,12 +104,11 @@ class CoderRemoteEnvironment(
      * The contents are provided by the SSH view provided by Toolbox, all we
      * have to do is provide it a host name.
      */
-    override fun getContentsView(): CompletableFuture<EnvironmentContentsView> =
-        CompletableFuture.completedFuture(EnvironmentView(client.url, workspace, agent))
+    override suspend fun getContentsView(): EnvironmentContentsView = EnvironmentView(client.url, workspace, agent)
 
     /**
-     * Does nothing.  In theory we could do something like start the workspace
-     * when you click into the workspace but you would still need to press
+     * Does nothing.  In theory, we could do something like start the workspace
+     * when you click into the workspace, but you would still need to press
      * "connect" anyway before the content is populated so there does not seem
      * to be much value.
      */
@@ -140,12 +138,12 @@ class CoderRemoteEnvironment(
         if (other == null) return false
         if (this === other) return true // Note the triple ===
         if (other !is CoderRemoteEnvironment) return false
-        if (getId() != other.getId()) return false
+        if (id != other.id) return false
         return true
     }
 
     /**
      * Companion to equals, for sets.
      */
-    override fun hashCode(): Int = getId().hashCode()
+    override fun hashCode(): Int = id.hashCode()
 }

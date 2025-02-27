@@ -1,8 +1,8 @@
 package com.coder.toolbox.util
 
+import com.coder.toolbox.logger.CoderLoggerFactory
 import com.coder.toolbox.settings.CoderTLSSettings
 import okhttp3.internal.tls.OkHostnameVerifier
-import org.slf4j.LoggerFactory
 import java.io.File
 import java.io.FileInputStream
 import java.net.InetAddress
@@ -182,7 +182,7 @@ class AlternateNameSSLSocketFactory(private val delegate: SSLSocketFactory, priv
 }
 
 class CoderHostnameVerifier(private val alternateName: String) : HostnameVerifier {
-    private val logger = LoggerFactory.getLogger(javaClass)
+    private val logger = CoderLoggerFactory.getLogger(javaClass)
 
     override fun verify(
         host: String,

@@ -3,6 +3,7 @@ package com.coder.toolbox.cli
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
+import com.coder.toolbox.logger.CoderLoggerFactory
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.CoderSettingsState
 import com.coder.toolbox.util.CoderHostnameVerifier
@@ -20,7 +21,6 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
-import org.slf4j.LoggerFactory
 import org.zeroturnaround.exec.ProcessExecutor
 import java.io.EOFException
 import java.io.FileInputStream
@@ -126,7 +126,7 @@ class CoderCLIManager(
     // manager to download to the data directory instead.
     forceDownloadToData: Boolean = false,
 ) {
-    private val logger = LoggerFactory.getLogger(javaClass)
+    private val logger = CoderLoggerFactory.getLogger(javaClass)
 
     val remoteBinaryURL: URL = settings.binSource(deploymentURL)
     val localBinaryPath: Path = settings.binPath(deploymentURL, forceDownloadToData)

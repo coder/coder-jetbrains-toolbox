@@ -16,12 +16,11 @@ class DialogUi(
     private val settings: CoderSettings,
     private val ui: ToolboxUi,
 ) {
-    fun confirm(title: String, description: String): Boolean {
-        val f = ui.showOkCancelPopup(title, description, "Yes", "No")
-        return f.get()
+    suspend fun confirm(title: String, description: String): Boolean {
+        return ui.showOkCancelPopup(title, description, "Yes", "No")
     }
 
-    fun ask(
+    suspend fun ask(
         title: String,
         description: String,
         placeholder: String? = null,
@@ -30,12 +29,10 @@ class DialogUi(
         isError: Boolean = false,
         link: Pair<String, String>? = null,
     ): String? {
-        val f = ui.showTextInputPopup(title, description, placeholder, TextType.General, "OK", "Cancel")
-        return f.get()
+        return ui.showTextInputPopup(title, description, placeholder, TextType.General, "OK", "Cancel")
     }
 
-    private fun openUrl(url: URL) {
-        // TODO - check this later
+    private suspend fun openUrl(url: URL) {
         BrowserUtil.browse(url.toString()) {
             ui.showErrorInfoPopup(it)
         }
@@ -53,7 +50,7 @@ class DialogUi(
      * other existing token) unless this is a retry to avoid clobbering the
      * token that just failed.
      */
-    fun askToken(
+    suspend fun askToken(
         url: URL,
         token: Pair<String, Source>?,
         useExisting: Boolean,

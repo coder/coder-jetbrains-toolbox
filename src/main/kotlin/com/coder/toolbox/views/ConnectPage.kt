@@ -29,13 +29,12 @@ class ConnectPage(
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,
-) : CoderPage() {
+) : CoderPage("Connecting to Coder") {
     private var signInJob: Job? = null
 
     private var statusField = LabelField("Connecting to ${url.host}...")
 
-    override fun getTitle(): String = "Connecting to Coder"
-    override fun getDescription(): String = "Please wait while we configure Toolbox for ${url.host}."
+    override val description: String = "Please wait while we configure Toolbox for ${url.host}."
 
     init {
         connect()
@@ -46,7 +45,7 @@ class ConnectPage(
      *
      * TODO@JB: This looks kinda sparse.  A centered spinner would be welcome.
      */
-    override fun getFields(): MutableList<UiField> = listOfNotNull(
+    override val fields: MutableList<UiField> = listOfNotNull(
         statusField,
         errorField,
     ).toMutableList()
@@ -54,7 +53,7 @@ class ConnectPage(
     /**
      * Show a retry button on error.
      */
-    override fun getActionButtons(): MutableList<RunnableActionDescription> = listOfNotNull(
+    override val actionButtons: MutableList<RunnableActionDescription> = listOfNotNull(
         if (errorField != null) Action("Retry", closesPage = false) { retry() } else null,
         if (errorField != null) Action("Cancel", closesPage = false) { onCancel() } else null,
     ).toMutableList()

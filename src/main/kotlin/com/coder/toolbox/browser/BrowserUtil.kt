@@ -6,7 +6,7 @@ import org.zeroturnaround.exec.ProcessExecutor
 
 class BrowserUtil {
     companion object {
-        fun browse(url: String, errorHandler: (BrowserException) -> Unit) {
+        suspend fun browse(url: String, errorHandler: suspend (BrowserException) -> Unit) {
             val os = getOS()
             if (os == null) {
                 errorHandler(BrowserException("Failed to open the URL because we can't detect the OS"))
@@ -19,7 +19,7 @@ class BrowserUtil {
             }
         }
 
-        private fun linuxBrowse(url: String, errorHandler: (BrowserException) -> Unit) {
+        private suspend fun linuxBrowse(url: String, errorHandler: suspend (BrowserException) -> Unit) {
             try {
                 if (OS.LINUX.getDesktopEnvironment()?.uppercase()?.contains("GNOME") == true) {
                     exec("gnome-open", url)
@@ -36,7 +36,7 @@ class BrowserUtil {
             }
         }
 
-        private fun macBrowse(url: String, errorHandler: (BrowserException) -> Unit) {
+        private suspend fun macBrowse(url: String, errorHandler: suspend (BrowserException) -> Unit) {
             try {
                 exec("open", url)
             } catch (e: Exception) {
@@ -44,7 +44,7 @@ class BrowserUtil {
             }
         }
 
-        private fun windowsBrowse(url: String, errorHandler: (BrowserException) -> Unit) {
+        private suspend fun windowsBrowse(url: String, errorHandler: suspend (BrowserException) -> Unit) {
             try {
                 exec("cmd", "start \"$url\"")
             } catch (e: Exception) {

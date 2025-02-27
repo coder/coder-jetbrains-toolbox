@@ -14,7 +14,7 @@ import com.jetbrains.toolbox.api.ui.components.UiField
  * TODO@JB: There is no scroll, and our settings do not fit.  As a consequence,
  *          I have not been able to test this page.
  */
-class CoderSettingsPage(private val settings: CoderSettingsService) : CoderPage(false) {
+class CoderSettingsPage(private val settings: CoderSettingsService) : CoderPage("Coder Settings", false) {
     // TODO: Copy over the descriptions, holding until I can test this page.
     private val binarySourceField = TextField("Binary source", settings.binarySource, TextType.General)
     private val binaryDirectoryField = TextField("Binary directory", settings.binaryDirectory, TextType.General)
@@ -30,7 +30,7 @@ class CoderSettingsPage(private val settings: CoderSettingsService) : CoderPage(
         TextField("TLS alternate hostname", settings.tlsAlternateHostname, TextType.General)
     private val disableAutostartField = CheckboxField(settings.disableAutostart, "Disable autostart")
 
-    override fun getFields(): MutableList<UiField> = mutableListOf(
+    override val fields: MutableList<UiField> = mutableListOf(
         binarySourceField,
         enableDownloadsField,
         binaryDirectoryField,
@@ -44,9 +44,7 @@ class CoderSettingsPage(private val settings: CoderSettingsService) : CoderPage(
         disableAutostartField,
     )
 
-    override fun getTitle(): String = "Coder Settings"
-
-    override fun getActionButtons(): MutableList<RunnableActionDescription> = mutableListOf(
+    override val actionButtons: MutableList<RunnableActionDescription> = mutableListOf(
         Action("Save", closesPage = true) {
             settings.binarySource = binarySourceField.text.value
             settings.binaryDirectory = binaryDirectoryField.text.value

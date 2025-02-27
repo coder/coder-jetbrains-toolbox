@@ -1,5 +1,6 @@
 package com.coder.toolbox.settings
 
+import com.coder.toolbox.logger.CoderLoggerFactory
 import com.coder.toolbox.util.Arch
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.expand
@@ -8,7 +9,6 @@ import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.safeHost
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.withPath
-import org.slf4j.LoggerFactory
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
@@ -127,7 +127,7 @@ open class CoderSettings(
     // Overrides the default binary name (for tests).
     private val binaryName: String? = null,
 ) {
-    private val logger = LoggerFactory.getLogger(javaClass)
+    private val logger = CoderLoggerFactory.getLogger(javaClass)
 
     val tls = CoderTLSSettings(state)
 

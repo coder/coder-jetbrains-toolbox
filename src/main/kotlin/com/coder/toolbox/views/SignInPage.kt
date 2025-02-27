@@ -17,10 +17,8 @@ import java.net.URL
 class SignInPage(
     private val deploymentURL: Pair<String, Source>?,
     private val onSignIn: (deploymentURL: URL) -> Unit,
-) : CoderPage() {
+) : CoderPage("Sign In to Coder") {
     private val urlField = TextField("Deployment URL", deploymentURL?.first ?: "", TextType.General)
-
-    override fun getTitle(): String = "Sign In to Coder"
 
     /**
      * Fields for this page, displayed in order.
@@ -28,7 +26,7 @@ class SignInPage(
      * TODO@JB: Fields are reset when you navigate back.
      *          Ideally they remember what the user entered.
      */
-    override fun getFields(): MutableList<UiField> = listOfNotNull(
+    override val fields: MutableList<UiField> = listOfNotNull(
         urlField,
         deploymentURL?.let { LabelField(deploymentURL.second.description("URL")) },
         errorField,
@@ -37,7 +35,7 @@ class SignInPage(
     /**
      * Buttons displayed at the bottom of the page.
      */
-    override fun getActionButtons(): MutableList<RunnableActionDescription> = mutableListOf(
+    override val actionButtons: MutableList<RunnableActionDescription> = mutableListOf(
         Action("Sign In", closesPage = false) { submit() },
     )
 
