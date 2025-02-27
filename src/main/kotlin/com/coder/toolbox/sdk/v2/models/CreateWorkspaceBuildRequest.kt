@@ -20,12 +20,13 @@ data class CreateWorkspaceBuildRequest(
 
         if (templateVersionID != other.templateVersionID) return false
         if (transition != other.transition) return false
-
+        if (orphan != other.orphan) return false
         return true
     }
 
     override fun hashCode(): Int {
-        var result = templateVersionID?.hashCode() ?: 0
+        var result = orphan?.hashCode() ?: 0
+        result = 31 * result + (templateVersionID?.hashCode() ?: 0)
         result = 31 * result + transition.hashCode()
         return result
     }
