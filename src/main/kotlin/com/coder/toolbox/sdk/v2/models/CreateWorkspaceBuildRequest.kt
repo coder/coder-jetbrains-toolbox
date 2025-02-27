@@ -8,8 +8,9 @@ import java.util.UUID
 data class CreateWorkspaceBuildRequest(
     // Use to update the workspace to a new template version.
     @Json(name = "template_version_id") val templateVersionID: UUID?,
-    // Use to start and stop the workspace.
+    // Use to start, stop and delete the workspace.
     @Json(name = "transition") val transition: WorkspaceTransition,
+    @Json(name = "orphan") var orphan: Boolean? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

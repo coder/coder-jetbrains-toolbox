@@ -240,10 +240,14 @@ open class CoderRestClient(
     }
 
     /**
-     * @throws [APIResponseException].
+     * @throws [APIResponseException] if issues are encountered during deletion
      */
     fun removeWorkspace(workspace: Workspace) {
-        // TODO - implement this
+        val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.DELETE, false)
+        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest).execute()
+        if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
+            throw APIResponseException("delete workspace ${workspace.name}", url, buildResponse)
+        }
     }
 
     /**
