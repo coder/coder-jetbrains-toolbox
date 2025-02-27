@@ -76,6 +76,8 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
         return if (ready()) colorPalette.getColor(StandardRemoteEnvironmentState.Active)
         else if (canStart()) colorPalette.getColor(StandardRemoteEnvironmentState.Failed)
         else if (pending()) colorPalette.getColor(StandardRemoteEnvironmentState.Activating)
+        else if (this == DELETING) colorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
+        else if (this == DELETED) colorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
         else colorPalette.getColor(StandardRemoteEnvironmentState.Unreachable)
     }
 
