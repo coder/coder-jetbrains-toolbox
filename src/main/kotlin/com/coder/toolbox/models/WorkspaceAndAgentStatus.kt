@@ -9,6 +9,7 @@ import com.jetbrains.toolbox.api.core.ServiceLocator
 import com.jetbrains.toolbox.api.core.ui.color.StateColor
 import com.jetbrains.toolbox.api.remoteDev.states.CustomRemoteEnvironmentState
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
+import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateIcons
 import com.jetbrains.toolbox.api.remoteDev.states.StandardRemoteEnvironmentState
 
 /**
@@ -59,19 +60,17 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
      * "disconnected" regardless of the label we give that status.
      */
     fun toRemoteEnvironmentState(serviceLocator: ServiceLocator): CustomRemoteEnvironmentState {
-        val stateColor = getStateColor(serviceLocator)
         return CustomRemoteEnvironmentState(
             label,
-            stateColor,
+            getStateColor(serviceLocator),
             ready(), // reachable
             // TODO@JB: How does this work?  Would like a spinner for pending states.
-            null, // iconId
+            getStateIcon()
         )
     }
 
     private fun getStateColor(serviceLocator: ServiceLocator): StateColor {
         val colorPalette = serviceLocator.getService(EnvironmentStateColorPalette::class.java)
-
 
         return if (ready()) colorPalette.getColor(StandardRemoteEnvironmentState.Active)
         else if (canStart()) colorPalette.getColor(StandardRemoteEnvironmentState.Failed)
@@ -79,6 +78,14 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
         else if (this == DELETING) colorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
         else if (this == DELETED) colorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
         else colorPalette.getColor(StandardRemoteEnvironmentState.Unreachable)
+    }
+
+    private fun getStateIcon(): EnvironmentStateIcons {
+        return if (ready()) EnvironmentStateIcons.Active
+        else if (canStart()) EnvironmentStateIcons.Hibernated
+        else if (pending()) EnvironmentStateIcons.Connecting
+        else if (this == DELETING || this == DELETED) EnvironmentStateIcons.Offline
+        else EnvironmentStateIcons.NoIcon
     }
 
     /**
