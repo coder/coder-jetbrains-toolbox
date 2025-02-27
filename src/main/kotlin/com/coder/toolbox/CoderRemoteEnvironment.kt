@@ -14,9 +14,15 @@ import com.jetbrains.toolbox.api.remoteDev.AbstractRemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateConsumer
+import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Represents an agent and workspace combination.
@@ -150,6 +156,20 @@ class CoderRemoteEnvironment(
             if (shouldDelete) {
                 try {
                     client.removeWorkspace(workspace)
+                    cs.launch {
+                        withTimeout(5.minutes) {
+                            var workspaceStillExists = true
+                            while (cs.isActive && workspaceStillExists) {
+                                if (status == WorkspaceAndAgentStatus.DELETING || status == WorkspaceAndAgentStatus.DELETED) {
+                                    workspaceStillExists = false
+                                    serviceLocator.getService(EnvironmentUiPageManager::class.java)
+                                        .showPluginEnvironmentsPage()
+                                } else {
+                                    delay(1.seconds)
+                                }
+                            }
+                        }
+                    }
                 } catch (e: APIResponseException) {
                     ui.showErrorInfoPopup(e)
                 }
