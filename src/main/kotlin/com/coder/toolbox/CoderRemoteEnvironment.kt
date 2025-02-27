@@ -3,6 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.browser.BrowserUtil
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.util.withPath
@@ -147,11 +148,11 @@ class CoderRemoteEnvironment(
                 )
             }
             if (shouldDelete) {
-                if (status.canStop()) {
-                    client.stopWorkspace(workspace)
+                try {
+                    client.removeWorkspace(workspace)
+                } catch (e: APIResponseException) {
+                    ui.showErrorInfoPopup(e)
                 }
-
-                client.removeWorkspace(workspace)
             }
         }
     }
