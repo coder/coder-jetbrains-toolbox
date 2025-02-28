@@ -11,6 +11,15 @@ updates:
       interval: "weekly"
       time: "06:00"
       timezone: "America/Chicago"
+    ignore:
+      # these depend on the toolbox API and should be updated manually
+      - dependency-name: "org.jetbrains.kotlin.jvm"
+      - dependency-name: "org.jetbrains.kotlin.plugin.serialization"
+      - dependency-name: "com.google.devtools.ksp"
+        # these can have breaking changes
+      - dependency-name: "com.jetbrains.toolbox:core-api"
+      - dependency-name: "com.jetbrains.toolbox:ui-api"
+      - dependency-name: "com.jetbrains.toolbox:remote-dev-api"
     commit-message:
       prefix: "chore"
   # Maintain dependencies for GitHub Actions
