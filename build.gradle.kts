@@ -52,6 +52,7 @@ dependencies {
 }
 
 val pluginId = properties("group")
+val pluginName = properties("name")
 val pluginVersion = properties("version")
 
 changelog {
@@ -145,7 +146,8 @@ val pluginZip by tasks.creating(Zip::class) {
         include("icon.svg")
         rename("icon.svg", "pluginIcon.svg")
     }
-    archiveBaseName.set("$pluginId-$pluginVersion")
+    into(pluginId)
+    archiveBaseName.set(pluginName)
 }
 
 val uploadPlugin by tasks.creating {
