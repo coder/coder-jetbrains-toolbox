@@ -3,6 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.browser.BrowserUtil
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.util.withPath
@@ -13,9 +14,15 @@ import com.jetbrains.toolbox.api.remoteDev.AbstractRemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateConsumer
+import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Represents an agent and workspace combination.
@@ -71,7 +78,7 @@ class CoderRemoteEnvironment(
             },
         )
         actionsList.add(
-            Action("Stop", enabled = { status.ready() || status.pending() }) {
+            Action("Stop", enabled = { status.canStop() }) {
                 val build = client.stopWorkspace(workspace)
                 workspace = workspace.copy(latestBuild = build)
                 update(workspace, agent)
@@ -128,7 +135,46 @@ class CoderRemoteEnvironment(
     }
 
     override fun onDelete() {
-        throw NotImplementedError()
+        cs.launch {
+            // TODO info and cancel pop-ups only appear on the main page where all environments are listed.
+            //  However, #showSnackbar works on other pages. Until JetBrains fixes this issue we are going to use the snackbar
+            val shouldDelete = if (status.canStop()) {
+                ui.showOkCancelPopup(
+                    "Delete running workspace?",
+                    "Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical.",
+                    "Delete",
+                    "Cancel"
+                )
+            } else {
+                ui.showOkCancelPopup(
+                    "Delete workspace?",
+                    "All the information in this workspace will be lost, including all files, unsaved changes and historical.",
+                    "Delete",
+                    "Cancel"
+                )
+            }
+            if (shouldDelete) {
+                try {
+                    client.removeWorkspace(workspace)
+                    cs.launch {
+                        withTimeout(5.minutes) {
+                            var workspaceStillExists = true
+                            while (cs.isActive && workspaceStillExists) {
+                                if (status == WorkspaceAndAgentStatus.DELETING || status == WorkspaceAndAgentStatus.DELETED) {
+                                    workspaceStillExists = false
+                                    serviceLocator.getService(EnvironmentUiPageManager::class.java)
+                                        .showPluginEnvironmentsPage()
+                                } else {
+                                    delay(1.seconds)
+                                }
+                            }
+                        }
+                    }
+                } catch (e: APIResponseException) {
+                    ui.showErrorInfoPopup(e)
+                }
+            }
+        }
     }
 
     /**
