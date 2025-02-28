@@ -150,11 +150,14 @@ val pluginZip by tasks.creating(Zip::class) {
     archiveBaseName.set(pluginName)
 }
 
-val uploadPlugin by tasks.creating {
+val publishPlugin by tasks.creating {
     dependsOn(pluginZip)
 
     doLast {
-        val instance = PluginRepositoryFactory.create("https://plugins.jetbrains.com", project.property("pluginMarketplaceToken").toString())
+        val instance = PluginRepositoryFactory.create(
+            "https://plugins.jetbrains.com",
+            project.property("PUBLISH_TOKEN").toString()
+        )
 
         // first upload
         // instance.uploader.uploadNewPlugin(pluginZip.outputs.files.singleFile, listOf("toolbox", "gateway"), LicenseUrl.APACHE_2_0, ProductFamily.TOOLBOX)
