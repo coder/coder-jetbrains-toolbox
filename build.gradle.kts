@@ -13,6 +13,7 @@ plugins {
     alias(libs.plugins.dependency.license.report)
     alias(libs.plugins.ksp)
     alias(libs.plugins.gradle.wrapper)
+    alias(libs.plugins.changelog)
 }
 
 buildscript {
@@ -50,6 +51,16 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
+val pluginId = properties("group")
+val pluginName = properties("name")
+val pluginVersion = properties("version")
+
+changelog {
+    version.set(pluginVersion)
+    groups.set(emptyList())
+    title.set("Coder Toolbox Plugin Changelog")
+}
+
 licenseReport {
     renderers = arrayOf(JsonReportRenderer("dependencies.json"))
     filters = arrayOf(ExcludeTransitiveDependenciesFilter())
@@ -64,9 +75,6 @@ tasks.compileKotlin {
 tasks.test {
     useJUnitPlatform()
 }
-
-val pluginId = "com.coder.toolbox"
-val pluginVersion = "0.0.1"
 
 val assemblePlugin by tasks.registering(Jar::class) {
     archiveBaseName.set(pluginId)
@@ -138,14 +146,18 @@ val pluginZip by tasks.creating(Zip::class) {
         include("icon.svg")
         rename("icon.svg", "pluginIcon.svg")
     }
-    archiveBaseName.set("$pluginId-$pluginVersion")
+    into(pluginId)
+    archiveBaseName.set(pluginName)
 }
 
-val uploadPlugin by tasks.creating {
+val publishPlugin by tasks.creating {
     dependsOn(pluginZip)
 
     doLast {
-        val instance = PluginRepositoryFactory.create("https://plugins.jetbrains.com", project.property("pluginMarketplaceToken").toString())
+        val instance = PluginRepositoryFactory.create(
+            "https://plugins.jetbrains.com",
+            project.property("PUBLISH_TOKEN").toString()
+        )
 
         // first upload
         // instance.uploader.uploadNewPlugin(pluginZip.outputs.files.singleFile, listOf("toolbox", "gateway"), LicenseUrl.APACHE_2_0, ProductFamily.TOOLBOX)
@@ -163,3 +175,5 @@ tasks.register("classpath") {
         )
     }
 }
+
+fun properties(key: String) = project.findProperty(key).toString()

@@ -12,6 +12,7 @@ exec = "1.12"
 moshi = "1.15.1"
 ksp = "2.1.0-1.0.29"
 retrofit = "2.8.2"
+changelog = "2.2.1"
 
 [libraries]
 toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "toolbox-plugin-api" }
@@ -41,3 +42,4 @@ serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref 
 dependency-license-report = { id = "com.github.jk1.dependency-license-report", version.ref = "dependency-license-report" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp"}
 gradle-wrapper = { id = "me.filippov.gradle.jvm.wrapper", version.ref = "gradle-wrapper" }
+changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }
