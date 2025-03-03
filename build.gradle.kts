@@ -83,7 +83,12 @@ val assemblePlugin by tasks.registering(Jar::class) {
 
 val copyPlugin by tasks.creating(Sync::class.java) {
     dependsOn(assemblePlugin)
+    fromCompileDependencies()
 
+    into(getPluginInstallDir())
+}
+
+fun CopySpec.fromCompileDependencies() {
     from(assemblePlugin.get().outputs.files)
     from("src/main/resources") {
         include("extension.json")
@@ -105,8 +110,14 @@ val copyPlugin by tasks.creating(Sync::class.java) {
             }
         },
     )
+}
 
-    into(getPluginInstallDir())
+val pluginZip by tasks.creating(Zip::class) {
+    dependsOn(assemblePlugin)
+
+    fromCompileDependencies()
+    into(pluginId)
+    archiveBaseName.set(pluginName)
 }
 
 tasks.register("cleanAll", Delete::class.java) {
@@ -132,22 +143,6 @@ private fun getPluginInstallDir(): Path {
     } / "plugins"
 
     return pluginsDir / pluginId
-}
-
-val pluginZip by tasks.creating(Zip::class) {
-    dependsOn(assemblePlugin)
-
-    from(assemblePlugin.get().outputs.files)
-    from("src/main/resources") {
-        include("extension.json")
-        include("dependencies.json")
-    }
-    from("src/main/resources") {
-        include("icon.svg")
-        rename("icon.svg", "pluginIcon.svg")
-    }
-    into(pluginId)
-    archiveBaseName.set(pluginName)
 }
 
 val publishPlugin by tasks.creating {
