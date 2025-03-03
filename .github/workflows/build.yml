@@ -124,11 +124,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          echo "${{ needs.build.outputs.changelog }}" > RELEASE_NOTES.md
           gh release create v${{ needs.build.outputs.version }} \
             --draft \
             --target ${GITHUB_REF_NAME} \
             --title "v${{ needs.build.outputs.version }}" \
-            --notes "$(cat << 'EOM'
-          ${{ needs.build.outputs.changelog }}
-          EOM
-          )"
+            --notes-file RELEASE_NOTES.md
