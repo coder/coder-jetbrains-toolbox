@@ -1,0 +1,34 @@
+# Dependabot configuration:
+# https://docs.github.com/en/free-pro-team@latest/github/administering-a-repository/configuration-options-for-dependency-updates
+
+version: 2
+updates:
+  # Maintain dependencies for Gradle dependencies
+  - package-ecosystem: "gradle"
+    directory: "/"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      time: "06:00"
+      timezone: "America/Chicago"
+    ignore:
+      # these depend on the toolbox API and should be updated manually
+      - dependency-name: "org.jetbrains.kotlin.jvm"
+      - dependency-name: "org.jetbrains.kotlin.plugin.serialization"
+      - dependency-name: "com.google.devtools.ksp"
+        # these can have breaking changes
+      - dependency-name: "com.jetbrains.toolbox:core-api"
+      - dependency-name: "com.jetbrains.toolbox:ui-api"
+      - dependency-name: "com.jetbrains.toolbox:remote-dev-api"
+    commit-message:
+      prefix: "chore"
+  # Maintain dependencies for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      time: "06:00"
+      timezone: "America/Chicago"
+    commit-message:
+      prefix: "chore"

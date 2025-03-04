@@ -5,3 +5,6 @@ jvm/
 
 # IntelliJ IDEA
 .idea
+
+# hidden macOS metadata files
+.DS_Store
