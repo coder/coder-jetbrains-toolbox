@@ -1,7 +1,10 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.logger.CoderLoggerFactory
+import com.jetbrains.toolbox.api.core.ServiceLocator
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
+import com.jetbrains.toolbox.api.localization.LocalizableString
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
 import com.jetbrains.toolbox.api.ui.components.UiPage
@@ -19,11 +22,12 @@ import java.util.function.Consumer
  *       to use the mouse.
  */
 abstract class CoderPage(
-    title: String,
+    private val serviceLocator: ServiceLocator,
+    title: LocalizableString,
     showIcon: Boolean = true,
 ) : UiPage(title) {
     private val logger = CoderLoggerFactory.getLogger(javaClass)
-
+    private val i18n = serviceLocator.getService(LocalizableStringFactory::class.java)
     /**
      * An error to display on the page.
      *
@@ -32,7 +36,7 @@ abstract class CoderPage(
     protected var errorField: ValidationErrorField? = null
 
     /** Toolbox uses this to show notifications on the page. */
-    private var notifier: Consumer<Throwable>? = null
+    private var notifier: ((Throwable) -> Unit)? = null
 
     /** Let Toolbox know the fields should be updated. */
     protected var listener: Consumer<UiField?>? = null
@@ -57,17 +61,17 @@ abstract class CoderPage(
     fun notify(logPrefix: String, ex: Throwable) {
         logger.error(logPrefix, ex)
         // It is possible the error listener is not attached yet.
-        notifier?.accept(ex) ?: errorBuffer.add(ex)
+        notifier?.let { it(ex) } ?: errorBuffer.add(ex)
     }
 
     /**
      * Immediately notify any pending errors and store for later errors.
      */
-    override fun setActionErrorNotifier(notifier: Consumer<Throwable>?) {
+    override fun setActionErrorNotifier(notifier: ((Throwable) -> Unit)?) {
         this.notifier = notifier
         notifier?.let {
             errorBuffer.forEach {
-                notifier.accept(it)
+                notifier(it)
             }
             errorBuffer.clear()
         }
@@ -77,21 +81,23 @@ abstract class CoderPage(
      * Set/unset the field error and update the form.
      */
     protected fun updateError(error: String?) {
-        errorField = error?.let { ValidationErrorField(error) }
+        errorField = error?.let { ValidationErrorField(i18n.pnotr(error)) }
         listener?.accept(null) // Make Toolbox get the fields again.
     }
+
+
 }
 
 /**
  * An action that simply runs the provided callback.
  */
 class Action(
-    description: String,
+    description: LocalizableString,
     closesPage: Boolean = false,
     enabled: () -> Boolean = { true },
     private val actionBlock: () -> Unit,
 ) : RunnableActionDescription {
-    override val label: String = description
+    override val label: LocalizableString = description
     override val shouldClosePage: Boolean = closesPage
     override val isEnabled: Boolean = enabled()
     override fun run() {

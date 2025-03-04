@@ -21,17 +21,20 @@ import com.jetbrains.toolbox.api.core.PluginSecretStore
 import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.ServiceLocator
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
+import com.jetbrains.toolbox.api.core.util.LoadableState
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
-import com.jetbrains.toolbox.api.remoteDev.RemoteEnvironmentConsumer
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
+import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
-import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
-import com.jetbrains.toolbox.api.ui.components.AccountDropdownField
+import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -39,6 +42,8 @@ import java.net.URI
 import java.net.URL
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
+import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as DropDownMenu
+import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as dropDownFactory
 
 class CoderRemoteProvider(
     private val serviceLocator: ServiceLocator,
@@ -47,10 +52,10 @@ class CoderRemoteProvider(
     private val logger = CoderLoggerFactory.getLogger(javaClass)
 
     private val ui: ToolboxUi = serviceLocator.getService(ToolboxUi::class.java)
-    private val consumer: RemoteEnvironmentConsumer = serviceLocator.getService(RemoteEnvironmentConsumer::class.java)
     private val coroutineScope: CoroutineScope = serviceLocator.getService(CoroutineScope::class.java)
     private val settingsStore: PluginSettingsStore = serviceLocator.getService(PluginSettingsStore::class.java)
     private val secretsStore: PluginSecretStore = serviceLocator.getService(PluginSecretStore::class.java)
+    private val i18n = serviceLocator.getService(LocalizableStringFactory::class.java)
 
     // Current polling job.
     private var pollJob: Job? = null
@@ -61,8 +66,8 @@ class CoderRemoteProvider(
     private val settings: CoderSettings = CoderSettings(settingsService)
     private val secrets: CoderSecretsService = CoderSecretsService(secretsStore)
     private val settingsPage: CoderSettingsPage = CoderSettingsPage(settingsService)
-    private val dialogUi = DialogUi(settings, ui)
-    private val linkHandler = LinkHandler(settings, httpClient, dialogUi)
+    private val dialogUi = DialogUi(serviceLocator, settings)
+    private val linkHandler = LinkHandler(serviceLocator, settings, httpClient, dialogUi)
 
     // The REST client, if we are signed in
     private var client: CoderRestClient? = null
@@ -75,6 +80,10 @@ class CoderRemoteProvider(
     // On the first load, automatically log in if we can.
     private var firstRun = true
 
+    override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
+        LoadableState.Loading
+    )
+
     /**
      * With the provided client, start polling for workspaces.  Every time a new
      * workspace is added, reconfigure SSH using the provided cli (including the
@@ -84,7 +93,7 @@ class CoderRemoteProvider(
         while (isActive) {
             try {
                 logger.debug("Fetching workspace agents from {}", client.url)
-                val environments = client.workspaces().flatMap { ws ->
+                val resolvedEnvironments = client.workspaces().flatMap { ws ->
                     // Agents are not included in workspaces that are off
                     // so fetch them separately.
                     when (ws.latestBuild.status) {
@@ -117,16 +126,16 @@ class CoderRemoteProvider(
                 // Reconfigure if a new environment is found.
                 // TODO@JB: Should we use the add/remove listeners instead?
                 val newEnvironments = lastEnvironments
-                    ?.let { environments.subtract(it) }
-                    ?: environments
+                    ?.let { resolvedEnvironments.subtract(it) }
+                    ?: resolvedEnvironments
                 if (newEnvironments.isNotEmpty()) {
                     logger.info("Found new environment(s), reconfiguring CLI: {}", newEnvironments)
                     cli.configSsh(newEnvironments.map { it.name }.toSet())
                 }
 
-                consumer.consumeEnvironments(environments, true)
+                environments.value = LoadableState.Value(resolvedEnvironments.toList())
 
-                lastEnvironments = environments
+                lastEnvironments = resolvedEnvironments
             } catch (_: CancellationException) {
                 logger.debug("{} polling loop canceled", client.url)
                 break
@@ -155,21 +164,20 @@ class CoderRemoteProvider(
     /**
      * A dropdown that appears at the top of the environment list to the right.
      */
-    override fun getAccountDropDown(): AccountDropdownField? {
+    override fun getAccountDropDown(): DropDownMenu? {
         val username = client?.me?.username
         if (username != null) {
-            return AccountDropdownField(username, Runnable { logout() })
+            return dropDownFactory(i18n.pnotr(username), { logout() })
         }
         return null
     }
 
-    /**
-     * List of actions that appear next to the account.
-     */
-    override fun getAdditionalPluginActions(): List<RunnableActionDescription> = listOf(
-        Action("Settings", closesPage = false) {
-            ui.showUiPage(settingsPage)
-        },
+    override val additionalPluginActions: StateFlow<List<ActionDescription>> = MutableStateFlow(
+        listOf(
+            Action(i18n.ptrl("Settings")) {
+                ui.showUiPage(settingsPage)
+            },
+        )
     )
 
     /**
@@ -182,7 +190,7 @@ class CoderRemoteProvider(
         pollJob?.cancel()
         client = null
         lastEnvironments = null
-        consumer.consumeEnvironments(emptyList(), true)
+        environments.value = LoadableState.Value(emptyList())
     }
 
     override val svgIcon: SvgIcon =
@@ -227,19 +235,9 @@ class CoderRemoteProvider(
     override fun setVisible(visibilityState: ProviderVisibilityState) {}
 
     /**
-     * Ignored; unsure if we should use this over the consumer we get passed in.
-     */
-    override fun addEnvironmentsListener(listener: RemoteEnvironmentConsumer) {}
-
-    /**
-     * Ignored; unsure if we should use this over the consumer we get passed in.
-     */
-    override fun removeEnvironmentsListener(listener: RemoteEnvironmentConsumer) {}
-
-    /**
      * Handle incoming links (like from the dashboard).
      */
-    override fun handleUri(uri: URI) {
+    override suspend fun handleUri(uri: URI) {
         val params = uri.toQueryParameters()
         coroutineScope.launch {
             val name = linkHandler.handle(params)

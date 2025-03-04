@@ -15,3 +15,63 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+
+msgid "Yes"
+msgstr ""
+
+msgid "OK"
+msgstr ""
+
+msgid "No"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Delete running workspace?"
+msgstr ""
+
+msgid "Delete workspace?"
+msgstr ""
+
+msgid "Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical."
+msgstr ""
+
+msgid "All the information in this workspace will be lost, including all files, unsaved changes and historical."
+msgstr ""
+
+msgid "Session Token"
+msgstr ""
+
+msgid "Deployment URL"
+msgstr ""
+
+msgid "Enter the full URL of your Coder deployment"
+msgstr ""
+
+msgid "Confirm download URL"
+msgstr ""
+
+msgid "Open web terminal"
+msgstr ""
+
+msgid "Open in dashboard"
+msgstr ""
+
+msgid "View template"
+msgstr ""
+
+msgid "Start"
+msgstr ""
+
+msgid "Stop"
+msgstr ""
+
+msgid "Update"
+msgstr ""
+
+msgid "Settings"
+msgstr ""

@@ -10,14 +10,19 @@ import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.EnvironmentView
 import com.jetbrains.toolbox.api.core.ServiceLocator
-import com.jetbrains.toolbox.api.remoteDev.AbstractRemoteProviderEnvironment
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
+import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
-import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateConsumer
+import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
+import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
+import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -35,63 +40,58 @@ class CoderRemoteEnvironment(
     private var workspace: Workspace,
     private var agent: WorkspaceAgent,
     private var cs: CoroutineScope,
-) : AbstractRemoteProviderEnvironment("${workspace.name}.${agent.name}") {
+) : RemoteProviderEnvironment("${workspace.name}.${agent.name}") {
     private var status = WorkspaceAndAgentStatus.from(workspace, agent)
 
     private val ui: ToolboxUi = serviceLocator.getService(ToolboxUi::class.java)
+    private val i18n = serviceLocator.getService(LocalizableStringFactory::class.java)
 
     override var name: String = "${workspace.name}.${agent.name}"
+    override val state: StateFlow<RemoteEnvironmentState>
+        get() = TODO("Not yet implemented")
+    override val description: StateFlow<EnvironmentDescription>
+        get() = TODO("Not yet implemented")
 
-    init {
-        actionsList.add(
-            Action("Open web terminal") {
+    override val actionsList: StateFlow<List<ActionDescription>> = MutableStateFlow(
+        listOf(
+            Action(i18n.ptrl("Open web terminal")) {
                 cs.launch {
                     BrowserUtil.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
                         ui.showErrorInfoPopup(it)
                     }
                 }
             },
-        )
-        actionsList.add(
-            Action("Open in dashboard") {
+            Action(i18n.ptrl("Open in dashboard")) {
                 cs.launch {
                     BrowserUtil.browse(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()) {
                         ui.showErrorInfoPopup(it)
                     }
                 }
             },
-        )
-        actionsList.add(
-            Action("View template") {
+
+            Action(i18n.ptrl("View template")) {
                 cs.launch {
                     BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
                         ui.showErrorInfoPopup(it)
                     }
                 }
             },
-        )
-        actionsList.add(
-            Action("Start", enabled = { status.canStart() }) {
+            Action(i18n.ptrl("Start"), enabled = { status.canStart() }) {
                 val build = client.startWorkspace(workspace)
                 workspace = workspace.copy(latestBuild = build)
                 update(workspace, agent)
             },
-        )
-        actionsList.add(
-            Action("Stop", enabled = { status.canStop() }) {
+            Action(i18n.ptrl("Stop"), enabled = { status.canStop() }) {
                 val build = client.stopWorkspace(workspace)
                 workspace = workspace.copy(latestBuild = build)
                 update(workspace, agent)
             },
-        )
-        actionsList.add(
-            Action("Update", enabled = { workspace.outdated }) {
+            Action(i18n.ptrl("Update"), enabled = { workspace.outdated }) {
                 val build = client.updateWorkspace(workspace)
                 workspace = workspace.copy(latestBuild = build)
                 update(workspace, agent)
-            },
-        )
-    }
+            })
+    )
 
     /**
      * Update the workspace/agent status to the listeners, if it has changed.
@@ -103,7 +103,7 @@ class CoderRemoteEnvironment(
         if (newStatus != status) {
             status = newStatus
             val state = status.toRemoteEnvironmentState(serviceLocator)
-            listenerSet.forEach { it.consume(state) }
+//                listenerSet.forEach { it.consume(state) }
         }
     }
 
@@ -111,7 +111,8 @@ class CoderRemoteEnvironment(
      * The contents are provided by the SSH view provided by Toolbox, all we
      * have to do is provide it a host name.
      */
-    override suspend fun getContentsView(): EnvironmentContentsView = EnvironmentView(client.url, workspace, agent)
+    override suspend
+    fun getContentsView(): EnvironmentContentsView = EnvironmentView(client.url, workspace, agent)
 
     /**
      * Does nothing.  In theory, we could do something like start the workspace
@@ -124,15 +125,15 @@ class CoderRemoteEnvironment(
     /**
      * Immediately send the state to the listener and store for updates.
      */
-    override fun addStateListener(consumer: EnvironmentStateConsumer): Boolean {
-        // TODO@JB: It would be ideal if we could have the workspace state and
-        //          the connected state listed separately, since right now the
-        //          connected state can mask the workspace state.
-        // TODO@JB: You can still press connect if the environment is
-        //          unreachable.  Is that expected?
-        consumer.consume(status.toRemoteEnvironmentState(serviceLocator))
-        return super.addStateListener(consumer)
-    }
+//    override fun addStateListener(consumer: EnvironmentStateConsumer): Boolean {
+//        // TODO@JB: It would be ideal if we could have the workspace state and
+//        //          the connected state listed separately, since right now the
+//        //          connected state can mask the workspace state.
+//        // TODO@JB: You can still press connect if the environment is
+//        //          unreachable.  Is that expected?
+//        consumer.consume(status.toRemoteEnvironmentState(serviceLocator))
+//        return super.addStateListener(consumer)
+//    }
 
     override fun onDelete() {
         cs.launch {
@@ -140,17 +141,17 @@ class CoderRemoteEnvironment(
             //  However, #showSnackbar works on other pages. Until JetBrains fixes this issue we are going to use the snackbar
             val shouldDelete = if (status.canStop()) {
                 ui.showOkCancelPopup(
-                    "Delete running workspace?",
-                    "Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical.",
-                    "Delete",
-                    "Cancel"
+                    i18n.ptrl("Delete running workspace?"),
+                    i18n.ptrl("Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical."),
+                    i18n.ptrl("Delete"),
+                    i18n.ptrl("Cancel")
                 )
             } else {
                 ui.showOkCancelPopup(
-                    "Delete workspace?",
-                    "All the information in this workspace will be lost, including all files, unsaved changes and historical.",
-                    "Delete",
-                    "Cancel"
+                    i18n.ptrl("Delete workspace?"),
+                    i18n.ptrl("All the information in this workspace will be lost, including all files, unsaved changes and historical."),
+                    i18n.ptrl("Delete"),
+                    i18n.ptrl("Cancel")
                 )
             }
             if (shouldDelete) {

@@ -10,15 +10,20 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.Source
+import com.jetbrains.toolbox.api.core.ServiceLocator
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import okhttp3.OkHttpClient
 import java.net.HttpURLConnection
 import java.net.URL
 
 open class LinkHandler(
+    serviceLocator: ServiceLocator,
     private val settings: CoderSettings,
     private val httpClient: OkHttpClient?,
     private val dialogUi: DialogUi,
 ) {
+    private val i18n = serviceLocator.getService(LocalizableStringFactory::class.java)
+
     /**
      * Given a set of URL parameters, prepare the CLI then return a workspace to
      * connect.
@@ -31,7 +36,10 @@ open class LinkHandler(
         indicator: ((t: String) -> Unit)? = null,
     ): String {
         val deploymentURL =
-            parameters.url() ?: dialogUi.ask("Deployment URL", "Enter the full URL of your Coder deployment")
+            parameters.url() ?: dialogUi.ask(
+                i18n.ptrl("Deployment URL"),
+                i18n.ptrl("Enter the full URL of your Coder deployment")
+            )
         if (deploymentURL.isNullOrBlank()) {
             throw MissingArgumentException("Query parameter \"$URL\" is missing")
         }
@@ -222,8 +230,8 @@ open class LinkHandler(
             }
 
         if (!dialogUi.confirm(
-                "Confirm download URL",
-                "$comment. Would you like to proceed to $linkWithRedirect?",
+                i18n.ptrl("Confirm download URL"),
+                i18n.pnotr("$comment. Would you like to proceed to $linkWithRedirect?"),
             )
         ) {
             throw IllegalArgumentException("$linkWithRedirect is not allowlisted")
