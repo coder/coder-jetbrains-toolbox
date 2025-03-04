@@ -19,6 +19,7 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.gradle.wrapper)
     alias(libs.plugins.changelog)
+    alias(libs.plugins.gettext)
 }
 
 
@@ -215,6 +216,11 @@ val publishPlugin by tasks.creating {
 
 fun properties(key: String) = project.findProperty(key).toString()
 
+gettext {
+    potFile = project.layout.projectDirectory.file("src/main/resources/localization/defaultMessages.pot")
+    keywords = listOf("ptrc:1c,2", "ptrl")
+}
+
 // region will be moved to the gradle plugin late
 data class ExtensionJsonMeta(
     val name: String,
@@ -245,5 +251,4 @@ fun generateExtensionJson(extensionJson: ExtensionJson, destinationFile: Path) {
     destinationFile.parent.createDirectories()
     destinationFile.writeText(extensionJson)
 }
-
 // endregion
