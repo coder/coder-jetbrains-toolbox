@@ -11,7 +11,7 @@ gradle-wrapper = "0.14.0"
 exec = "1.12"
 moshi = "1.15.1"
 ksp = "2.1.0-1.0.29"
-retrofit = "2.8.2"
+retrofit = "2.11.0"
 changelog = "2.2.1"
 
 [libraries]
