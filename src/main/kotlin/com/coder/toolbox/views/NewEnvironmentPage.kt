@@ -1,6 +1,10 @@
 package com.coder.toolbox.views
 
+import com.jetbrains.toolbox.api.core.ServiceLocator
+import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.UiField
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 
 /**
@@ -10,6 +14,7 @@ import com.jetbrains.toolbox.api.ui.components.UiField
  * For now we just use this to display the deployment URL since we do not
  * support creating environments from the plugin.
  */
-class NewEnvironmentPage(private val deploymentURL: String?) : CoderPage(deploymentURL ?: "") {
-    override val fields: MutableList<UiField> = mutableListOf()
+class NewEnvironmentPage(serviceLocator: ServiceLocator, deploymentURL: LocalizableString) :
+    CoderPage(serviceLocator, deploymentURL) {
+    override val fields: StateFlow<List<UiField>> = MutableStateFlow(emptyList())
 }

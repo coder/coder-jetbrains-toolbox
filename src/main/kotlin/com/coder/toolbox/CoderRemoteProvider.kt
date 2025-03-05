@@ -220,7 +220,8 @@ class CoderRemoteProvider(
      * Just displays the deployment URL at the moment, but we could use this as
      * a form for creating new environments.
      */
-    override fun getNewEnvironmentUiPage(): UiPage = NewEnvironmentPage(getDeploymentURL()?.first)
+    override fun getNewEnvironmentUiPage(): UiPage =
+        NewEnvironmentPage(serviceLocator, i18n.pnotr(getDeploymentURL()?.first ?: ""))
 
     /**
      * We always show a list of environments.
