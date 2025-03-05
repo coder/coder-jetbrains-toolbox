@@ -1,4 +1,5 @@
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.module.kotlin.jacksonMapperBuilder
 import com.github.jk1.license.filter.ExcludeTransitiveDependenciesFilter
 import com.github.jk1.license.render.JsonReportRenderer
 import com.jetbrains.plugin.structure.toolbox.ToolboxMeta
@@ -66,6 +67,7 @@ dependencies {
 
 val extension = ExtensionJson(
     id = properties("group"),
+
     version = properties("version"),
     meta = ExtensionJsonMeta(
         name = "Coder Toolbox",
@@ -106,36 +108,30 @@ tasks.test {
     useJUnitPlatform()
 }
 
+
 tasks.jar {
     archiveBaseName.set(extension.id)
     dependsOn(extensionJson)
-}
-
-val assemblePlugin by tasks.registering(Jar::class) {
-    archiveBaseName.set(extension.id)
-    from(sourceSets.main.get().output)
+    from(extensionJson.get().outputs)
 }
 
 val copyPlugin by tasks.creating(Sync::class.java) {
-    dependsOn(tasks.assemble)
-//    fromCompileDependencies()
-    from(tasks.jar)
+    dependsOn(tasks.jar)
+    dependsOn(tasks.getByName("generateLicenseReport"))
 
-    from(extensionJsonFile)
-
-    from("src/main/resources") {
-        include("dependencies.json")
-        include("icon.svg")
-    }
+    fromCompileDependencies()
     into(getPluginInstallDir())
 }
 
 fun CopySpec.fromCompileDependencies() {
-    from(assemblePlugin.get().outputs.files)
+    from(tasks.jar)
+    from(extensionJson.get().outputs.files)
     from("src/main/resources") {
-        include("extension.json")
         include("dependencies.json")
+    }
+    from("src/main/resources") {
         include("icon.svg")
+        rename("icon.svg", "pluginIcon.svg")
     }
 
     // Copy dependencies, excluding those provided by Toolbox.
@@ -148,6 +144,7 @@ fun CopySpec.fromCompileDependencies() {
                     "core-api",
                     "ui-api",
                     "annotations",
+                    "localization-api"
                 ).any { file.name.contains(it) }
             }
         },
@@ -155,21 +152,12 @@ fun CopySpec.fromCompileDependencies() {
 }
 
 val pluginZip by tasks.creating(Zip::class) {
-    dependsOn(tasks.assemble)
+    archiveBaseName.set(properties("name"))
+    dependsOn(tasks.jar)
     dependsOn(tasks.getByName("generateLicenseReport"))
 
-//    fromCompileDependencies()
-//    into(pluginId)
-    from(tasks.assemble.get().outputs.files)
-    from(extensionJsonFile)
-    from("src/main/resources") {
-        include("dependencies.json")
-    }
-    from("src/main/resources") {
-        include("icon.svg")
-        rename("icon.svg", "pluginIcon.svg")
-    }
-    archiveBaseName.set(extension.id)
+    fromCompileDependencies()
+    into(extension.id) // folder like com.coder.toolbox
 }
 
 tasks.register("cleanAll", Delete::class.java) {
@@ -247,8 +235,12 @@ fun generateExtensionJson(extensionJson: ExtensionJson, destinationFile: Path) {
             url = extensionJson.meta.url,
         )
     )
-    val extensionJson = jacksonObjectMapper().writeValueAsString(descriptor)
     destinationFile.parent.createDirectories()
-    destinationFile.writeText(extensionJson)
+    destinationFile.writeText(
+        jacksonMapperBuilder()
+            .enable(SerializationFeature.INDENT_OUTPUT)
+            .build()
+            .writeValueAsString(descriptor)
+    )
 }
 // endregion
