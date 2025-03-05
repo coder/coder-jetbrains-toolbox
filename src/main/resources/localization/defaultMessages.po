@@ -126,3 +126,21 @@ msgstr ""
 
 msgid "Retry"
 msgstr ""
+
+msgid "Sign In"
+msgstr ""
+
+msgid "Sign In to Coder"
+msgstr ""
+
+msgid "Enter your token"
+msgstr ""
+
+msgid "Token"
+msgstr ""
+
+msgid "Get a token"
+msgstr ""
+
+msgid "Connect"
+msgstr ""

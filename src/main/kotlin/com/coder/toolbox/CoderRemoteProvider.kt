@@ -286,9 +286,15 @@ class CoderRemoteProvider(
             firstRun = false
 
             // Login flow.
-            val signInPage = SignInPage(getDeploymentURL()) { deploymentURL ->
+            val signInPage =
+                SignInPage(serviceLocator, i18n.ptrl("Sign In to Coder"), getDeploymentURL()) { deploymentURL ->
                 ui.showUiPage(
-                    TokenPage(deploymentURL, getToken(deploymentURL)) { selectedToken ->
+                    TokenPage(
+                        serviceLocator,
+                        i18n.ptrl("Enter your token"),
+                        deploymentURL,
+                        getToken(deploymentURL)
+                    ) { selectedToken ->
                         ui.showUiPage(createConnectPage(deploymentURL, selectedToken))
                     },
                 )
