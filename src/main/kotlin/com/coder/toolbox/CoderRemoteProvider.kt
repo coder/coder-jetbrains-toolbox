@@ -307,11 +307,12 @@ class CoderRemoteProvider(
      * Create a connect page that starts polling and resets the UI on success.
      */
     private fun createConnectPage(deploymentURL: URL, token: String?): ConnectPage = ConnectPage(
+        serviceLocator,
         deploymentURL,
         token,
         settings,
         httpClient,
-        coroutineScope,
+        i18n.ptrl("Connecting to Coder"),
         ::goToEnvironmentsPage,
     ) { client, cli ->
         // Store the URL and token for use next time.

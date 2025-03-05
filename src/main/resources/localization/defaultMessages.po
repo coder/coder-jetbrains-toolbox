@@ -115,4 +115,14 @@ msgstr ""
 msgid "Disable autostart"
 msgstr ""
 
+msgid "Connecting to Coder"
+msgstr ""
 
+msgid "Checking Coder binary..."
+msgstr ""
+
+msgid "Configuring CLI..."
+msgstr ""
+
+msgid "Retry"
+msgstr ""
