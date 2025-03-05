@@ -22,7 +22,7 @@ import java.util.function.Consumer
  *       to use the mouse.
  */
 abstract class CoderPage(
-    private val serviceLocator: ServiceLocator,
+    serviceLocator: ServiceLocator,
     title: LocalizableString,
     showIcon: Boolean = true,
 ) : UiPage(title) {

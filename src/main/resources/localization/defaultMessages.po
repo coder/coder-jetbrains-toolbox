@@ -25,6 +25,9 @@ msgstr ""
 msgid "No"
 msgstr ""
 
+msgid "Save"
+msgstr ""
+
 msgid "Delete"
 msgstr ""
 
@@ -75,3 +78,41 @@ msgstr ""
 
 msgid "Settings"
 msgstr ""
+
+msgid "Coder Settings"
+msgstr ""
+
+msgid "Binary source"
+msgstr ""
+
+msgid "Binary directory"
+msgstr ""
+
+msgid "Data directory"
+msgstr ""
+
+msgid "Enable downloads"
+msgstr ""
+
+msgid "Enable binary directory fallback"
+msgstr ""
+
+msgid "Header command"
+msgstr ""
+
+msgid "TLS cert path"
+msgstr ""
+
+msgid "TLS key path"
+msgstr ""
+
+msgid "TLS CA path"
+msgstr ""
+
+msgid "TLS alternate hostname"
+msgstr ""
+
+msgid "Disable autostart"
+msgstr ""
+
+

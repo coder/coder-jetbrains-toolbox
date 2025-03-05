@@ -65,7 +65,8 @@ class CoderRemoteProvider(
     private val settingsService = CoderSettingsService(settingsStore)
     private val settings: CoderSettings = CoderSettings(settingsService)
     private val secrets: CoderSecretsService = CoderSecretsService(secretsStore)
-    private val settingsPage: CoderSettingsPage = CoderSettingsPage(settingsService)
+    private val settingsPage: CoderSettingsPage =
+        CoderSettingsPage(serviceLocator, settingsService, i18n.ptrl("Coder Settings"))
     private val dialogUi = DialogUi(serviceLocator, settings)
     private val linkHandler = LinkHandler(serviceLocator, settings, httpClient, dialogUi)
 
