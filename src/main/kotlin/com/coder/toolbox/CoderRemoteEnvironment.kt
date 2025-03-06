@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -41,16 +42,16 @@ class CoderRemoteEnvironment(
     private var agent: WorkspaceAgent,
     private var cs: CoroutineScope,
 ) : RemoteProviderEnvironment("${workspace.name}.${agent.name}") {
-    private var status = WorkspaceAndAgentStatus.from(workspace, agent)
+    private var wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
 
     private val ui: ToolboxUi = serviceLocator.getService(ToolboxUi::class.java)
     private val i18n = serviceLocator.getService(LocalizableStringFactory::class.java)
 
     override var name: String = "${workspace.name}.${agent.name}"
-    override val state: StateFlow<RemoteEnvironmentState>
-        get() = TODO("Not yet implemented")
-    override val description: StateFlow<EnvironmentDescription>
-        get() = TODO("Not yet implemented")
+    override val state: MutableStateFlow<RemoteEnvironmentState> =
+        MutableStateFlow(wsRawStatus.toRemoteEnvironmentState(serviceLocator))
+    override val description: MutableStateFlow<EnvironmentDescription> =
+        MutableStateFlow(EnvironmentDescription.General(i18n.pnotr(workspace.templateName)))
 
     override val actionsList: StateFlow<List<ActionDescription>> = MutableStateFlow(
         listOf(
@@ -76,12 +77,12 @@ class CoderRemoteEnvironment(
                     }
                 }
             },
-            Action(i18n.ptrl("Start"), enabled = { status.canStart() }) {
+            Action(i18n.ptrl("Start"), enabled = { wsRawStatus.canStart() }) {
                 val build = client.startWorkspace(workspace)
                 workspace = workspace.copy(latestBuild = build)
                 update(workspace, agent)
             },
-            Action(i18n.ptrl("Stop"), enabled = { status.canStop() }) {
+            Action(i18n.ptrl("Stop"), enabled = { wsRawStatus.canStop() }) {
                 val build = client.stopWorkspace(workspace)
                 workspace = workspace.copy(latestBuild = build)
                 update(workspace, agent)
@@ -99,11 +100,11 @@ class CoderRemoteEnvironment(
     fun update(workspace: Workspace, agent: WorkspaceAgent) {
         this.workspace = workspace
         this.agent = agent
-        val newStatus = WorkspaceAndAgentStatus.from(workspace, agent)
-        if (newStatus != status) {
-            status = newStatus
-            val state = status.toRemoteEnvironmentState(serviceLocator)
-//                listenerSet.forEach { it.consume(state) }
+        wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
+        cs.launch {
+            state.update {
+                wsRawStatus.toRemoteEnvironmentState(serviceLocator)
+            }
         }
     }
 
@@ -139,7 +140,7 @@ class CoderRemoteEnvironment(
         cs.launch {
             // TODO info and cancel pop-ups only appear on the main page where all environments are listed.
             //  However, #showSnackbar works on other pages. Until JetBrains fixes this issue we are going to use the snackbar
-            val shouldDelete = if (status.canStop()) {
+            val shouldDelete = if (wsRawStatus.canStop()) {
                 ui.showOkCancelPopup(
                     i18n.ptrl("Delete running workspace?"),
                     i18n.ptrl("Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical."),
@@ -161,7 +162,7 @@ class CoderRemoteEnvironment(
                         withTimeout(5.minutes) {
                             var workspaceStillExists = true
                             while (cs.isActive && workspaceStillExists) {
-                                if (status == WorkspaceAndAgentStatus.DELETING || status == WorkspaceAndAgentStatus.DELETED) {
+                                if (wsRawStatus == WorkspaceAndAgentStatus.DELETING || wsRawStatus == WorkspaceAndAgentStatus.DELETED) {
                                     workspaceStillExists = false
                                     serviceLocator.getService(EnvironmentUiPageManager::class.java)
                                         .showPluginEnvironmentsPage()

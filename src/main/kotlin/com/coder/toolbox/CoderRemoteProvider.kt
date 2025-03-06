@@ -35,6 +35,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -82,7 +83,7 @@ class CoderRemoteProvider(
     private var firstRun = true
 
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
-        LoadableState.Loading
+        LoadableState.Value(emptyList())
     )
 
     /**
@@ -134,7 +135,9 @@ class CoderRemoteProvider(
                     cli.configSsh(newEnvironments.map { it.name }.toSet())
                 }
 
-                environments.value = LoadableState.Value(resolvedEnvironments.toList())
+                environments.update {
+                    LoadableState.Value(resolvedEnvironments.toList())
+                }
 
                 lastEnvironments = resolvedEnvironments
             } catch (_: CancellationException) {
