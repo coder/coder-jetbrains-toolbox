@@ -1,9 +1,7 @@
 package com.coder.toolbox.views
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.settings.Source
-import com.jetbrains.toolbox.api.core.ServiceLocator
-import com.jetbrains.toolbox.api.localization.LocalizableString
-import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.TextField
@@ -20,13 +18,11 @@ import java.net.URL
  * enter their own.
  */
 class SignInPage(
-    serviceLocator: ServiceLocator,
-    title: LocalizableString,
+    private val context: CoderToolboxContext,
     private val deploymentURL: Pair<String, Source>?,
     private val onSignIn: (deploymentURL: URL) -> Unit,
-) : CoderPage(serviceLocator, title) {
-    private val i18n: LocalizableStringFactory = serviceLocator.getService(LocalizableStringFactory::class.java)
-    private val urlField = TextField(i18n.ptrl("Deployment URL"), deploymentURL?.first ?: "", TextType.General)
+) : CoderPage(context, context.i18n.ptrl("Sign In to Coder")) {
+    private val urlField = TextField(context.i18n.ptrl("Deployment URL"), deploymentURL?.first ?: "", TextType.General)
 
     /**
      * Fields for this page, displayed in order.
@@ -36,9 +32,9 @@ class SignInPage(
      */
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
         listOfNotNull(
-        urlField,
-            deploymentURL?.let { LabelField(i18n.pnotr(deploymentURL.second.description("URL"))) },
-        errorField,
+            urlField,
+            deploymentURL?.let { LabelField(context.i18n.pnotr(deploymentURL.second.description("URL"))) },
+            errorField,
         )
     )
 
@@ -47,7 +43,7 @@ class SignInPage(
      */
     override val actionButtons: StateFlow<List<RunnableActionDescription>> = MutableStateFlow(
         listOf(
-            Action(i18n.ptrl("Sign In"), closesPage = false) { submit() },
+            Action(context.i18n.ptrl("Sign In"), closesPage = false) { submit() },
         )
     )
 

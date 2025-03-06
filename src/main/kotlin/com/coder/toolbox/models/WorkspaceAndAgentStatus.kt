@@ -1,14 +1,13 @@
 package com.coder.toolbox.models
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.jetbrains.toolbox.api.core.ServiceLocator
 import com.jetbrains.toolbox.api.core.ui.color.StateColor
 import com.jetbrains.toolbox.api.remoteDev.states.CustomRemoteEnvironmentState
-import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateIcons
 import com.jetbrains.toolbox.api.remoteDev.states.StandardRemoteEnvironmentState
 
@@ -59,25 +58,23 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
      * Note that a reachable environment will always display "connected" or
      * "disconnected" regardless of the label we give that status.
      */
-    fun toRemoteEnvironmentState(serviceLocator: ServiceLocator): CustomRemoteEnvironmentState {
+    fun toRemoteEnvironmentState(context: CoderToolboxContext): CustomRemoteEnvironmentState {
         return CustomRemoteEnvironmentState(
             label,
-            getStateColor(serviceLocator),
+            getStateColor(context),
             ready(), // reachable
             // TODO@JB: How does this work?  Would like a spinner for pending states.
             getStateIcon()
         )
     }
 
-    private fun getStateColor(serviceLocator: ServiceLocator): StateColor {
-        val colorPalette = serviceLocator.getService(EnvironmentStateColorPalette::class.java)
-
-        return if (ready()) colorPalette.getColor(StandardRemoteEnvironmentState.Active)
-        else if (canStart()) colorPalette.getColor(StandardRemoteEnvironmentState.Failed)
-        else if (pending()) colorPalette.getColor(StandardRemoteEnvironmentState.Activating)
-        else if (this == DELETING) colorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
-        else if (this == DELETED) colorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
-        else colorPalette.getColor(StandardRemoteEnvironmentState.Unreachable)
+    private fun getStateColor(context: CoderToolboxContext): StateColor {
+        return if (ready()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Active)
+        else if (canStart()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Failed)
+        else if (pending()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Activating)
+        else if (this == DELETING) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
+        else if (this == DELETED) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
+        else context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Unreachable)
     }
 
     private fun getStateIcon(): EnvironmentStateIcons {

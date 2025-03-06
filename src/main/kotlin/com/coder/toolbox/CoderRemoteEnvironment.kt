@@ -9,17 +9,12 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.EnvironmentView
-import com.jetbrains.toolbox.api.core.ServiceLocator
-import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
 import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
-import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
-import com.jetbrains.toolbox.api.ui.ToolboxUi
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,58 +31,54 @@ import kotlin.time.Duration.Companion.seconds
  * Used in the environment list view.
  */
 class CoderRemoteEnvironment(
-    private val serviceLocator: ServiceLocator,
+    private val context: CoderToolboxContext,
     private val client: CoderRestClient,
     private var workspace: Workspace,
     private var agent: WorkspaceAgent,
-    private var cs: CoroutineScope,
 ) : RemoteProviderEnvironment("${workspace.name}.${agent.name}") {
     private var wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
 
-    private val ui: ToolboxUi = serviceLocator.getService(ToolboxUi::class.java)
-    private val i18n = serviceLocator.getService(LocalizableStringFactory::class.java)
-
     override var name: String = "${workspace.name}.${agent.name}"
     override val state: MutableStateFlow<RemoteEnvironmentState> =
-        MutableStateFlow(wsRawStatus.toRemoteEnvironmentState(serviceLocator))
+        MutableStateFlow(wsRawStatus.toRemoteEnvironmentState(context))
     override val description: MutableStateFlow<EnvironmentDescription> =
-        MutableStateFlow(EnvironmentDescription.General(i18n.pnotr(workspace.templateName)))
+        MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateName)))
 
     override val actionsList: StateFlow<List<ActionDescription>> = MutableStateFlow(
         listOf(
-            Action(i18n.ptrl("Open web terminal")) {
-                cs.launch {
+            Action(context.i18n.ptrl("Open web terminal")) {
+                context.cs.launch {
                     BrowserUtil.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
-                        ui.showErrorInfoPopup(it)
+                        context.ui.showErrorInfoPopup(it)
                     }
                 }
             },
-            Action(i18n.ptrl("Open in dashboard")) {
-                cs.launch {
+            Action(context.i18n.ptrl("Open in dashboard")) {
+                context.cs.launch {
                     BrowserUtil.browse(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()) {
-                        ui.showErrorInfoPopup(it)
+                        context.ui.showErrorInfoPopup(it)
                     }
                 }
             },
 
-            Action(i18n.ptrl("View template")) {
-                cs.launch {
+            Action(context.i18n.ptrl("View template")) {
+                context.cs.launch {
                     BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
-                        ui.showErrorInfoPopup(it)
+                        context.ui.showErrorInfoPopup(it)
                     }
                 }
             },
-            Action(i18n.ptrl("Start"), enabled = { wsRawStatus.canStart() }) {
+            Action(context.i18n.ptrl("Start"), enabled = { wsRawStatus.canStart() }) {
                 val build = client.startWorkspace(workspace)
                 workspace = workspace.copy(latestBuild = build)
                 update(workspace, agent)
             },
-            Action(i18n.ptrl("Stop"), enabled = { wsRawStatus.canStop() }) {
+            Action(context.i18n.ptrl("Stop"), enabled = { wsRawStatus.canStop() }) {
                 val build = client.stopWorkspace(workspace)
                 workspace = workspace.copy(latestBuild = build)
                 update(workspace, agent)
             },
-            Action(i18n.ptrl("Update"), enabled = { workspace.outdated }) {
+            Action(context.i18n.ptrl("Update"), enabled = { workspace.outdated }) {
                 val build = client.updateWorkspace(workspace)
                 workspace = workspace.copy(latestBuild = build)
                 update(workspace, agent)
@@ -101,9 +92,9 @@ class CoderRemoteEnvironment(
         this.workspace = workspace
         this.agent = agent
         wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
-        cs.launch {
+        context.cs.launch {
             state.update {
-                wsRawStatus.toRemoteEnvironmentState(serviceLocator)
+                wsRawStatus.toRemoteEnvironmentState(context)
             }
         }
     }
@@ -137,35 +128,34 @@ class CoderRemoteEnvironment(
 //    }
 
     override fun onDelete() {
-        cs.launch {
+        context.cs.launch {
             // TODO info and cancel pop-ups only appear on the main page where all environments are listed.
             //  However, #showSnackbar works on other pages. Until JetBrains fixes this issue we are going to use the snackbar
             val shouldDelete = if (wsRawStatus.canStop()) {
-                ui.showOkCancelPopup(
-                    i18n.ptrl("Delete running workspace?"),
-                    i18n.ptrl("Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical."),
-                    i18n.ptrl("Delete"),
-                    i18n.ptrl("Cancel")
+                context.ui.showOkCancelPopup(
+                    context.i18n.ptrl("Delete running workspace?"),
+                    context.i18n.ptrl("Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical."),
+                    context.i18n.ptrl("Delete"),
+                    context.i18n.ptrl("Cancel")
                 )
             } else {
-                ui.showOkCancelPopup(
-                    i18n.ptrl("Delete workspace?"),
-                    i18n.ptrl("All the information in this workspace will be lost, including all files, unsaved changes and historical."),
-                    i18n.ptrl("Delete"),
-                    i18n.ptrl("Cancel")
+                context.ui.showOkCancelPopup(
+                    context.i18n.ptrl("Delete workspace?"),
+                    context.i18n.ptrl("All the information in this workspace will be lost, including all files, unsaved changes and historical."),
+                    context.i18n.ptrl("Delete"),
+                    context.i18n.ptrl("Cancel")
                 )
             }
             if (shouldDelete) {
                 try {
                     client.removeWorkspace(workspace)
-                    cs.launch {
+                    context.cs.launch {
                         withTimeout(5.minutes) {
                             var workspaceStillExists = true
-                            while (cs.isActive && workspaceStillExists) {
+                            while (context.cs.isActive && workspaceStillExists) {
                                 if (wsRawStatus == WorkspaceAndAgentStatus.DELETING || wsRawStatus == WorkspaceAndAgentStatus.DELETED) {
                                     workspaceStillExists = false
-                                    serviceLocator.getService(EnvironmentUiPageManager::class.java)
-                                        .showPluginEnvironmentsPage()
+                                    context.envPageManager.showPluginEnvironmentsPage()
                                 } else {
                                     delay(1.seconds)
                                 }
@@ -173,7 +163,7 @@ class CoderRemoteEnvironment(
                         }
                     }
                 } catch (e: APIResponseException) {
-                    ui.showErrorInfoPopup(e)
+                    context.ui.showErrorInfoPopup(e)
                 }
             }
         }

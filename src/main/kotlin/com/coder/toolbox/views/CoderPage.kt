@@ -1,10 +1,8 @@
 package com.coder.toolbox.views
 
-import com.coder.toolbox.logger.CoderLoggerFactory
-import com.jetbrains.toolbox.api.core.ServiceLocator
+import com.coder.toolbox.CoderToolboxContext
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.localization.LocalizableString
-import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
 import com.jetbrains.toolbox.api.ui.components.UiPage
@@ -22,12 +20,10 @@ import java.util.function.Consumer
  *       to use the mouse.
  */
 abstract class CoderPage(
-    serviceLocator: ServiceLocator,
+    private val context: CoderToolboxContext,
     title: LocalizableString,
     showIcon: Boolean = true,
 ) : UiPage(title) {
-    private val logger = CoderLoggerFactory.getLogger(javaClass)
-    private val i18n = serviceLocator.getService(LocalizableStringFactory::class.java)
     /**
      * An error to display on the page.
      *
@@ -59,7 +55,7 @@ abstract class CoderPage(
      * Show an error as a popup on this page.
      */
     fun notify(logPrefix: String, ex: Throwable) {
-        logger.error(logPrefix, ex)
+        context.logger.error(ex, logPrefix)
         // It is possible the error listener is not attached yet.
         notifier?.let { it(ex) } ?: errorBuffer.add(ex)
     }
@@ -81,11 +77,9 @@ abstract class CoderPage(
      * Set/unset the field error and update the form.
      */
     protected fun updateError(error: String?) {
-        errorField = error?.let { ValidationErrorField(i18n.pnotr(error)) }
+        errorField = error?.let { ValidationErrorField(context.i18n.pnotr(error)) }
         listener?.accept(null) // Make Toolbox get the fields again.
     }
-
-
 }
 
 /**

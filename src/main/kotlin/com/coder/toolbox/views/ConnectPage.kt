@@ -1,18 +1,16 @@
 package com.coder.toolbox.views
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.util.humanizeConnectionError
-import com.jetbrains.toolbox.api.core.ServiceLocator
 import com.jetbrains.toolbox.api.localization.LocalizableString
-import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.UiField
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,26 +22,23 @@ import java.net.URL
  * A page that connects a REST client and cli to Coder.
  */
 class ConnectPage(
-    private val serviceLocator: ServiceLocator,
+    private val context: CoderToolboxContext,
     private val url: URL,
     private val token: String?,
     private val settings: CoderSettings,
     private val httpClient: OkHttpClient,
-    title: LocalizableString,
     private val onCancel: () -> Unit,
     private val onConnect: (
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,
-) : CoderPage(serviceLocator, title) {
-    private val coroutineScope = serviceLocator.getService(CoroutineScope::class.java)
-    private val i18n = serviceLocator.getService(LocalizableStringFactory::class.java)
-
+) : CoderPage(context, context.i18n.ptrl("Connecting to Coder")) {
     private var signInJob: Job? = null
 
-    private var statusField = LabelField(i18n.pnotr("Connecting to ${url.host}..."))
+    private var statusField = LabelField(context.i18n.pnotr("Connecting to ${url.host}..."))
 
-    override val description: LocalizableString = i18n.pnotr("Please wait while we configure Toolbox for ${url.host}.")
+    override val description: LocalizableString =
+        context.i18n.pnotr("Please wait while we configure Toolbox for ${url.host}.")
 
     init {
         connect()
@@ -56,7 +51,7 @@ class ConnectPage(
      */
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
         listOfNotNull(
-        statusField,
+            statusField,
             errorField
         )
     )
@@ -66,9 +61,9 @@ class ConnectPage(
      */
     override val actionButtons: StateFlow<List<RunnableActionDescription>> = MutableStateFlow(
         listOfNotNull(
-        if (errorField != null) Action(i18n.ptrl("Retry"), closesPage = false) { retry() } else null,
-        if (errorField != null) Action(i18n.ptrl("Cancel"), closesPage = false) { onCancel() } else null,
-    ))
+            if (errorField != null) Action(context.i18n.ptrl("Retry"), closesPage = false) { retry() } else null,
+            if (errorField != null) Action(context.i18n.ptrl("Cancel"), closesPage = false) { onCancel() } else null,
+        ))
 
     /**
      * Update the status and error fields then refresh.
@@ -82,7 +77,7 @@ class ConnectPage(
      * Try connecting again after an error.
      */
     private fun retry() {
-        updateStatus(i18n.pnotr("Connecting to ${url.host}..."), null)
+        updateStatus(context.i18n.pnotr("Connecting to ${url.host}..."), null)
         connect()
     }
 
@@ -91,7 +86,7 @@ class ConnectPage(
      */
     private fun connect() {
         signInJob?.cancel()
-        signInJob = coroutineScope.launch {
+        signInJob = context.cs.launch {
             try {
                 // The http client Toolbox gives us is already set up with the
                 // proxy config, so we do net need to explicitly add it.
@@ -104,13 +99,13 @@ class ConnectPage(
                     httpClient
                 )
                 client.authenticate()
-                updateStatus(i18n.ptrl("Checking Coder binary..."), error = null)
+                updateStatus(context.i18n.ptrl("Checking Coder binary..."), error = null)
                 val cli = ensureCLI(client.url, client.buildVersion, settings) { status ->
-                    updateStatus(i18n.pnotr(status), error = null)
+                    updateStatus(context.i18n.pnotr(status), error = null)
                 }
                 // We only need to log in if we are using token-based auth.
                 if (client.token != null) {
-                    updateStatus(i18n.ptrl("Configuring CLI..."), error = null)
+                    updateStatus(context.i18n.ptrl("Configuring CLI..."), error = null)
                     cli.login(client.token)
                 }
                 onConnect(client, cli)
@@ -118,7 +113,7 @@ class ConnectPage(
             } catch (ex: Exception) {
                 val msg = humanizeConnectionError(url, settings.requireTokenAuth, ex)
                 notify("Failed to configure ${url.host}", ex)
-                updateStatus(i18n.pnotr("Failed to configure ${url.host}"), msg)
+                updateStatus(context.i18n.pnotr("Failed to configure ${url.host}"), msg)
             }
         }
     }
