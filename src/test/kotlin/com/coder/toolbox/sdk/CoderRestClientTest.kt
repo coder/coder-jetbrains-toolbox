@@ -1,5 +1,6 @@
 package com.coder.toolbox.sdk
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.convertors.InstantConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
@@ -15,6 +16,13 @@ import com.coder.toolbox.sdk.v2.models.WorkspacesResponse
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.CoderSettingsState
 import com.coder.toolbox.util.sslContextFromPEMs
+import com.jetbrains.toolbox.api.core.PluginSecretStore
+import com.jetbrains.toolbox.api.core.PluginSettingsStore
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
+import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
+import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.sun.net.httpserver.HttpExchange
@@ -22,6 +30,8 @@ import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
 import com.sun.net.httpserver.HttpsConfigurator
 import com.sun.net.httpserver.HttpsServer
+import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
 import okio.buffer
 import okio.source
 import java.io.IOException
@@ -81,6 +91,17 @@ class CoderRestClientTest {
             .add(UUIDConverter())
             .build()
 
+    private val context = CoderToolboxContext(
+        mockk<ToolboxUi>(),
+        mockk<EnvironmentUiPageManager>(),
+        mockk<EnvironmentStateColorPalette>(),
+        mockk<CoroutineScope>(),
+        mockk<Logger>(relaxed = true),
+        mockk<LocalizableStringFactory>(),
+        mockk<PluginSettingsStore>(),
+        mockk<PluginSecretStore>()
+    )
+
     data class TestWorkspace(var workspace: Workspace, var resources: List<WorkspaceResource>? = emptyList())
 
     /**
@@ -138,7 +159,7 @@ class CoderRestClientTest {
         )
         tests.forEach { (endpoint, block) ->
             val (srv, url) = mockServer()
-            val client = CoderRestClient(URL(url), "token")
+            val client = CoderRestClient(context, URL(url), "token")
             srv.createContext(
                 endpoint,
                 BaseHttpHandler("GET") { exchange ->
@@ -178,7 +199,7 @@ class CoderRestClientTest {
             },
         )
 
-        val client = CoderRestClient(URL(url), "token")
+        val client = CoderRestClient(context, URL(url), "token")
         assertEquals(user.username, client.me().username)
 
         val tests = listOf("invalid", null)
@@ -186,7 +207,7 @@ class CoderRestClientTest {
             val ex =
                 assertFailsWith(
                     exceptionClass = APIResponseException::class,
-                    block = { CoderRestClient(URL(url), token).me() },
+                    block = { CoderRestClient(context, URL(url), token).me() },
                 )
             assertEquals(true, ex.isUnauthorized)
         }
@@ -207,7 +228,7 @@ class CoderRestClientTest {
             )
         tests.forEach { workspaces ->
             val (srv, url) = mockServer()
-            val client = CoderRestClient(URL(url), "token")
+            val client = CoderRestClient(context, URL(url), "token")
             srv.createContext(
                 "/api/v2/workspaces",
                 BaseHttpHandler("GET") { exchange ->
@@ -229,31 +250,44 @@ class CoderRestClientTest {
                 // Nothing, so no resources.
                 emptyList(),
                 // One workspace with an agent, but no resources.
-                listOf(TestWorkspace(DataGen.workspace("ws1", agents = mapOf("agent1" to "3f51da1d-306f-4a40-ac12-62bda5bc5f9a")))),
+                listOf(
+                    TestWorkspace(
+                        DataGen.workspace(
+                            "ws1",
+                            agents = mapOf("agent1" to "3f51da1d-306f-4a40-ac12-62bda5bc5f9a")
+                        )
+                    )
+                ),
                 // One workspace with an agent and resources that do not match the agent.
                 listOf(
                     TestWorkspace(
-                        workspace = DataGen.workspace("ws1", agents = mapOf("agent1" to "3f51da1d-306f-4a40-ac12-62bda5bc5f9a")),
-                        resources =
-                        listOf(
-                            DataGen.resource("agent2", "968eea5e-8787-439d-88cd-5bc440216a34"),
-                            DataGen.resource("agent3", "72fbc97b-952c-40c8-b1e5-7535f4407728"),
+                        workspace = DataGen.workspace(
+                            "ws1",
+                            agents = mapOf("agent1" to "3f51da1d-306f-4a40-ac12-62bda5bc5f9a")
                         ),
+                        resources =
+                            listOf(
+                                DataGen.resource("agent2", "968eea5e-8787-439d-88cd-5bc440216a34"),
+                                DataGen.resource("agent3", "72fbc97b-952c-40c8-b1e5-7535f4407728"),
+                            ),
                     ),
                 ),
                 // Multiple workspaces but only one has resources.
                 listOf(
                     TestWorkspace(
-                        workspace = DataGen.workspace("ws1", agents = mapOf("agent1" to "3f51da1d-306f-4a40-ac12-62bda5bc5f9a")),
+                        workspace = DataGen.workspace(
+                            "ws1",
+                            agents = mapOf("agent1" to "3f51da1d-306f-4a40-ac12-62bda5bc5f9a")
+                        ),
                         resources = emptyList(),
                     ),
                     TestWorkspace(
                         workspace = DataGen.workspace("ws2"),
                         resources =
-                        listOf(
-                            DataGen.resource("agent2", "968eea5e-8787-439d-88cd-5bc440216a34"),
-                            DataGen.resource("agent3", "72fbc97b-952c-40c8-b1e5-7535f4407728"),
-                        ),
+                            listOf(
+                                DataGen.resource("agent2", "968eea5e-8787-439d-88cd-5bc440216a34"),
+                                DataGen.resource("agent3", "72fbc97b-952c-40c8-b1e5-7535f4407728"),
+                            ),
                     ),
                     TestWorkspace(
                         workspace = DataGen.workspace("ws3"),
@@ -265,14 +299,15 @@ class CoderRestClientTest {
         val resourceEndpoint = "([^/]+)/resources".toRegex()
         tests.forEach { workspaces ->
             val (srv, url) = mockServer()
-            val client = CoderRestClient(URL(url), "token")
+            val client = CoderRestClient(context, URL(url), "token")
             srv.createContext(
                 "/api/v2/templateversions",
                 BaseHttpHandler("GET") { exchange ->
                     val matches = resourceEndpoint.find(exchange.requestURI.path)
                     if (matches != null) {
                         val templateVersionId = UUID.fromString(matches.destructured.toList()[0])
-                        val ws = workspaces.firstOrNull { it.workspace.latestBuild.templateVersionID == templateVersionId }
+                        val ws =
+                            workspaces.firstOrNull { it.workspace.latestBuild.templateVersionID == templateVersionId }
                         if (ws != null) {
                             val body =
                                 moshi.adapter<List<WorkspaceResource>>(
@@ -301,7 +336,7 @@ class CoderRestClientTest {
 
         val actions = mutableListOf<Pair<String, UUID>>()
         val (srv, url) = mockServer()
-        val client = CoderRestClient(URL(url), "token")
+        val client = CoderRestClient(context, URL(url), "token")
         val templateEndpoint = "/api/v2/templates/([^/]+)".toRegex()
         srv.createContext(
             "/api/v2/templates",
@@ -326,7 +361,8 @@ class CoderRestClientTest {
                 val buildMatch = buildEndpoint.find(exchange.requestURI.path)
                 if (buildMatch != null) {
                     val workspaceId = UUID.fromString(buildMatch.destructured.toList()[0])
-                    val json = moshi.adapter(CreateWorkspaceBuildRequest::class.java).fromJson(exchange.requestBody.source().buffer())
+                    val json = moshi.adapter(CreateWorkspaceBuildRequest::class.java)
+                        .fromJson(exchange.requestBody.source().buffer())
                     if (json == null) {
                         val response = Response("No body", "No body for create workspace build request")
                         val body = moshi.adapter(Response::class.java).toJson(response).toByteArray()
@@ -398,10 +434,11 @@ class CoderRestClientTest {
                     tlsCAPath = Path.of("src/test/fixtures/tls", "self-signed.crt").toString(),
                     tlsAlternateHostname = "localhost",
                 ),
+                context.logger
             )
         val user = DataGen.user()
         val (srv, url) = mockTLSServer("self-signed")
-        val client = CoderRestClient(URL(url), "token", settings)
+        val client = CoderRestClient(context, URL(url), "token", settings)
         srv.createContext(
             "/api/v2/users/me",
             BaseHttpHandler("GET") { exchange ->
@@ -424,9 +461,10 @@ class CoderRestClientTest {
                     tlsCAPath = Path.of("src/test/fixtures/tls", "self-signed.crt").toString(),
                     tlsAlternateHostname = "fake.example.com",
                 ),
+                context.logger
             )
         val (srv, url) = mockTLSServer("self-signed")
-        val client = CoderRestClient(URL(url), "token", settings)
+        val client = CoderRestClient(context, URL(url), "token", settings)
 
         assertFailsWith(
             exceptionClass = SSLPeerUnverifiedException::class,
@@ -443,9 +481,10 @@ class CoderRestClientTest {
                 CoderSettingsState(
                     tlsCAPath = Path.of("src/test/fixtures/tls", "self-signed.crt").toString(),
                 ),
+                context.logger
             )
         val (srv, url) = mockTLSServer("no-signing")
-        val client = CoderRestClient(URL(url), "token", settings)
+        val client = CoderRestClient(context, URL(url), "token", settings)
 
         assertFailsWith(
             exceptionClass = SSLHandshakeException::class,
@@ -462,10 +501,11 @@ class CoderRestClientTest {
                 CoderSettingsState(
                     tlsCAPath = Path.of("src/test/fixtures/tls", "chain-root.crt").toString(),
                 ),
+                context.logger
             )
         val user = DataGen.user()
         val (srv, url) = mockTLSServer("chain")
-        val client = CoderRestClient(URL(url), "token", settings)
+        val client = CoderRestClient(context, URL(url), "token", settings)
         srv.createContext(
             "/api/v2/users/me",
             BaseHttpHandler("GET") { exchange ->
@@ -482,7 +522,7 @@ class CoderRestClientTest {
 
     @Test
     fun usesProxy() {
-        val settings = CoderSettings(CoderSettingsState())
+        val settings = CoderSettings(CoderSettingsState(), context.logger)
         val workspaces = listOf(DataGen.workspace("ws1"))
         val (srv1, url1) = mockServer()
         srv1.createContext(
@@ -497,6 +537,7 @@ class CoderRestClientTest {
         val srv2 = mockProxy()
         val client =
             CoderRestClient(
+                context,
                 URL(url1),
                 "token",
                 settings,
@@ -505,7 +546,8 @@ class CoderRestClientTest {
                     "bar",
                     true,
                     object : ProxySelector() {
-                        override fun select(uri: URI): List<Proxy> = listOf(Proxy(Proxy.Type.HTTP, InetSocketAddress("localhost", srv2.address.port)))
+                        override fun select(uri: URI): List<Proxy> =
+                            listOf(Proxy(Proxy.Type.HTTP, InetSocketAddress("localhost", srv2.address.port)))
 
                         override fun connectFailed(
                             uri: URI,

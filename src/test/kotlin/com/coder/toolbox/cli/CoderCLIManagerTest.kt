@@ -1,5 +1,6 @@
 package com.coder.toolbox.cli
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
@@ -14,8 +15,17 @@ import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.sha1
 import com.coder.toolbox.util.toURL
+import com.jetbrains.toolbox.api.core.PluginSecretStore
+import com.jetbrains.toolbox.api.core.PluginSettingsStore
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
+import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
+import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import com.squareup.moshi.JsonEncodingException
 import com.sun.net.httpserver.HttpServer
+import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.zeroturnaround.exec.InvalidExitValueException
@@ -34,6 +44,17 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 internal class CoderCLIManagerTest {
+    private val context = CoderToolboxContext(
+        mockk<ToolboxUi>(),
+        mockk<EnvironmentUiPageManager>(),
+        mockk<EnvironmentStateColorPalette>(),
+        mockk<CoroutineScope>(),
+        mockk<Logger>(relaxed = true),
+        mockk<LocalizableStringFactory>(),
+        mockk<PluginSettingsStore>(),
+        mockk<PluginSecretStore>()
+    )
+
     /**
      * Return the contents of a script that contains the string.
      */
@@ -84,7 +105,7 @@ internal class CoderCLIManagerTest {
     @Test
     fun testServerInternalError() {
         val (srv, url) = mockServer(HttpURLConnection.HTTP_INTERNAL_ERROR)
-        val ccm = CoderCLIManager(url)
+        val ccm = CoderCLIManager(url, context.logger)
 
         val ex =
             assertFailsWith(
@@ -104,16 +125,17 @@ internal class CoderCLIManagerTest {
                     dataDirectory = tmpdir.resolve("cli-data-dir").toString(),
                     binaryDirectory = tmpdir.resolve("cli-bin-dir").toString(),
                 ),
+                context.logger
             )
         val url = URL("http://localhost")
 
-        val ccm1 = CoderCLIManager(url, settings)
+        val ccm1 = CoderCLIManager(url, context.logger, settings)
         assertEquals(settings.binSource(url), ccm1.remoteBinaryURL)
         assertEquals(settings.dataDir(url), ccm1.coderConfigPath.parent)
         assertEquals(settings.binPath(url), ccm1.localBinaryPath)
 
         // Can force using data directory.
-        val ccm2 = CoderCLIManager(url, settings, true)
+        val ccm2 = CoderCLIManager(url, context.logger, settings, true)
         assertEquals(settings.binSource(url), ccm2.remoteBinaryURL)
         assertEquals(settings.dataDir(url), ccm2.coderConfigPath.parent)
         assertEquals(settings.binPath(url, true), ccm2.localBinaryPath)
@@ -129,10 +151,12 @@ internal class CoderCLIManagerTest {
         val ccm =
             CoderCLIManager(
                 url,
+                context.logger,
                 CoderSettings(
                     CoderSettingsState(
                         dataDirectory = tmpdir.resolve("cli-dir-fail-to-write").toString(),
                     ),
+                    context.logger
                 ),
             )
 
@@ -161,10 +185,12 @@ internal class CoderCLIManagerTest {
         val ccm =
             CoderCLIManager(
                 url.toURL(),
+                context.logger,
                 CoderSettings(
                     CoderSettingsState(
                         dataDirectory = tmpdir.resolve("real-cli").toString(),
                     ),
+                    context.logger
                 ),
             )
 
@@ -187,10 +213,12 @@ internal class CoderCLIManagerTest {
         var ccm =
             CoderCLIManager(
                 url,
+                context.logger,
                 CoderSettings(
                     CoderSettingsState(
                         dataDirectory = tmpdir.resolve("mock-cli").toString(),
                     ),
+                    context.logger,
                     binaryName = "coder.bat",
                 ),
             )
@@ -205,11 +233,13 @@ internal class CoderCLIManagerTest {
         ccm =
             CoderCLIManager(
                 url,
+                context.logger,
                 CoderSettings(
                     CoderSettingsState(
                         binarySource = "/bin/override",
                         dataDirectory = tmpdir.resolve("mock-cli").toString(),
                     ),
+                    context.logger
                 ),
             )
 
@@ -224,10 +254,12 @@ internal class CoderCLIManagerTest {
         val ccm =
             CoderCLIManager(
                 URL("https://foo"),
+                context.logger,
                 CoderSettings(
                     CoderSettingsState(
                         dataDirectory = tmpdir.resolve("does-not-exist").toString(),
                     ),
+                    context.logger
                 ),
             )
 
@@ -238,15 +270,17 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun testOverwitesWrongVersion() {
+    fun testOverwritesWrongVersion() {
         val (srv, url) = mockServer()
         val ccm =
             CoderCLIManager(
                 url,
+                context.logger,
                 CoderSettings(
                     CoderSettingsState(
                         dataDirectory = tmpdir.resolve("overwrite-cli").toString(),
                     ),
+                    context.logger
                 ),
             )
 
@@ -276,10 +310,11 @@ internal class CoderCLIManagerTest {
                 CoderSettingsState(
                     dataDirectory = tmpdir.resolve("clobber-cli").toString(),
                 ),
+                context.logger
             )
 
-        val ccm1 = CoderCLIManager(url1, settings)
-        val ccm2 = CoderCLIManager(url2, settings)
+        val ccm1 = CoderCLIManager(url1, context.logger, settings)
+        val ccm2 = CoderCLIManager(url2, context.logger, settings)
 
         assertTrue(ccm1.download())
         assertTrue(ccm2.download())
@@ -321,7 +356,12 @@ internal class CoderCLIManagerTest {
                 SSHTest(listOf("foo-bar"), "existing-end", "replace-end", "no-blocks"),
                 SSHTest(listOf("foo-bar"), "existing-end-no-newline", "replace-end-no-newline", "no-blocks"),
                 SSHTest(listOf("foo-bar"), "existing-middle", "replace-middle", "no-blocks"),
-                SSHTest(listOf("foo-bar"), "existing-middle-and-unrelated", "replace-middle-ignore-unrelated", "no-related-blocks"),
+                SSHTest(
+                    listOf("foo-bar"),
+                    "existing-middle-and-unrelated",
+                    "replace-middle-ignore-unrelated",
+                    "no-related-blocks"
+                ),
                 SSHTest(listOf("foo-bar"), "existing-only", "replace-only", "blank"),
                 SSHTest(listOf("foo-bar"), "existing-start", "replace-start", "no-blocks"),
                 SSHTest(listOf("foo-bar"), "no-blocks", "append-no-blocks", "no-blocks"),
@@ -404,11 +444,12 @@ internal class CoderCLIManagerTest {
                         sshConfigOptions = it.extraConfig,
                         sshLogDirectory = it.sshLogDirectory?.toString() ?: "",
                     ),
+                    context.logger,
                     sshConfigPath = tmpdir.resolve(it.input + "_to_" + it.output + ".conf"),
                     env = it.env,
                 )
 
-            val ccm = CoderCLIManager(URL("https://test.coder.invalid"), settings)
+            val ccm = CoderCLIManager(URL("https://test.coder.invalid"), context.logger, settings)
 
             // Input is the configuration that we start with, if any.
             if (it.input != null) {
@@ -425,7 +466,10 @@ internal class CoderCLIManagerTest {
                 Path.of("src/test/fixtures/outputs/").resolve(it.output + ".conf").toFile().readText()
                     .replace(newlineRe, System.lineSeparator())
                     .replace("/tmp/coder-toolbox/test.coder.invalid/config", escape(coderConfigPath.toString()))
-                    .replace("/tmp/coder-toolbox/test.coder.invalid/coder-linux-amd64", escape(ccm.localBinaryPath.toString()))
+                    .replace(
+                        "/tmp/coder-toolbox/test.coder.invalid/coder-linux-amd64",
+                        escape(ccm.localBinaryPath.toString())
+                    )
                     .let { conf ->
                         if (it.sshLogDirectory != null) {
                             conf.replace("/tmp/coder-toolbox/test.coder.invalid/logs", it.sshLogDirectory.toString())
@@ -470,6 +514,7 @@ internal class CoderCLIManagerTest {
             val settings =
                 CoderSettings(
                     CoderSettingsState(),
+                    context.logger,
                     sshConfigPath = tmpdir.resolve("configured$it.conf"),
                 )
             settings.sshConfigPath.parent.toFile().mkdirs()
@@ -478,7 +523,7 @@ internal class CoderCLIManagerTest {
                 true,
             )
 
-            val ccm = CoderCLIManager(URL("https://test.coder.invalid"), settings)
+            val ccm = CoderCLIManager(URL("https://test.coder.invalid"), context.logger, settings)
 
             assertFailsWith(
                 exceptionClass = SSHConfigFormatException::class,
@@ -498,10 +543,12 @@ internal class CoderCLIManagerTest {
             val ccm =
                 CoderCLIManager(
                     URL("https://test.coder.invalid"),
+                    context.logger,
                     CoderSettings(
                         CoderSettingsState(
                             headerCommand = it,
                         ),
+                        context.logger
                     ),
                 )
 
@@ -547,10 +594,12 @@ internal class CoderCLIManagerTest {
         val ccm =
             CoderCLIManager(
                 URL("https://test.coder.parse-fail.invalid"),
+                context.logger,
                 CoderSettings(
                     CoderSettingsState(
                         binaryDirectory = tmpdir.resolve("bad-version").toString(),
                     ),
+                    context.logger,
                     binaryName = "coder.bat",
                 ),
             )
@@ -598,10 +647,12 @@ internal class CoderCLIManagerTest {
         val ccm =
             CoderCLIManager(
                 URL("https://test.coder.matches-version.invalid"),
+                context.logger,
                 CoderSettings(
                     CoderSettingsState(
                         binaryDirectory = tmpdir.resolve("matches-version").toString(),
                     ),
+                    context.logger,
                     binaryName = "coder.bat",
                 ),
             )
@@ -667,8 +718,24 @@ internal class CoderCLIManagerTest {
                 EnsureCLITest(null, null, "1.0.0", false, true, true, Result.DL_DATA), // Download to fallback.
                 EnsureCLITest(null, null, "1.0.0", false, false, true, Result.NONE), // No download, error when used.
                 EnsureCLITest("1.0.1", "1.0.1", "1.0.0", false, true, true, Result.DL_DATA), // Update fallback.
-                EnsureCLITest("1.0.1", "1.0.2", "1.0.0", false, false, true, Result.USE_BIN), // No update, use outdated.
-                EnsureCLITest(null, "1.0.2", "1.0.0", false, false, true, Result.USE_DATA), // No update, use outdated fallback.
+                EnsureCLITest(
+                    "1.0.1",
+                    "1.0.2",
+                    "1.0.0",
+                    false,
+                    false,
+                    true,
+                    Result.USE_BIN
+                ), // No update, use outdated.
+                EnsureCLITest(
+                    null,
+                    "1.0.2",
+                    "1.0.0",
+                    false,
+                    false,
+                    true,
+                    Result.USE_DATA
+                ), // No update, use outdated fallback.
                 EnsureCLITest("1.0.0", null, "1.0.0", false, false, true, Result.USE_BIN), // Use existing.
                 EnsureCLITest("1.0.1", "1.0.0", "1.0.0", false, false, true, Result.USE_DATA), // Use existing fallback.
             )
@@ -684,6 +751,7 @@ internal class CoderCLIManagerTest {
                         dataDirectory = tmpdir.resolve("ensure-data-dir").toString(),
                         binaryDirectory = tmpdir.resolve("ensure-bin-dir").toString(),
                     ),
+                    context.logger
                 )
 
             // Clean up from previous test.
@@ -714,34 +782,39 @@ internal class CoderCLIManagerTest {
                 Result.ERROR -> {
                     assertFailsWith(
                         exceptionClass = AccessDeniedException::class,
-                        block = { ensureCLI(url, it.buildVersion, settings) },
+                        block = { ensureCLI(context, url, it.buildVersion, settings) },
                     )
                 }
+
                 Result.NONE -> {
-                    val ccm = ensureCLI(url, it.buildVersion, settings)
+                    val ccm = ensureCLI(context, url, it.buildVersion, settings)
                     assertEquals(settings.binPath(url), ccm.localBinaryPath)
                     assertFailsWith(
                         exceptionClass = ProcessInitException::class,
                         block = { ccm.version() },
                     )
                 }
+
                 Result.DL_BIN -> {
-                    val ccm = ensureCLI(url, it.buildVersion, settings)
+                    val ccm = ensureCLI(context, url, it.buildVersion, settings)
                     assertEquals(settings.binPath(url), ccm.localBinaryPath)
                     assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
                 }
+
                 Result.DL_DATA -> {
-                    val ccm = ensureCLI(url, it.buildVersion, settings)
+                    val ccm = ensureCLI(context, url, it.buildVersion, settings)
                     assertEquals(settings.binPath(url, true), ccm.localBinaryPath)
                     assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
                 }
+
                 Result.USE_BIN -> {
-                    val ccm = ensureCLI(url, it.buildVersion, settings)
+                    val ccm = ensureCLI(context, url, it.buildVersion, settings)
                     assertEquals(settings.binPath(url), ccm.localBinaryPath)
                     assertEquals(SemVer.parse(it.version ?: ""), ccm.version())
                 }
+
                 Result.USE_DATA -> {
-                    val ccm = ensureCLI(url, it.buildVersion, settings)
+                    val ccm = ensureCLI(context, url, it.buildVersion, settings)
                     assertEquals(settings.binPath(url, true), ccm.localBinaryPath)
                     assertEquals(SemVer.parse(it.fallbackVersion ?: ""), ccm.version())
                 }
@@ -772,10 +845,12 @@ internal class CoderCLIManagerTest {
             val ccm =
                 CoderCLIManager(
                     url,
+                    context.logger,
                     CoderSettings(
                         CoderSettingsState(
                             dataDirectory = tmpdir.resolve("features").toString(),
                         ),
+                        context.logger,
                         binaryName = "coder.bat",
                     ),
                 )
@@ -787,7 +862,8 @@ internal class CoderCLIManagerTest {
     }
 
     companion object {
-        private val tmpdir: Path = Path.of(System.getProperty("java.io.tmpdir")).resolve("coder-toolbox-test/cli-manager")
+        private val tmpdir: Path =
+            Path.of(System.getProperty("java.io.tmpdir")).resolve("coder-toolbox-test/cli-manager")
 
         @JvmStatic
         @BeforeAll

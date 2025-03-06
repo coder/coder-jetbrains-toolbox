@@ -48,7 +48,7 @@ class CoderRemoteProvider(
 
     // Create our services from the Toolbox ones.
     private val settingsService = CoderSettingsService(context.settingsStore)
-    private val settings: CoderSettings = CoderSettings(settingsService)
+    private val settings: CoderSettings = CoderSettings(settingsService, context.logger)
     private val secrets: CoderSecretsService = CoderSecretsService(context.secretsStore)
     private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, settingsService)
     private val dialogUi = DialogUi(context, settings)

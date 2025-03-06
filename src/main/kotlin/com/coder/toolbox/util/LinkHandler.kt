@@ -113,6 +113,7 @@ open class LinkHandler(
 
         val cli =
             ensureCLI(
+                context,
                 deploymentURL.toURL(),
                 client.buildInfo().version,
                 settings,
@@ -170,6 +171,7 @@ open class LinkHandler(
         // The http client Toolbox gives us is already set up with the
         // proxy config, so we do net need to explicitly add it.
         val client = CoderRestClient(
+            context,
             deploymentURL.toURL(),
             token?.first,
             settings,

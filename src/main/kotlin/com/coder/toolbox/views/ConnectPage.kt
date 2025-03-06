@@ -91,6 +91,7 @@ class ConnectPage(
                 // The http client Toolbox gives us is already set up with the
                 // proxy config, so we do net need to explicitly add it.
                 val client = CoderRestClient(
+                    context,
                     url,
                     token,
                     settings,
@@ -100,7 +101,7 @@ class ConnectPage(
                 )
                 client.authenticate()
                 updateStatus(context.i18n.ptrl("Checking Coder binary..."), error = null)
-                val cli = ensureCLI(client.url, client.buildVersion, settings) { status ->
+                val cli = ensureCLI(context, client.url, client.buildVersion, settings) { status ->
                     updateStatus(context.i18n.pnotr(status), error = null)
                 }
                 // We only need to log in if we are using token-based auth.

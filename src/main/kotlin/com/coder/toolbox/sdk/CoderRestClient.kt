@@ -1,5 +1,6 @@
 package com.coder.toolbox.sdk
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.convertors.ArchConverter
 import com.coder.toolbox.sdk.convertors.InstantConverter
 import com.coder.toolbox.sdk.convertors.OSConverter
@@ -49,9 +50,10 @@ data class ProxyValues(
  * The token can be omitted if some other authentication mechanism is in use.
  */
 open class CoderRestClient(
+    context: CoderToolboxContext,
     val url: URL,
     val token: String?,
-    private val settings: CoderSettings = CoderSettings(CoderSettingsState()),
+    private val settings: CoderSettings = CoderSettings(CoderSettingsState(), context.logger),
     private val proxyValues: ProxyValues? = null,
     private val pluginVersion: String = "development",
     existingHttpClient: OkHttpClient? = null,

@@ -1,6 +1,5 @@
 package com.coder.toolbox.util
 
-import com.coder.toolbox.logger.CoderLoggerFactory
 import com.coder.toolbox.settings.CoderTLSSettings
 import okhttp3.internal.tls.OkHostnameVerifier
 import java.io.File
@@ -112,7 +111,8 @@ fun coderTrustManagers(tlsCAPath: String): Array<TrustManager> {
     return trustManagerFactory.trustManagers.map { MergedSystemTrustManger(it as X509TrustManager) }.toTypedArray()
 }
 
-class AlternateNameSSLSocketFactory(private val delegate: SSLSocketFactory, private val alternateName: String) : SSLSocketFactory() {
+class AlternateNameSSLSocketFactory(private val delegate: SSLSocketFactory, private val alternateName: String) :
+    SSLSocketFactory() {
     override fun getDefaultCipherSuites(): Array<String> = delegate.defaultCipherSuites
 
     override fun getSupportedCipherSuites(): Array<String> = delegate.supportedCipherSuites
@@ -182,8 +182,6 @@ class AlternateNameSSLSocketFactory(private val delegate: SSLSocketFactory, priv
 }
 
 class CoderHostnameVerifier(private val alternateName: String) : HostnameVerifier {
-    private val logger = CoderLoggerFactory.getLogger(javaClass)
-
     override fun verify(
         host: String,
         session: SSLSession,
@@ -203,7 +201,6 @@ class CoderHostnameVerifier(private val alternateName: String) : HostnameVerifie
                     continue
                 }
                 val hostname = entry[1] as String
-                logger.debug("Found cert hostname: $hostname")
                 if (hostname.lowercase(Locale.getDefault()) == alternateName) {
                     return true
                 }
@@ -244,5 +241,6 @@ class MergedSystemTrustManger(private val otherTrustManager: X509TrustManager) :
         }
     }
 
-    override fun getAcceptedIssuers(): Array<X509Certificate> = otherTrustManager.acceptedIssuers + systemTrustManager.acceptedIssuers
+    override fun getAcceptedIssuers(): Array<X509Certificate> =
+        otherTrustManager.acceptedIssuers + systemTrustManager.acceptedIssuers
 }

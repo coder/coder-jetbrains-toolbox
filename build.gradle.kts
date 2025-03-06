@@ -55,7 +55,6 @@ dependencies {
     compileOnly(libs.bundles.toolbox.plugin.api)
     compileOnly(libs.bundles.serialization)
     compileOnly(libs.coroutines.core)
-    implementation(libs.slf4j)
     implementation(libs.okhttp)
     implementation(libs.exec)
     implementation(libs.moshi)
@@ -63,6 +62,8 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.moshi)
     testImplementation(kotlin("test"))
+    testImplementation(libs.mokk)
+    testImplementation(libs.bundles.toolbox.plugin.api)
 }
 
 val extension = ExtensionJson(
