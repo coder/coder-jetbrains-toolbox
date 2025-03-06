@@ -7,7 +7,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Coder Toolbox 1.0\n"
-"Report-Msgid-Bugs-To: support@coder.com\n"
+"Report-Msgid-Bugs-To: jetbrains-plugins@coder.com\n"
 "POT-Creation-Date: 2025-03-04 12:00+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
