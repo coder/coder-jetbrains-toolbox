@@ -117,8 +117,8 @@ class CoderRestClientTest {
         val srv = HttpsServer.create(InetSocketAddress(0), 0)
         val sslContext =
             sslContextFromPEMs(
-                Path.of("src/test/fixtures/tls", "$certName.crt").toString(),
-                Path.of("src/test/fixtures/tls", "$certName.key").toString(),
+                Path.of("src/test/resources/fixtures/tls", "$certName.crt").toString(),
+                Path.of("src/test/resources/fixtures/tls", "$certName.key").toString(),
                 "",
             )
         srv.httpsConfigurator = HttpsConfigurator(sslContext)
@@ -431,7 +431,7 @@ class CoderRestClientTest {
         val settings =
             CoderSettings(
                 CoderSettingsState(
-                    tlsCAPath = Path.of("src/test/fixtures/tls", "self-signed.crt").toString(),
+                    tlsCAPath = Path.of("src/test/resources/fixtures/tls", "self-signed.crt").toString(),
                     tlsAlternateHostname = "localhost",
                 ),
                 context.logger
@@ -458,7 +458,7 @@ class CoderRestClientTest {
         val settings =
             CoderSettings(
                 CoderSettingsState(
-                    tlsCAPath = Path.of("src/test/fixtures/tls", "self-signed.crt").toString(),
+                    tlsCAPath = Path.of("src/test/resources/fixtures/tls", "self-signed.crt").toString(),
                     tlsAlternateHostname = "fake.example.com",
                 ),
                 context.logger
@@ -479,7 +479,7 @@ class CoderRestClientTest {
         val settings =
             CoderSettings(
                 CoderSettingsState(
-                    tlsCAPath = Path.of("src/test/fixtures/tls", "self-signed.crt").toString(),
+                    tlsCAPath = Path.of("src/test/resources/fixtures/tls", "self-signed.crt").toString(),
                 ),
                 context.logger
             )
@@ -499,7 +499,7 @@ class CoderRestClientTest {
         val settings =
             CoderSettings(
                 CoderSettingsState(
-                    tlsCAPath = Path.of("src/test/fixtures/tls", "chain-root.crt").toString(),
+                    tlsCAPath = Path.of("src/test/resources/fixtures/tls", "chain-root.crt").toString(),
                 ),
                 context.logger
             )

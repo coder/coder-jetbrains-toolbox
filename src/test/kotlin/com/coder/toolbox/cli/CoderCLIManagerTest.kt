@@ -455,7 +455,7 @@ internal class CoderCLIManagerTest {
             if (it.input != null) {
                 settings.sshConfigPath.parent.toFile().mkdirs()
                 val originalConf =
-                    Path.of("src/test/fixtures/inputs").resolve(it.input + ".conf").toFile().readText()
+                    Path.of("src/test/resources/fixtures/inputs").resolve(it.input + ".conf").toFile().readText()
                         .replace(newlineRe, System.lineSeparator())
                 settings.sshConfigPath.toFile().writeText(originalConf)
             }
@@ -463,7 +463,7 @@ internal class CoderCLIManagerTest {
             // Output is the configuration we expect to have after configuring.
             val coderConfigPath = ccm.localBinaryPath.parent.resolve("config")
             val expectedConf =
-                Path.of("src/test/fixtures/outputs/").resolve(it.output + ".conf").toFile().readText()
+                Path.of("src/test/resources/fixtures/outputs/").resolve(it.output + ".conf").toFile().readText()
                     .replace(newlineRe, System.lineSeparator())
                     .replace("/tmp/coder-toolbox/test.coder.invalid/config", escape(coderConfigPath.toString()))
                     .replace(
@@ -494,7 +494,7 @@ internal class CoderCLIManagerTest {
             // Remove is the configuration we expect after removing.
             assertEquals(
                 settings.sshConfigPath.toFile().readText(),
-                Path.of("src/test/fixtures/inputs").resolve(it.remove + ".conf").toFile()
+                Path.of("src/test/resources/fixtures/inputs").resolve(it.remove + ".conf").toFile()
                     .readText().replace(newlineRe, System.lineSeparator()),
             )
         }
@@ -518,7 +518,7 @@ internal class CoderCLIManagerTest {
                     sshConfigPath = tmpdir.resolve("configured$it.conf"),
                 )
             settings.sshConfigPath.parent.toFile().mkdirs()
-            Path.of("src/test/fixtures/inputs").resolve("$it.conf").toFile().copyTo(
+            Path.of("src/test/resources/fixtures/inputs").resolve("$it.conf").toFile().copyTo(
                 settings.sshConfigPath.toFile(),
                 true,
             )
