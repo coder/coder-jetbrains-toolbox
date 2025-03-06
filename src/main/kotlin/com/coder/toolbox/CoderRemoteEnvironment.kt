@@ -42,7 +42,7 @@ class CoderRemoteEnvironment(
     override val state: MutableStateFlow<RemoteEnvironmentState> =
         MutableStateFlow(wsRawStatus.toRemoteEnvironmentState(context))
     override val description: MutableStateFlow<EnvironmentDescription> =
-        MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateName)))
+        MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
 
     override val actionsList: StateFlow<List<ActionDescription>> = MutableStateFlow(
         listOf(
