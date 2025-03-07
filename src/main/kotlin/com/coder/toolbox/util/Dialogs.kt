@@ -1,9 +1,10 @@
 package com.coder.toolbox.util
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.browser.BrowserUtil
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.Source
-import com.jetbrains.toolbox.api.ui.ToolboxUi
+import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.TextType
 import java.net.URL
 
@@ -13,28 +14,35 @@ import java.net.URL
  * This is meant to mimic ToolboxUi.
  */
 class DialogUi(
+    private val context: CoderToolboxContext,
     private val settings: CoderSettings,
-    private val ui: ToolboxUi,
 ) {
-    suspend fun confirm(title: String, description: String): Boolean {
-        return ui.showOkCancelPopup(title, description, "Yes", "No")
+
+    suspend fun confirm(title: LocalizableString, description: LocalizableString): Boolean {
+        return context.ui.showOkCancelPopup(title, description, context.i18n.ptrl("Yes"), context.i18n.ptrl("No"))
     }
 
     suspend fun ask(
-        title: String,
-        description: String,
-        placeholder: String? = null,
-        // There is no link or error support in Toolbox so for now isError and
-        // link are unused.
+        title: LocalizableString,
+        description: LocalizableString,
+        placeholder: LocalizableString? = null,
+        // TODO check: there is no link or error support in Toolbox so for now isError and  link are unused.
         isError: Boolean = false,
         link: Pair<String, String>? = null,
     ): String? {
-        return ui.showTextInputPopup(title, description, placeholder, TextType.General, "OK", "Cancel")
+        return context.ui.showTextInputPopup(
+            title,
+            description,
+            placeholder,
+            TextType.General,
+            context.i18n.ptrl("OK"),
+            context.i18n.ptrl("Cancel")
+        )
     }
 
     private suspend fun openUrl(url: URL) {
         BrowserUtil.browse(url.toString()) {
-            ui.showErrorInfoPopup(it)
+            context.ui.showErrorInfoPopup(it)
         }
     }
 
@@ -79,11 +87,13 @@ class DialogUi(
         // for the token.
         val tokenFromUser =
             ask(
-                title = "Session Token",
-                description = error
-                    ?: token?.second?.description("token")
-                    ?: "No existing token for ${url.host} found.",
-                placeholder = token?.first,
+                title = context.i18n.ptrl("Session Token"),
+                description = context.i18n.pnotr(
+                    error
+                        ?: token?.second?.description("token")
+                        ?: "No existing token for ${url.host} found."
+                ),
+                placeholder = token?.first?.let { context.i18n.pnotr(it) },
                 link = Pair("Session Token:", getTokenUrl.toString()),
                 isError = error != null,
             )

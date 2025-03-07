@@ -1,10 +1,16 @@
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.module.kotlin.jacksonMapperBuilder
 import com.github.jk1.license.filter.ExcludeTransitiveDependenciesFilter
 import com.github.jk1.license.render.JsonReportRenderer
+import com.jetbrains.plugin.structure.toolbox.ToolboxMeta
+import com.jetbrains.plugin.structure.toolbox.ToolboxPluginDescriptor
 import org.jetbrains.intellij.pluginRepository.PluginRepositoryFactory
 import org.jetbrains.kotlin.com.intellij.openapi.util.SystemInfoRt
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.nio.file.Path
+import kotlin.io.path.createDirectories
 import kotlin.io.path.div
+import kotlin.io.path.writeText
 
 plugins {
     alias(libs.plugins.kotlin)
@@ -14,23 +20,31 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.gradle.wrapper)
     alias(libs.plugins.changelog)
+    alias(libs.plugins.gettext)
 }
 
-buildscript {
-    dependencies {
-        classpath(libs.marketplace.client)
-    }
-}
 
 repositories {
     mavenCentral()
     maven("https://packages.jetbrains.team/maven/p/tbx/toolbox-api")
 }
 
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath(libs.marketplace.client)
+        classpath(libs.plugin.structure)
+    }
+}
+
 jvmWrapper {
     unixJvmInstallDir = "jvm"
     winJvmInstallDir = "jvm"
-    linuxAarch64JvmUrl = "https://cache-redirector.jetbrains.com/intellij-jbr/jbr_jcef-21.0.5-linux-aarch64-b631.28.tar.gz"
+    linuxAarch64JvmUrl =
+        "https://cache-redirector.jetbrains.com/intellij-jbr/jbr_jcef-21.0.5-linux-aarch64-b631.28.tar.gz"
     linuxX64JvmUrl = "https://cache-redirector.jetbrains.com/intellij-jbr/jbr_jcef-21.0.5-linux-x64-b631.28.tar.gz"
     macAarch64JvmUrl = "https://cache-redirector.jetbrains.com/intellij-jbr/jbr_jcef-21.0.5-osx-aarch64-b631.28.tar.gz"
     macX64JvmUrl = "https://cache-redirector.jetbrains.com/intellij-jbr/jbr_jcef-21.0.5-osx-x64-b631.28.tar.gz"
@@ -39,9 +53,8 @@ jvmWrapper {
 
 dependencies {
     compileOnly(libs.bundles.toolbox.plugin.api)
-    implementation(libs.slf4j)
-    implementation(libs.bundles.serialization)
-    implementation(libs.coroutines.core)
+    compileOnly(libs.bundles.serialization)
+    compileOnly(libs.coroutines.core)
     implementation(libs.okhttp)
     implementation(libs.exec)
     implementation(libs.moshi)
@@ -49,14 +62,34 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.moshi)
     testImplementation(kotlin("test"))
+    testImplementation(libs.mokk)
+    testImplementation(libs.bundles.toolbox.plugin.api)
 }
 
-val pluginId = properties("group")
-val pluginName = properties("name")
-val pluginVersion = properties("version")
+val extension = ExtensionJson(
+    id = properties("group"),
+
+    version = properties("version"),
+    meta = ExtensionJsonMeta(
+        name = "Coder Toolbox",
+        description = "Connects your JetBrains IDE to Coder workspaces",
+        vendor = "Coder",
+        url = "https://github.com/coder/coder-jetbrains-toolbox-plugin",
+    )
+)
+
+val extensionJsonFile = layout.buildDirectory.file("generated/extension.json")
+val extensionJson by tasks.registering {
+    inputs.property("extension", extension.toString())
+
+    outputs.file(extensionJsonFile)
+    doLast {
+        generateExtensionJson(extension, extensionJsonFile.get().asFile.toPath())
+    }
+}
 
 changelog {
-    version.set(pluginVersion)
+    version.set(extension.version)
     groups.set(emptyList())
     title.set("Coder Toolbox Plugin Changelog")
 }
@@ -76,24 +109,30 @@ tasks.test {
     useJUnitPlatform()
 }
 
-val assemblePlugin by tasks.registering(Jar::class) {
-    archiveBaseName.set(pluginId)
-    from(sourceSets.main.get().output)
+
+tasks.jar {
+    archiveBaseName.set(extension.id)
+    dependsOn(extensionJson)
+    from(extensionJson.get().outputs)
 }
 
 val copyPlugin by tasks.creating(Sync::class.java) {
-    dependsOn(assemblePlugin)
-    fromCompileDependencies()
+    dependsOn(tasks.jar)
+    dependsOn(tasks.getByName("generateLicenseReport"))
 
+    fromCompileDependencies()
     into(getPluginInstallDir())
 }
 
 fun CopySpec.fromCompileDependencies() {
-    from(assemblePlugin.get().outputs.files)
+    from(tasks.jar)
+    from(extensionJson.get().outputs.files)
     from("src/main/resources") {
-        include("extension.json")
         include("dependencies.json")
+    }
+    from("src/main/resources") {
         include("icon.svg")
+        rename("icon.svg", "pluginIcon.svg")
     }
 
     // Copy dependencies, excluding those provided by Toolbox.
@@ -106,6 +145,7 @@ fun CopySpec.fromCompileDependencies() {
                     "core-api",
                     "ui-api",
                     "annotations",
+                    "localization-api"
                 ).any { file.name.contains(it) }
             }
         },
@@ -113,11 +153,12 @@ fun CopySpec.fromCompileDependencies() {
 }
 
 val pluginZip by tasks.creating(Zip::class) {
-    dependsOn(assemblePlugin)
+    archiveBaseName.set(properties("name"))
+    dependsOn(tasks.jar)
+    dependsOn(tasks.getByName("generateLicenseReport"))
 
     fromCompileDependencies()
-    into(pluginId)
-    archiveBaseName.set(pluginName)
+    into(extension.id) // folder like com.coder.toolbox
 }
 
 tasks.register("cleanAll", Delete::class.java) {
@@ -142,7 +183,7 @@ private fun getPluginInstallDir(): Path {
         else -> error("Unknown os")
     } / "plugins"
 
-    return pluginsDir / pluginId
+    return pluginsDir / extension.id
 }
 
 val publishPlugin by tasks.creating {
@@ -158,17 +199,49 @@ val publishPlugin by tasks.creating {
         // instance.uploader.uploadNewPlugin(pluginZip.outputs.files.singleFile, listOf("toolbox", "gateway"), LicenseUrl.APACHE_2_0, ProductFamily.TOOLBOX)
 
         // subsequent updates
-        instance.uploader.upload(pluginId, pluginZip.outputs.files.singleFile)
-    }
-}
-
-// For use with kotlin-language-server.
-tasks.register("classpath") {
-    doFirst {
-        File("classpath").writeText(
-            sourceSets["main"].runtimeClasspath.asPath
-        )
+        instance.uploader.upload(extension.id, pluginZip.outputs.files.singleFile)
     }
 }
 
 fun properties(key: String) = project.findProperty(key).toString()
+
+gettext {
+    potFile = project.layout.projectDirectory.file("src/main/resources/localization/defaultMessages.pot")
+    keywords = listOf("ptrc:1c,2", "ptrl")
+}
+
+// region will be moved to the gradle plugin late
+data class ExtensionJsonMeta(
+    val name: String,
+    val description: String,
+    val vendor: String,
+    val url: String?,
+)
+
+data class ExtensionJson(
+    val id: String,
+    val version: String,
+    val meta: ExtensionJsonMeta,
+)
+
+fun generateExtensionJson(extensionJson: ExtensionJson, destinationFile: Path) {
+    val descriptor = ToolboxPluginDescriptor(
+        id = extensionJson.id,
+        version = extensionJson.version,
+        apiVersion = libs.versions.toolbox.plugin.api.get(),
+        meta = ToolboxMeta(
+            name = extensionJson.meta.name,
+            description = extensionJson.meta.description,
+            vendor = extensionJson.meta.vendor,
+            url = extensionJson.meta.url,
+        )
+    )
+    destinationFile.parent.createDirectories()
+    destinationFile.writeText(
+        jacksonMapperBuilder()
+            .enable(SerializationFeature.INDENT_OUTPUT)
+            .build()
+            .writeValueAsString(descriptor)
+    )
+}
+// endregion

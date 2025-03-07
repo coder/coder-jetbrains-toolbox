@@ -1,5 +1,6 @@
 package com.coder.toolbox.util
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.plugin.PluginManager
@@ -15,6 +16,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 open class LinkHandler(
+    private val context: CoderToolboxContext,
     private val settings: CoderSettings,
     private val httpClient: OkHttpClient?,
     private val dialogUi: DialogUi,
@@ -31,7 +33,10 @@ open class LinkHandler(
         indicator: ((t: String) -> Unit)? = null,
     ): String {
         val deploymentURL =
-            parameters.url() ?: dialogUi.ask("Deployment URL", "Enter the full URL of your Coder deployment")
+            parameters.url() ?: dialogUi.ask(
+                context.i18n.ptrl("Deployment URL"),
+                context.i18n.ptrl("Enter the full URL of your Coder deployment")
+            )
         if (deploymentURL.isNullOrBlank()) {
             throw MissingArgumentException("Query parameter \"$URL\" is missing")
         }
@@ -108,6 +113,7 @@ open class LinkHandler(
 
         val cli =
             ensureCLI(
+                context,
                 deploymentURL.toURL(),
                 client.buildInfo().version,
                 settings,
@@ -165,6 +171,7 @@ open class LinkHandler(
         // The http client Toolbox gives us is already set up with the
         // proxy config, so we do net need to explicitly add it.
         val client = CoderRestClient(
+            context,
             deploymentURL.toURL(),
             token?.first,
             settings,
@@ -222,8 +229,8 @@ open class LinkHandler(
             }
 
         if (!dialogUi.confirm(
-                "Confirm download URL",
-                "$comment. Would you like to proceed to $linkWithRedirect?",
+                context.i18n.ptrl("Confirm download URL"),
+                context.i18n.pnotr("$comment. Would you like to proceed to $linkWithRedirect?"),
             )
         ) {
             throw IllegalArgumentException("$linkWithRedirect is not allowlisted")

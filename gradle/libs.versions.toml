@@ -1,10 +1,9 @@
 [versions]
-toolbox-plugin-api = "0.7.2.6.0.38311"
+toolbox-plugin-api = "1.0.38881"
 kotlin = "2.1.0"
 coroutines = "1.10.1"
 serialization = "1.8.0"
 okhttp = "4.10.0"
-slf4j = "2.0.17"
 dependency-license-report = "2.9"
 marketplace-client = "2.0.45"
 gradle-wrapper = "0.14.0"
@@ -13,6 +12,9 @@ moshi = "1.15.2"
 ksp = "2.1.0-1.0.29"
 retrofit = "2.11.0"
 changelog = "2.2.1"
+gettext = "0.7.0"
+plugin-structure = "3.298"
+mockk = "1.13.17"
 
 [libraries]
 toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "toolbox-plugin-api" }
@@ -23,23 +25,24 @@ serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-cor
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 serialization-json-okio = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json-okio", version.ref = "serialization" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
-slf4j = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 exec = { module = "org.zeroturnaround:zt-exec", version.ref = "exec" }
-moshi = { module = "com.squareup.moshi:moshi", version.ref = "moshi"}
-moshi-codegen = { module = "com.squareup.moshi:moshi-kotlin-codegen", version.ref = "moshi"}
-retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit"}
-retrofit-moshi = { module = "com.squareup.retrofit2:converter-moshi", version.ref = "retrofit"}
-
+moshi = { module = "com.squareup.moshi:moshi", version.ref = "moshi" }
+moshi-codegen = { module = "com.squareup.moshi:moshi-kotlin-codegen", version.ref = "moshi" }
+retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
+retrofit-moshi = { module = "com.squareup.retrofit2:converter-moshi", version.ref = "retrofit" }
+plugin-structure = { module = "org.jetbrains.intellij.plugins:structure-toolbox", version.ref = "plugin-structure" }
+mokk = { module = "io.mockk:mockk", version.ref = "mockk" }
 marketplace-client = { module = "org.jetbrains.intellij:plugin-repository-rest-client", version.ref = "marketplace-client" }
 
 [bundles]
-serialization = [ "serialization-core", "serialization-json", "serialization-json-okio" ]
-toolbox-plugin-api = [ "toolbox-core-api", "toolbox-ui-api", "toolbox-remote-dev-api" ]
+serialization = ["serialization-core", "serialization-json", "serialization-json-okio"]
+toolbox-plugin-api = ["toolbox-core-api", "toolbox-ui-api", "toolbox-remote-dev-api"]
 
 [plugins]
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 dependency-license-report = { id = "com.github.jk1.dependency-license-report", version.ref = "dependency-license-report" }
-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp"}
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 gradle-wrapper = { id = "me.filippov.gradle.jvm.wrapper", version.ref = "gradle-wrapper" }
 changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }
+gettext = { id = "name.kropp.kotlinx-gettext", version.ref = "gettext" }

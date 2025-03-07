@@ -1,0 +1,146 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2025 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# Ioan Faur <fioan89@gmail.com>, 2025.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Coder Toolbox 1.0\n"
+"Report-Msgid-Bugs-To: jetbrains-plugins@coder.com\n"
+"POT-Creation-Date: 2025-03-04 12:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Yes"
+msgstr ""
+
+msgid "OK"
+msgstr ""
+
+msgid "No"
+msgstr ""
+
+msgid "Save"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Delete running workspace?"
+msgstr ""
+
+msgid "Delete workspace?"
+msgstr ""
+
+msgid "Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical."
+msgstr ""
+
+msgid "All the information in this workspace will be lost, including all files, unsaved changes and historical."
+msgstr ""
+
+msgid "Session Token"
+msgstr ""
+
+msgid "Deployment URL"
+msgstr ""
+
+msgid "Enter the full URL of your Coder deployment"
+msgstr ""
+
+msgid "Confirm download URL"
+msgstr ""
+
+msgid "Open web terminal"
+msgstr ""
+
+msgid "Open in dashboard"
+msgstr ""
+
+msgid "View template"
+msgstr ""
+
+msgid "Start"
+msgstr ""
+
+msgid "Stop"
+msgstr ""
+
+msgid "Update"
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "Coder Settings"
+msgstr ""
+
+msgid "Binary source"
+msgstr ""
+
+msgid "Binary directory"
+msgstr ""
+
+msgid "Data directory"
+msgstr ""
+
+msgid "Enable downloads"
+msgstr ""
+
+msgid "Enable binary directory fallback"
+msgstr ""
+
+msgid "Header command"
+msgstr ""
+
+msgid "TLS cert path"
+msgstr ""
+
+msgid "TLS key path"
+msgstr ""
+
+msgid "TLS CA path"
+msgstr ""
+
+msgid "TLS alternate hostname"
+msgstr ""
+
+msgid "Disable autostart"
+msgstr ""
+
+msgid "Connecting to Coder"
+msgstr ""
+
+msgid "Checking Coder binary..."
+msgstr ""
+
+msgid "Configuring CLI..."
+msgstr ""
+
+msgid "Retry"
+msgstr ""
+
+msgid "Sign In"
+msgstr ""
+
+msgid "Sign In to Coder"
+msgstr ""
+
+msgid "Enter your token"
+msgstr ""
+
+msgid "Token"
+msgstr ""
+
+msgid "Get a token"
+msgstr ""
+
+msgid "Connect"
+msgstr ""
