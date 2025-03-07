@@ -106,13 +106,24 @@ class CoderRemoteEnvironment(
     override suspend
     fun getContentsView(): EnvironmentContentsView = EnvironmentView(client.url, workspace, agent)
 
+    override val connectionRequest: MutableStateFlow<Boolean>? = MutableStateFlow(false)
+
     /**
      * Does nothing.  In theory, we could do something like start the workspace
      * when you click into the workspace, but you would still need to press
      * "connect" anyway before the content is populated so there does not seem
      * to be much value.
      */
-    override fun setVisible(visibilityState: EnvironmentVisibilityState) {}
+    override fun setVisible(visibilityState: EnvironmentVisibilityState) {
+        if (wsRawStatus.ready() && visibilityState.contentsVisible == true && visibilityState.isBackendConnected == false) {
+            context.logger.info("Connecting to $id...")
+            context.cs.launch {
+                connectionRequest?.update {
+                    true
+                }
+            }
+        }
+    }
 
     /**
      * Immediately send the state to the listener and store for updates.
