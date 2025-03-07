@@ -125,23 +125,8 @@ class CoderRemoteEnvironment(
         }
     }
 
-    /**
-     * Immediately send the state to the listener and store for updates.
-     */
-//    override fun addStateListener(consumer: EnvironmentStateConsumer): Boolean {
-//        // TODO@JB: It would be ideal if we could have the workspace state and
-//        //          the connected state listed separately, since right now the
-//        //          connected state can mask the workspace state.
-//        // TODO@JB: You can still press connect if the environment is
-//        //          unreachable.  Is that expected?
-//        consumer.consume(status.toRemoteEnvironmentState(serviceLocator))
-//        return super.addStateListener(consumer)
-//    }
-
     override fun onDelete() {
         context.cs.launch {
-            // TODO info and cancel pop-ups only appear on the main page where all environments are listed.
-            //  However, #showSnackbar works on other pages. Until JetBrains fixes this issue we are going to use the snackbar
             val shouldDelete = if (wsRawStatus.canStop()) {
                 context.ui.showOkCancelPopup(
                     context.i18n.ptrl("Delete running workspace?"),
