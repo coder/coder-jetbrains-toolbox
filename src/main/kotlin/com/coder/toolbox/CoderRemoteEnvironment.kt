@@ -17,7 +17,6 @@ import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -44,46 +43,46 @@ class CoderRemoteEnvironment(
     override val description: MutableStateFlow<EnvironmentDescription> =
         MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
 
-    override val actionsList: StateFlow<List<ActionDescription>> = MutableStateFlow(
-        listOf(
-            Action(context.i18n.ptrl("Open web terminal")) {
-                context.cs.launch {
-                    BrowserUtil.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
-                        context.ui.showErrorInfoPopup(it)
-                    }
-                }
-            },
-            Action(context.i18n.ptrl("Open in dashboard")) {
-                context.cs.launch {
-                    BrowserUtil.browse(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()) {
-                        context.ui.showErrorInfoPopup(it)
-                    }
-                }
-            },
+    override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
 
-            Action(context.i18n.ptrl("View template")) {
-                context.cs.launch {
-                    BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
-                        context.ui.showErrorInfoPopup(it)
-                    }
+    private fun getAvailableActions(): List<ActionDescription> = listOf(
+        Action(context.i18n.ptrl("Open web terminal")) {
+            context.cs.launch {
+                BrowserUtil.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
+                    context.ui.showErrorInfoPopup(it)
                 }
-            },
-            Action(context.i18n.ptrl("Start"), enabled = { wsRawStatus.canStart() }) {
-                val build = client.startWorkspace(workspace)
-                workspace = workspace.copy(latestBuild = build)
-                update(workspace, agent)
-            },
-            Action(context.i18n.ptrl("Stop"), enabled = { wsRawStatus.canStop() }) {
-                val build = client.stopWorkspace(workspace)
-                workspace = workspace.copy(latestBuild = build)
-                update(workspace, agent)
-            },
-            Action(context.i18n.ptrl("Update"), enabled = { workspace.outdated }) {
-                val build = client.updateWorkspace(workspace)
-                workspace = workspace.copy(latestBuild = build)
-                update(workspace, agent)
-            })
-    )
+            }
+        },
+        Action(context.i18n.ptrl("Open in dashboard")) {
+            context.cs.launch {
+                BrowserUtil.browse(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()) {
+                    context.ui.showErrorInfoPopup(it)
+                }
+            }
+        },
+
+        Action(context.i18n.ptrl("View template")) {
+            context.cs.launch {
+                BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
+                    context.ui.showErrorInfoPopup(it)
+                }
+            }
+        },
+        Action(context.i18n.ptrl("Start"), enabled = { wsRawStatus.canStart() }) {
+            val build = client.startWorkspace(workspace)
+            workspace = workspace.copy(latestBuild = build)
+            update(workspace, agent)
+        },
+        Action(context.i18n.ptrl("Stop"), enabled = { wsRawStatus.canStop() }) {
+            val build = client.stopWorkspace(workspace)
+            workspace = workspace.copy(latestBuild = build)
+            update(workspace, agent)
+        },
+        Action(context.i18n.ptrl("Update"), enabled = { workspace.outdated }) {
+            val build = client.updateWorkspace(workspace)
+            workspace = workspace.copy(latestBuild = build)
+            update(workspace, agent)
+        })
 
     /**
      * Update the workspace/agent status to the listeners, if it has changed.
@@ -92,6 +91,11 @@ class CoderRemoteEnvironment(
         this.workspace = workspace
         this.agent = agent
         wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
+        // we have to regenerate the action list in order to force a redraw
+        // because the actions don't have a state flow on the enabled property
+        actionsList.update {
+            getAvailableActions()
+        }
         context.cs.launch {
             state.update {
                 wsRawStatus.toRemoteEnvironmentState(context)
