@@ -13,7 +13,7 @@ ksp = "2.1.0-1.0.29"
 retrofit = "2.11.0"
 changelog = "2.2.1"
 gettext = "0.7.0"
-plugin-structure = "3.298"
+plugin-structure = "3.299"
 mockk = "1.13.17"
 
 [libraries]
