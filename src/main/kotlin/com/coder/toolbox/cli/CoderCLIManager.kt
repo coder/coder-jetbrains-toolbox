@@ -1,5 +1,6 @@
 package com.coder.toolbox.cli
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
@@ -16,11 +17,11 @@ import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.safeHost
 import com.coder.toolbox.util.sha1
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
-import org.slf4j.LoggerFactory
 import org.zeroturnaround.exec.ProcessExecutor
 import java.io.EOFException
 import java.io.FileInputStream
@@ -55,12 +56,13 @@ internal data class Version(
  *    from step 2 with the data directory.
  */
 fun ensureCLI(
+    context: CoderToolboxContext,
     deploymentURL: URL,
     buildVersion: String,
     settings: CoderSettings,
     indicator: ((t: String) -> Unit)? = null,
 ): CoderCLIManager {
-    val cli = CoderCLIManager(deploymentURL, settings)
+    val cli = CoderCLIManager(deploymentURL, context.logger, settings)
 
     // Short-circuit if we already have the expected version.  This
     // lets us bypass the 304 which is slower and may not be
@@ -89,7 +91,7 @@ fun ensureCLI(
     }
 
     // Try falling back to the data directory.
-    val dataCLI = CoderCLIManager(deploymentURL, settings, true)
+    val dataCLI = CoderCLIManager(deploymentURL, context.logger, settings, true)
     val dataCLIMatches = dataCLI.matchesVersion(buildVersion)
     if (dataCLIMatches == true) {
         return dataCLI
@@ -120,14 +122,13 @@ data class Features(
 class CoderCLIManager(
     // The URL of the deployment this CLI is for.
     private val deploymentURL: URL,
+    private val logger: Logger,
     // Plugin configuration.
-    private val settings: CoderSettings = CoderSettings(CoderSettingsState()),
+    private val settings: CoderSettings = CoderSettings(CoderSettingsState(), logger),
     // If the binary directory is not writable, this can be used to force the
     // manager to download to the data directory instead.
     forceDownloadToData: Boolean = false,
 ) {
-    private val logger = LoggerFactory.getLogger(javaClass)
-
     val remoteBinaryURL: URL = settings.binSource(deploymentURL)
     val localBinaryPath: Path = settings.binPath(deploymentURL, forceDownloadToData)
     val coderConfigPath: Path = settings.dataDir(deploymentURL).resolve("config")
@@ -196,7 +197,7 @@ class CoderCLIManager(
     } catch (e: FileNotFoundException) {
         null
     } catch (e: Exception) {
-        logger.warn("Unable to calculate hash for $localBinaryPath", e)
+        logger.warn(e, "Unable to calculate hash for $localBinaryPath")
         null
     }
 
@@ -275,7 +276,8 @@ class CoderCLIManager(
             if (settings.sshLogDirectory.isNotBlank()) escape(settings.sshLogDirectory) else null,
             if (feats.reportWorkspaceUsage) "--usage-app=jetbrains" else null,
         )
-        val backgroundProxyArgs = baseArgs + listOfNotNull(if (feats.reportWorkspaceUsage) "--usage-app=disable" else null)
+        val backgroundProxyArgs =
+            baseArgs + listOfNotNull(if (feats.reportWorkspaceUsage) "--usage-app=disable" else null)
         val extraConfig =
             if (settings.sshConfigOptions.isNotBlank()) {
                 "\n" + settings.sshConfigOptions.prependIndent("  ")
@@ -417,6 +419,7 @@ class CoderCLIManager(
             is InvalidVersionException -> {
                 logger.info("Got invalid version from $localBinaryPath: ${e.message}")
             }
+
             else -> {
                 // An error here most likely means the CLI does not exist or
                 // it executed successfully but output no version which

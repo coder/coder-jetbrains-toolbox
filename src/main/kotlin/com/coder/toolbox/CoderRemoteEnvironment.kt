@@ -1,17 +1,28 @@
 package com.coder.toolbox
 
+import com.coder.toolbox.browser.BrowserUtil
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.EnvironmentView
-import com.jetbrains.toolbox.api.remoteDev.AbstractRemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
+import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
-import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateConsumer
-import com.jetbrains.toolbox.api.ui.ToolboxUi
-import java.util.concurrent.CompletableFuture
+import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
+import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
+import com.jetbrains.toolbox.api.ui.actions.ActionDescription
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Represents an agent and workspace combination.
@@ -19,56 +30,59 @@ import java.util.concurrent.CompletableFuture
  * Used in the environment list view.
  */
 class CoderRemoteEnvironment(
+    private val context: CoderToolboxContext,
     private val client: CoderRestClient,
     private var workspace: Workspace,
     private var agent: WorkspaceAgent,
-    private val ui: ToolboxUi,
-) : AbstractRemoteProviderEnvironment() {
-    override fun getId(): String = "${workspace.name}.${agent.name}"
-    override fun getName(): String = "${workspace.name}.${agent.name}"
-    private var status = WorkspaceAndAgentStatus.from(workspace, agent)
+) : RemoteProviderEnvironment("${workspace.name}.${agent.name}") {
+    private var wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
 
-    init {
-        actionsList.add(
-            Action("Open web terminal") {
-                // TODO - check this later
-//                ui.openUrl(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString())
-            },
-        )
-        actionsList.add(
-            Action("Open in dashboard") {
-                // TODO - check this later
-//                ui.openUrl(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString())
-            },
-        )
-        actionsList.add(
-            Action("View template") {
-                // TODO - check this later
-//                ui.openUrl(client.url.withPath("/templates/${workspace.templateName}").toString())
-            },
-        )
-        actionsList.add(
-            Action("Start", enabled = { status.canStart() }) {
-                val build = client.startWorkspace(workspace)
-                workspace = workspace.copy(latestBuild = build)
-                update(workspace, agent)
-            },
-        )
-        actionsList.add(
-            Action("Stop", enabled = { status.ready() || status.pending() }) {
-                val build = client.stopWorkspace(workspace)
-                workspace = workspace.copy(latestBuild = build)
-                update(workspace, agent)
-            },
-        )
-        actionsList.add(
-            Action("Update", enabled = { workspace.outdated }) {
-                val build = client.updateWorkspace(workspace)
-                workspace = workspace.copy(latestBuild = build)
-                update(workspace, agent)
-            },
-        )
-    }
+    override var name: String = "${workspace.name}.${agent.name}"
+    override val state: MutableStateFlow<RemoteEnvironmentState> =
+        MutableStateFlow(wsRawStatus.toRemoteEnvironmentState(context))
+    override val description: MutableStateFlow<EnvironmentDescription> =
+        MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
+
+    override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
+
+    private fun getAvailableActions(): List<ActionDescription> = listOf(
+        Action(context.i18n.ptrl("Open web terminal")) {
+            context.cs.launch {
+                BrowserUtil.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
+                    context.ui.showErrorInfoPopup(it)
+                }
+            }
+        },
+        Action(context.i18n.ptrl("Open in dashboard")) {
+            context.cs.launch {
+                BrowserUtil.browse(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()) {
+                    context.ui.showErrorInfoPopup(it)
+                }
+            }
+        },
+
+        Action(context.i18n.ptrl("View template")) {
+            context.cs.launch {
+                BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
+                    context.ui.showErrorInfoPopup(it)
+                }
+            }
+        },
+        Action(context.i18n.ptrl("Start"), enabled = { wsRawStatus.canStart() }) {
+            val build = client.startWorkspace(workspace)
+            workspace = workspace.copy(latestBuild = build)
+            update(workspace, agent)
+        },
+        Action(context.i18n.ptrl("Stop"), enabled = { wsRawStatus.canStop() }) {
+            val build = client.stopWorkspace(workspace)
+            workspace = workspace.copy(latestBuild = build)
+            update(workspace, agent)
+        },
+        Action(context.i18n.ptrl("Update"), enabled = { workspace.outdated }) {
+            val build = client.updateWorkspace(workspace)
+            workspace = workspace.copy(latestBuild = build)
+            update(workspace, agent)
+        })
 
     /**
      * Update the workspace/agent status to the listeners, if it has changed.
@@ -76,11 +90,16 @@ class CoderRemoteEnvironment(
     fun update(workspace: Workspace, agent: WorkspaceAgent) {
         this.workspace = workspace
         this.agent = agent
-        val newStatus = WorkspaceAndAgentStatus.from(workspace, agent)
-        if (newStatus != status) {
-            status = newStatus
-            val state = status.toRemoteEnvironmentState()
-            listenerSet.forEach { it.consume(state) }
+        wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
+        // we have to regenerate the action list in order to force a redraw
+        // because the actions don't have a state flow on the enabled property
+        actionsList.update {
+            getAvailableActions()
+        }
+        context.cs.launch {
+            state.update {
+                wsRawStatus.toRemoteEnvironmentState(context)
+            }
         }
     }
 
@@ -88,32 +107,66 @@ class CoderRemoteEnvironment(
      * The contents are provided by the SSH view provided by Toolbox, all we
      * have to do is provide it a host name.
      */
-    override fun getContentsView(): CompletableFuture<EnvironmentContentsView> =
-        CompletableFuture.completedFuture(EnvironmentView(client.url, workspace, agent))
+    override suspend
+    fun getContentsView(): EnvironmentContentsView = EnvironmentView(client.url, workspace, agent)
+
+    override val connectionRequest: MutableStateFlow<Boolean>? = MutableStateFlow(false)
 
     /**
-     * Does nothing.  In theory we could do something like start the workspace
-     * when you click into the workspace but you would still need to press
+     * Does nothing.  In theory, we could do something like start the workspace
+     * when you click into the workspace, but you would still need to press
      * "connect" anyway before the content is populated so there does not seem
      * to be much value.
      */
-    override fun setVisible(visibilityState: EnvironmentVisibilityState) {}
-
-    /**
-     * Immediately send the state to the listener and store for updates.
-     */
-    override fun addStateListener(consumer: EnvironmentStateConsumer): Boolean {
-        // TODO@JB: It would be ideal if we could have the workspace state and
-        //          the connected state listed separately, since right now the
-        //          connected state can mask the workspace state.
-        // TODO@JB: You can still press connect if the environment is
-        //          unreachable.  Is that expected?
-        consumer.consume(status.toRemoteEnvironmentState())
-        return super.addStateListener(consumer)
+    override fun setVisible(visibilityState: EnvironmentVisibilityState) {
+        if (wsRawStatus.ready() && visibilityState.contentsVisible == true && visibilityState.isBackendConnected == false) {
+            context.logger.info("Connecting to $id...")
+            context.cs.launch {
+                connectionRequest?.update {
+                    true
+                }
+            }
+        }
     }
 
     override fun onDelete() {
-        throw NotImplementedError()
+        context.cs.launch {
+            val shouldDelete = if (wsRawStatus.canStop()) {
+                context.ui.showOkCancelPopup(
+                    context.i18n.ptrl("Delete running workspace?"),
+                    context.i18n.ptrl("Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical."),
+                    context.i18n.ptrl("Delete"),
+                    context.i18n.ptrl("Cancel")
+                )
+            } else {
+                context.ui.showOkCancelPopup(
+                    context.i18n.ptrl("Delete workspace?"),
+                    context.i18n.ptrl("All the information in this workspace will be lost, including all files, unsaved changes and historical."),
+                    context.i18n.ptrl("Delete"),
+                    context.i18n.ptrl("Cancel")
+                )
+            }
+            if (shouldDelete) {
+                try {
+                    client.removeWorkspace(workspace)
+                    context.cs.launch {
+                        withTimeout(5.minutes) {
+                            var workspaceStillExists = true
+                            while (context.cs.isActive && workspaceStillExists) {
+                                if (wsRawStatus == WorkspaceAndAgentStatus.DELETING || wsRawStatus == WorkspaceAndAgentStatus.DELETED) {
+                                    workspaceStillExists = false
+                                    context.envPageManager.showPluginEnvironmentsPage()
+                                } else {
+                                    delay(1.seconds)
+                                }
+                            }
+                        }
+                    }
+                } catch (e: APIResponseException) {
+                    context.ui.showErrorInfoPopup(e)
+                }
+            }
+        }
     }
 
     /**
@@ -123,12 +176,12 @@ class CoderRemoteEnvironment(
         if (other == null) return false
         if (this === other) return true // Note the triple ===
         if (other !is CoderRemoteEnvironment) return false
-        if (getId() != other.getId()) return false
+        if (id != other.id) return false
         return true
     }
 
     /**
      * Companion to equals, for sets.
      */
-    override fun hashCode(): Int = getId().hashCode()
+    override fun hashCode(): Int = id.hashCode()
 }

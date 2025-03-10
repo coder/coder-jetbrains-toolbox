@@ -32,7 +32,7 @@ internal class PathExtensionsTest {
     private fun setupDirs(): Path {
         val tmpdir =
             Path.of(System.getProperty("java.io.tmpdir"))
-                .resolve("coder-gateway-test/path-extensions/")
+                .resolve("coder-toolbox-test/path-extensions/")
 
         // Clean up from the last run, if any.
         tmpdir.toFile().deleteRecursively()
@@ -87,7 +87,7 @@ internal class PathExtensionsTest {
 
         // Can create under a writable directory.
         assertTrue(tmpdir.canCreateDirectory())
-        assertTrue(tmpdir.resolve("./foo/bar/../../coder-gateway-test/path-extensions").canCreateDirectory())
+        assertTrue(tmpdir.resolve("./foo/bar/../../coder-toolbox-test/path-extensions").canCreateDirectory())
         assertTrue(tmpdir.resolve("nested/under/dir").canCreateDirectory())
         assertTrue(tmpdir.resolve("with space").canCreateDirectory())
 

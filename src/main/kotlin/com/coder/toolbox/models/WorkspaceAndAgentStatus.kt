@@ -1,14 +1,15 @@
 package com.coder.toolbox.models
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.jetbrains.toolbox.api.core.ui.color.Color
 import com.jetbrains.toolbox.api.core.ui.color.StateColor
-import com.jetbrains.toolbox.api.core.ui.color.ThemeColor
 import com.jetbrains.toolbox.api.remoteDev.states.CustomRemoteEnvironmentState
+import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateIcons
+import com.jetbrains.toolbox.api.remoteDev.states.StandardRemoteEnvironmentState
 
 /**
  * WorkspaceAndAgentStatus represents the combined status of a single agent and
@@ -57,25 +58,31 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
      * Note that a reachable environment will always display "connected" or
      * "disconnected" regardless of the label we give that status.
      */
-    fun toRemoteEnvironmentState(): CustomRemoteEnvironmentState {
-        // Use comments; no named arguments for non-Kotlin functions.
-        // TODO@JB: Is there a set of default colors we could use?
+    fun toRemoteEnvironmentState(context: CoderToolboxContext): CustomRemoteEnvironmentState {
         return CustomRemoteEnvironmentState(
             label,
-            StateColor(
-                ThemeColor(
-                    Color(0.407f, 0.439f, 0.502f, 1.0f), // lightThemeColor
-                    Color(0.784f, 0.784f, 0.784f, 0.784f), // darkThemeColor
-                ),
-                ThemeColor(
-                    Color(0.878f, 0.878f, 0.941f, 0.102f), // darkThemeBackgroundColor
-                    Color(0.878f, 0.878f, 0.961f, 0.980f), // lightThemeBackgroundColor
-                )
-            ),
+            getStateColor(context),
             ready(), // reachable
             // TODO@JB: How does this work?  Would like a spinner for pending states.
-            null, // iconId
+            getStateIcon()
         )
+    }
+
+    private fun getStateColor(context: CoderToolboxContext): StateColor {
+        return if (ready()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Active)
+        else if (canStart()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Failed)
+        else if (pending()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Activating)
+        else if (this == DELETING) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
+        else if (this == DELETED) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
+        else context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Unreachable)
+    }
+
+    private fun getStateIcon(): EnvironmentStateIcons {
+        return if (ready()) EnvironmentStateIcons.Active
+        else if (canStart()) EnvironmentStateIcons.Hibernated
+        else if (pending()) EnvironmentStateIcons.Connecting
+        else if (this == DELETING || this == DELETED) EnvironmentStateIcons.Offline
+        else EnvironmentStateIcons.NoIcon
     }
 
     /**
@@ -105,6 +112,11 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
      */
     fun canStart(): Boolean = listOf(STOPPED, FAILED, CANCELED)
         .contains(this)
+
+    /**
+     * Return true if the workspace can be stopped.
+     */
+    fun canStop(): Boolean = ready() || pending()
 
     // We want to check that the workspace is `running`, the agent is
     // `connected`, and the agent lifecycle state is `ready` to ensure the best

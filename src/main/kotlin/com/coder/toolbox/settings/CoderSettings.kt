@@ -8,7 +8,7 @@ import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.safeHost
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.withPath
-import org.slf4j.LoggerFactory
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
@@ -34,7 +34,7 @@ enum class Source {
      * Return a description of the source.
      */
     fun description(name: String): String = when (this) {
-        CONFIG ->  "This $name was pulled from your global CLI config."
+        CONFIG -> "This $name was pulled from your global CLI config."
         DEPLOYMENT_CONFIG -> "This $name was pulled from your deployment's CLI config."
         LAST_USED -> "This was the last used $name."
         QUERY -> "This $name was pulled from the Gateway link."
@@ -120,6 +120,7 @@ data class CoderTLSSettings(private val state: CoderSettingsState) {
 open class CoderSettings(
     // Raw mutable setting state.
     private val state: CoderSettingsState,
+    private val logger: Logger,
     // The location of the SSH config.  Defaults to ~/.ssh/config.
     val sshConfigPath: Path = Path.of(System.getProperty("user.home")).resolve(".ssh/config"),
     // Overrides the default environment (for tests).
@@ -127,8 +128,6 @@ open class CoderSettings(
     // Overrides the default binary name (for tests).
     private val binaryName: String? = null,
 ) {
-    private val logger = LoggerFactory.getLogger(javaClass)
-
     val tls = CoderTLSSettings(state)
 
     /**
@@ -284,12 +283,12 @@ open class CoderSettings(
             // SSH has not been configured yet, or using some other authorization mechanism.
             null
         } to
-            try {
-                Files.readString(dir.resolve("session"))
-            } catch (e: Exception) {
-                // SSH has not been configured yet, or using some other authorization mechanism.
-                null
-            }
+                try {
+                    Files.readString(dir.resolve("session"))
+                } catch (e: Exception) {
+                    // SSH has not been configured yet, or using some other authorization mechanism.
+                    null
+                }
     }
 
     /**
@@ -334,14 +333,14 @@ open class CoderSettings(
     val dataDir: Path
         get() {
             return when (getOS()) {
-                OS.WINDOWS -> Paths.get(env.get("LOCALAPPDATA"), "coder-gateway")
-                OS.MAC -> Paths.get(env.get("HOME"), "Library/Application Support/coder-gateway")
+                OS.WINDOWS -> Paths.get(env.get("LOCALAPPDATA"), "coder-toolbox")
+                OS.MAC -> Paths.get(env.get("HOME"), "Library/Application Support/coder-toolbox")
                 else -> {
                     val dir = env.get("XDG_DATA_HOME")
                     if (dir.isNotBlank()) {
-                        return Paths.get(dir, "coder-gateway")
+                        return Paths.get(dir, "coder-toolbox")
                     }
-                    return Paths.get(env.get("HOME"), ".local/share/coder-gateway")
+                    return Paths.get(env.get("HOME"), ".local/share/coder-toolbox")
                 }
             }
         }

@@ -16,51 +16,45 @@ import com.coder.toolbox.views.ConnectPage
 import com.coder.toolbox.views.NewEnvironmentPage
 import com.coder.toolbox.views.SignInPage
 import com.coder.toolbox.views.TokenPage
-import com.jetbrains.toolbox.api.core.PluginSecretStore
-import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
+import com.jetbrains.toolbox.api.core.util.LoadableState
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
-import com.jetbrains.toolbox.api.remoteDev.RemoteEnvironmentConsumer
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
-import com.jetbrains.toolbox.api.ui.ToolboxUi
-import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
-import com.jetbrains.toolbox.api.ui.components.AccountDropdownField
+import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
+import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
-import org.slf4j.LoggerFactory
 import java.net.URI
 import java.net.URL
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
+import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as DropDownMenu
+import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as dropDownFactory
 
 class CoderRemoteProvider(
+    private val context: CoderToolboxContext,
     private val httpClient: OkHttpClient,
-    private val consumer: RemoteEnvironmentConsumer,
-    private val coroutineScope: CoroutineScope,
-    private val ui: ToolboxUi,
-    settingsStore: PluginSettingsStore,
-    secretsStore: PluginSecretStore,
-) : RemoteProvider {
-    private val logger = LoggerFactory.getLogger(javaClass)
-
+) : RemoteProvider("Coder") {
     // Current polling job.
     private var pollJob: Job? = null
     private var lastEnvironments: Set<CoderRemoteEnvironment>? = null
 
     // Create our services from the Toolbox ones.
-    private val settingsService = CoderSettingsService(settingsStore)
-    private val settings: CoderSettings = CoderSettings(settingsService)
-    private val secrets: CoderSecretsService = CoderSecretsService(secretsStore)
-    private val settingsPage: CoderSettingsPage = CoderSettingsPage(settingsService)
-    private val dialogUi = DialogUi(settings, ui)
-    private val linkHandler = LinkHandler(settings, httpClient, dialogUi)
+    private val settingsService = CoderSettingsService(context.settingsStore)
+    private val settings: CoderSettings = CoderSettings(settingsService, context.logger)
+    private val secrets: CoderSecretsService = CoderSecretsService(context.secretsStore)
+    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, settingsService)
+    private val dialogUi = DialogUi(context, settings)
+    private val linkHandler = LinkHandler(context, settings, httpClient, dialogUi)
 
-    // The REST client, if we are signed in.
+    // The REST client, if we are signed in
     private var client: CoderRestClient? = null
 
     // If we have an error in the polling we store it here before going back to
@@ -71,16 +65,20 @@ class CoderRemoteProvider(
     // On the first load, automatically log in if we can.
     private var firstRun = true
 
+    override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
+        LoadableState.Value(emptyList())
+    )
+
     /**
      * With the provided client, start polling for workspaces.  Every time a new
      * workspace is added, reconfigure SSH using the provided cli (including the
      * first time).
      */
-    private fun poll(client: CoderRestClient, cli: CoderCLIManager): Job = coroutineScope.launch {
+    private fun poll(client: CoderRestClient, cli: CoderCLIManager): Job = context.cs.launch {
         while (isActive) {
             try {
-                logger.debug("Fetching workspace agents from {}", client.url)
-                val environments = client.workspaces().flatMap { ws ->
+                context.logger.debug("Fetching workspace agents from ${client.url}")
+                val resolvedEnvironments = client.workspaces().flatMap { ws ->
                     // Agents are not included in workspaces that are off
                     // so fetch them separately.
                     when (ws.latestBuild.status) {
@@ -96,7 +94,7 @@ class CoderRemoteProvider(
                             it.name
                         }?.map { agent ->
                             // If we have an environment already, update that.
-                            val env = CoderRemoteEnvironment(client, ws, agent, ui)
+                            val env = CoderRemoteEnvironment(context, client, ws, agent)
                             lastEnvironments?.firstOrNull { it == env }?.let {
                                 it.update(ws, agent)
                                 it
@@ -113,21 +111,23 @@ class CoderRemoteProvider(
                 // Reconfigure if a new environment is found.
                 // TODO@JB: Should we use the add/remove listeners instead?
                 val newEnvironments = lastEnvironments
-                    ?.let { environments.subtract(it) }
-                    ?: environments
+                    ?.let { resolvedEnvironments.subtract(it) }
+                    ?: resolvedEnvironments
                 if (newEnvironments.isNotEmpty()) {
-                    logger.info("Found new environment(s), reconfiguring CLI: {}", newEnvironments)
+                    context.logger.info("Found new environment(s), reconfiguring CLI: $newEnvironments")
                     cli.configSsh(newEnvironments.map { it.name }.toSet())
                 }
 
-                consumer.consumeEnvironments(environments, true)
+                environments.update {
+                    LoadableState.Value(resolvedEnvironments.toList())
+                }
 
-                lastEnvironments = environments
+                lastEnvironments = resolvedEnvironments
             } catch (_: CancellationException) {
-                logger.debug("{} polling loop canceled", client.url)
+                context.logger.debug("${client.url} polling loop canceled")
                 break
             } catch (ex: Exception) {
-                logger.info("setting exception $ex")
+                context.logger.info(ex, "workspace polling error encountered")
                 pollError = ex
                 logout()
                 break
@@ -146,27 +146,25 @@ class CoderRemoteProvider(
         // rememberMe to false so we do not try to automatically log in.
         secrets.rememberMe = "false"
         close()
-        reset()
     }
 
     /**
      * A dropdown that appears at the top of the environment list to the right.
      */
-    override fun getAccountDropDown(): AccountDropdownField? {
+    override fun getAccountDropDown(): DropDownMenu? {
         val username = client?.me?.username
         if (username != null) {
-            return AccountDropdownField(username, Runnable { logout() })
+            return dropDownFactory(context.i18n.pnotr(username), { logout() })
         }
         return null
     }
 
-    /**
-     * List of actions that appear next to the account.
-     */
-    override fun getAdditionalPluginActions(): List<RunnableActionDescription> = listOf(
-        Action("Settings", closesPage = false) {
-            ui.showUiPage(settingsPage)
-        },
+    override val additionalPluginActions: StateFlow<List<ActionDescription>> = MutableStateFlow(
+        listOf(
+            Action(context.i18n.ptrl("Settings")) {
+                context.ui.showUiPage(settingsPage)
+            },
+        )
     )
 
     /**
@@ -179,21 +177,21 @@ class CoderRemoteProvider(
         pollJob?.cancel()
         client = null
         lastEnvironments = null
-        consumer.consumeEnvironments(emptyList(), true)
+        environments.value = LoadableState.Value(emptyList())
     }
 
-    override fun getName(): String = "Coder Gateway"
-    override fun getSvgIcon(): SvgIcon =
+    override val svgIcon: SvgIcon =
         SvgIcon(this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf())
 
-    override fun getNoEnvironmentsSvgIcon(): ByteArray =
-        this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf()
+    override val noEnvironmentsSvgIcon: SvgIcon? =
+        SvgIcon(this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf())
 
     /**
      * TODO@JB: It would be nice to show "loading workspaces" at first but it
      *          appears to be only called once.
      */
-    override fun getNoEnvironmentsDescription(): String = "No workspaces yet"
+    override val noEnvironmentsDescription: String? = "No workspaces yet"
+
 
     /**
      * TODO@JB: Supposedly, setting this to false causes the new environment
@@ -202,18 +200,19 @@ class CoderRemoteProvider(
      *          this changes it would be nice to have a new spot to show the
      *          URL.
      */
-    override fun canCreateNewEnvironments(): Boolean = false
+    override val canCreateNewEnvironments: Boolean = false
 
     /**
      * Just displays the deployment URL at the moment, but we could use this as
      * a form for creating new environments.
      */
-    override fun getNewEnvironmentUiPage(): UiPage = NewEnvironmentPage(client?.url?.toString())
+    override fun getNewEnvironmentUiPage(): UiPage =
+        NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
 
     /**
      * We always show a list of environments.
      */
-    override fun isSingleEnvironment(): Boolean = false
+    override val isSingleEnvironment: Boolean = false
 
     /**
      *  TODO: Possibly a good idea to start/stop polling based on visibility, at
@@ -224,23 +223,15 @@ class CoderRemoteProvider(
     override fun setVisible(visibilityState: ProviderVisibilityState) {}
 
     /**
-     * Ignored; unsure if we should use this over the consumer we get passed in.
-     */
-    override fun addEnvironmentsListener(listener: RemoteEnvironmentConsumer) {}
-
-    /**
-     * Ignored; unsure if we should use this over the consumer we get passed in.
-     */
-    override fun removeEnvironmentsListener(listener: RemoteEnvironmentConsumer) {}
-
-    /**
      * Handle incoming links (like from the dashboard).
      */
-    override fun handleUri(uri: URI) {
+    override suspend fun handleUri(uri: URI) {
         val params = uri.toQueryParameters()
-        val name = linkHandler.handle(params)
-        // TODO@JB: Now what?  How do we actually connect this workspace?
-        logger.debug("External request for {}: {}", name, uri)
+        context.cs.launch {
+            val name = linkHandler.handle(params)
+            // TODO@JB: Now what?  How do we actually connect this workspace?
+            context.logger.debug("External request for $name: $uri")
+        }
     }
 
     /**
@@ -251,9 +242,8 @@ class CoderRemoteProvider(
      * ui.hideUiPage() which stacks and has built-in back navigation, rather
      * than using multiple root pages.
      */
-    private fun reset() {
-        // TODO - check this later
-//        ui.showPluginEnvironmentsPage()
+    private fun goToEnvironmentsPage() {
+        context.envPageManager.showPluginEnvironmentsPage()
     }
 
     /**
@@ -282,13 +272,18 @@ class CoderRemoteProvider(
             firstRun = false
 
             // Login flow.
-            val signInPage = SignInPage(getDeploymentURL()) { deploymentURL ->
-                ui.showUiPage(
-                    TokenPage(deploymentURL, getToken(deploymentURL)) { selectedToken ->
-                        ui.showUiPage(createConnectPage(deploymentURL, selectedToken))
-                    },
-                )
-            }
+            val signInPage =
+                SignInPage(context, getDeploymentURL()) { deploymentURL ->
+                    context.ui.showUiPage(
+                        TokenPage(
+                            context,
+                            deploymentURL,
+                            getToken(deploymentURL)
+                        ) { selectedToken ->
+                            context.ui.showUiPage(createConnectPage(deploymentURL, selectedToken))
+                        },
+                    )
+                }
 
             // We might have tried and failed to automatically log in.
             autologinEx?.let { signInPage.notify("Error logging in", it) }
@@ -304,12 +299,12 @@ class CoderRemoteProvider(
      * Create a connect page that starts polling and resets the UI on success.
      */
     private fun createConnectPage(deploymentURL: URL, token: String?): ConnectPage = ConnectPage(
+        context,
         deploymentURL,
         token,
         settings,
         httpClient,
-        coroutineScope,
-        { reset() },
+        ::goToEnvironmentsPage,
     ) { client, cli ->
         // Store the URL and token for use next time.
         secrets.lastDeploymentURL = client.url.toString()
@@ -320,7 +315,7 @@ class CoderRemoteProvider(
         pollError = null
         pollJob?.cancel()
         pollJob = poll(client, cli)
-        reset()
+        goToEnvironmentsPage()
     }
 
     /**

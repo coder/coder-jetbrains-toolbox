@@ -1,5 +1,6 @@
 package com.coder.toolbox.sdk
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.convertors.ArchConverter
 import com.coder.toolbox.sdk.convertors.InstantConverter
 import com.coder.toolbox.sdk.convertors.OSConverter
@@ -49,9 +50,10 @@ data class ProxyValues(
  * The token can be omitted if some other authentication mechanism is in use.
  */
 open class CoderRestClient(
+    context: CoderToolboxContext,
     val url: URL,
     val token: String?,
-    private val settings: CoderSettings = CoderSettings(CoderSettingsState()),
+    private val settings: CoderSettings = CoderSettings(CoderSettingsState(), context.logger),
     private val proxyValues: ProxyValues? = null,
     private val pluginVersion: String = "development",
     existingHttpClient: OkHttpClient? = null,
@@ -92,7 +94,11 @@ open class CoderRestClient(
         }
 
         if (token != null) {
-            builder = builder.addInterceptor { it.proceed(it.request().newBuilder().addHeader("Coder-Session-Token", token).build()) }
+            builder = builder.addInterceptor {
+                it.proceed(
+                    it.request().newBuilder().addHeader("Coder-Session-Token", token).build()
+                )
+            }
         }
 
         httpClient =
@@ -103,7 +109,7 @@ open class CoderRestClient(
                     it.proceed(
                         it.request().newBuilder().addHeader(
                             "User-Agent",
-                            "Coder Gateway/$pluginVersion (${getOS()}; ${getArch()})",
+                            "Coder Toolbox/$pluginVersion (${getOS()}; ${getArch()})",
                         ).build(),
                     )
                 }
@@ -185,7 +191,8 @@ open class CoderRestClient(
      * @throws [APIResponseException].
      */
     fun resources(workspace: Workspace): List<WorkspaceResource> {
-        val resourcesResponse = retroRestClient.templateVersionResources(workspace.latestBuild.templateVersionID).execute()
+        val resourcesResponse =
+            retroRestClient.templateVersionResources(workspace.latestBuild.templateVersionID).execute()
         if (!resourcesResponse.isSuccessful) {
             throw APIResponseException("retrieve resources for ${workspace.name}", url, resourcesResponse)
         }
@@ -224,7 +231,6 @@ open class CoderRestClient(
     }
 
     /**
-     * @throws [APIResponseException].
      */
     fun stopWorkspace(workspace: Workspace): WorkspaceBuild {
         val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.STOP)
@@ -233,6 +239,17 @@ open class CoderRestClient(
             throw APIResponseException("stop workspace ${workspace.name}", url, buildResponse)
         }
         return buildResponse.body()!!
+    }
+
+    /**
+     * @throws [APIResponseException] if issues are encountered during deletion
+     */
+    fun removeWorkspace(workspace: Workspace) {
+        val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.DELETE, false)
+        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest).execute()
+        if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
+            throw APIResponseException("delete workspace ${workspace.name}", url, buildResponse)
+        }
     }
 
     /**

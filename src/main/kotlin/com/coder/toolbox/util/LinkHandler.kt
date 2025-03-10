@@ -1,7 +1,9 @@
 package com.coder.toolbox.util
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
+import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.Workspace
@@ -14,6 +16,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 open class LinkHandler(
+    private val context: CoderToolboxContext,
     private val settings: CoderSettings,
     private val httpClient: OkHttpClient?,
     private val dialogUi: DialogUi,
@@ -25,11 +28,15 @@ open class LinkHandler(
      * Throw if required arguments are not supplied or the workspace is not in a
      * connectable state.
      */
-    fun handle(
+    suspend fun handle(
         parameters: Map<String, String>,
         indicator: ((t: String) -> Unit)? = null,
     ): String {
-        val deploymentURL = parameters.url() ?: dialogUi.ask("Deployment URL", "Enter the full URL of your Coder deployment")
+        val deploymentURL =
+            parameters.url() ?: dialogUi.ask(
+                context.i18n.ptrl("Deployment URL"),
+                context.i18n.ptrl("Enter the full URL of your Coder deployment")
+            )
         if (deploymentURL.isNullOrBlank()) {
             throw MissingArgumentException("Query parameter \"$URL\" is missing")
         }
@@ -43,11 +50,12 @@ open class LinkHandler(
         val client = try {
             authenticate(deploymentURL, queryToken)
         } catch (ex: MissingArgumentException) {
-            throw MissingArgumentException("Query parameter \"$TOKEN\" is missing")
+            throw MissingArgumentException("Query parameter \"$TOKEN\" is missing", ex)
         }
 
         // TODO: Show a dropdown and ask for the workspace if missing.
-        val workspaceName = parameters.workspace() ?: throw MissingArgumentException("Query parameter \"$WORKSPACE\" is missing")
+        val workspaceName =
+            parameters.workspace() ?: throw MissingArgumentException("Query parameter \"$WORKSPACE\" is missing")
 
         val workspaces = client.workspaces()
         val workspace =
@@ -59,19 +67,28 @@ open class LinkHandler(
             WorkspaceStatus.PENDING, WorkspaceStatus.STARTING ->
                 // TODO: Wait for the workspace to turn on.
                 throw IllegalArgumentException(
-                    "The workspace \"$workspaceName\" is ${workspace.latestBuild.status.toString().lowercase()}; please wait then try again",
+                    "The workspace \"$workspaceName\" is ${
+                        workspace.latestBuild.status.toString().lowercase()
+                    }; please wait then try again",
                 )
+
             WorkspaceStatus.STOPPING, WorkspaceStatus.STOPPED,
             WorkspaceStatus.CANCELING, WorkspaceStatus.CANCELED,
-            ->
+                ->
                 // TODO: Turn on the workspace.
                 throw IllegalArgumentException(
-                    "The workspace \"$workspaceName\" is ${workspace.latestBuild.status.toString().lowercase()}; please start the workspace and try again",
+                    "The workspace \"$workspaceName\" is ${
+                        workspace.latestBuild.status.toString().lowercase()
+                    }; please start the workspace and try again",
                 )
+
             WorkspaceStatus.FAILED, WorkspaceStatus.DELETING, WorkspaceStatus.DELETED ->
                 throw IllegalArgumentException(
-                    "The workspace \"$workspaceName\" is ${workspace.latestBuild.status.toString().lowercase()}; unable to connect",
+                    "The workspace \"$workspaceName\" is ${
+                        workspace.latestBuild.status.toString().lowercase()
+                    }; unable to connect",
                 )
+
             WorkspaceStatus.RUNNING -> Unit // All is well
         }
 
@@ -82,14 +99,21 @@ open class LinkHandler(
         if (status.pending()) {
             // TODO: Wait for the agent to be ready.
             throw IllegalArgumentException(
-                "The agent \"${agent.name}\" has a status of \"${status.toString().lowercase()}\"; please wait then try again",
+                "The agent \"${agent.name}\" has a status of \"${
+                    status.toString().lowercase()
+                }\"; please wait then try again",
             )
         } else if (!status.ready()) {
-            throw IllegalArgumentException("The agent \"${agent.name}\" has a status of \"${status.toString().lowercase()}\"; unable to connect")
+            throw IllegalArgumentException(
+                "The agent \"${agent.name}\" has a status of \"${
+                    status.toString().lowercase()
+                }\"; unable to connect"
+            )
         }
 
         val cli =
             ensureCLI(
+                context,
                 deploymentURL.toURL(),
                 client.buildInfo().version,
                 settings,
@@ -119,7 +143,7 @@ open class LinkHandler(
      * Throw MissingArgumentException if the user aborts.  Any network or invalid
      * token error may also be thrown.
      */
-    private fun authenticate(
+    private suspend fun authenticate(
         deploymentURL: String,
         tryToken: Pair<String, Source>?,
         error: String? = null,
@@ -146,8 +170,15 @@ open class LinkHandler(
         }
         // The http client Toolbox gives us is already set up with the
         // proxy config, so we do net need to explicitly add it.
-        // TODO: How to get the plugin version?
-        val client = CoderRestClient(deploymentURL.toURL(), token?.first, settings, proxyValues = null, "production", httpClient)
+        val client = CoderRestClient(
+            context,
+            deploymentURL.toURL(),
+            token?.first,
+            settings,
+            proxyValues = null,
+            PluginManager.pluginInfo.version,
+            httpClient
+        )
         return try {
             client.authenticate()
             client
@@ -165,7 +196,7 @@ open class LinkHandler(
     /**
      * Check that the link is allowlisted.  If not, confirm with the user.
      */
-    private fun verifyDownloadLink(parameters: Map<String, String>) {
+    private suspend fun verifyDownloadLink(parameters: Map<String, String>) {
         val link = parameters.ideDownloadLink()
         if (link.isNullOrBlank()) {
             return // Nothing to verify
@@ -198,8 +229,8 @@ open class LinkHandler(
             }
 
         if (!dialogUi.confirm(
-                "Confirm download URL",
-                "$comment. Would you like to proceed to $linkWithRedirect?",
+                context.i18n.ptrl("Confirm download URL"),
+                context.i18n.pnotr("$comment. Would you like to proceed to $linkWithRedirect?"),
             )
         ) {
             throw IllegalArgumentException("$linkWithRedirect is not allowlisted")
@@ -226,7 +257,7 @@ private fun isAllowlisted(url: URL): Triple<Boolean, Boolean, String> {
 
     val allowlisted =
         domainAllowlist.any { url.host == it || url.host.endsWith(".$it") } &&
-            domainAllowlist.any { finalUrl.host == it || finalUrl.host.endsWith(".$it") }
+                domainAllowlist.any { finalUrl.host == it || finalUrl.host.endsWith(".$it") }
     val https = url.protocol == "https" && finalUrl.protocol == "https"
     return Triple(allowlisted, https, linkWithRedirect)
 }
@@ -301,4 +332,4 @@ internal fun getMatchingAgent(
     return agent
 }
 
-class MissingArgumentException(message: String) : IllegalArgumentException(message)
+class MissingArgumentException(message: String, ex: Throwable? = null) : IllegalArgumentException(message, ex)
