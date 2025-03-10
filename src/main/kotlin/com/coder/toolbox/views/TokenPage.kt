@@ -21,7 +21,7 @@ class TokenPage(
     private val token: Pair<String, Source>?,
     private val onToken: ((token: String) -> Unit),
 ) : CoderPage() {
-    private val tokenField = TextField("Token", token?.first ?: "", TextType.General)
+    private val tokenField = TextField("Token", token?.first ?: "", TextType.Password)
 
     override fun getTitle(): String = "Enter your token"
 
