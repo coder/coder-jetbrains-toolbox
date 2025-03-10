@@ -116,13 +116,19 @@ jobs:
             --jq '.[] | select(.draft == true) | .id' \
             | xargs -I '{}' gh api -X DELETE repos/${{ github.repository }}/releases/{}
 
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: artifacts/
+
       # Create new release draft - which is not publicly visible and requires manual acceptance
       - name: Create Release Draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create v${{ needs.build.outputs.version }} \
-            --draft \
+            --draft artifacts/* \
             --target ${GITHUB_REF_NAME} \
             --title "v${{ needs.build.outputs.version }}" \
             --notes-file RELEASE_NOTES.md
