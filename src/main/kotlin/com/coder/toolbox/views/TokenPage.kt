@@ -25,7 +25,7 @@ class TokenPage(
     token: Pair<String, Source>?,
     private val onToken: ((token: String) -> Unit),
 ) : CoderPage(context, context.i18n.ptrl("Enter your token")) {
-    private val tokenField = TextField(context.i18n.ptrl("Token"), token?.first ?: "", TextType.General)
+    private val tokenField = TextField(context.i18n.ptrl("Token"), token?.first ?: "", TextType.Password)
 
     /**
      * Fields for this page, displayed in order.
