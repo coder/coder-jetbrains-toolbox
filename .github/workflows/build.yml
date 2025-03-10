@@ -77,22 +77,18 @@ jobs:
       - name: Run Build
         run: ./gradlew clean pluginZip --info
 
-      # Prepare plugin archive content for creating artifact
-      - name: Prepare Plugin Artifact
-        id: artifact
-        shell: bash
-        run: |
-          cd ${{ github.workspace }}/build/distributions
-          FILENAME=$(ls *.zip)
-          unzip "$FILENAME" -d content
-          echo "filename=${FILENAME:0:-4}" >> $GITHUB_OUTPUT
-
       # Store already-built plugin as an artifact for downloading
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.artifact.outputs.filename }}
-          path: ./build/distributions/content/*/*
+          name: zip-artifacts
+          path: ./build/distributions/*.zip
+
+      - name: Upload Release Notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
 
   # Prepare a draft release for GitHub Releases page for the manual verification
   # If accepted and published, release workflow would be triggered
@@ -119,8 +115,16 @@ jobs:
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-artifacts
+          name: zip-artifacts
           path: artifacts/
+      - name: Display the Zip files that are going to be attached
+        run: ls -R artifacts/
+
+      - name: Download Release Notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: notes/
 
       # Create new release draft - which is not publicly visible and requires manual acceptance
       - name: Create Release Draft
@@ -131,4 +135,4 @@ jobs:
             --draft artifacts/* \
             --target ${GITHUB_REF_NAME} \
             --title "v${{ needs.build.outputs.version }}" \
-            --notes-file RELEASE_NOTES.md
+            --notes-file notes/RELEASE_NOTES.md
