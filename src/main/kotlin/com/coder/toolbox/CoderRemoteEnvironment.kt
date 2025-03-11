@@ -78,7 +78,7 @@ class CoderRemoteEnvironment(
             workspace = workspace.copy(latestBuild = build)
             update(workspace, agent)
         },
-        Action(context.i18n.ptrl("Update"), enabled = { workspace.outdated }) {
+        Action(context.i18n.ptrl("Update and start"), enabled = { workspace.outdated }) {
             val build = client.updateWorkspace(workspace)
             workspace = workspace.copy(latestBuild = build)
             update(workspace, agent)
