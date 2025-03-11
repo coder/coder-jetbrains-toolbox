@@ -73,7 +73,7 @@ msgstr ""
 msgid "Stop"
 msgstr ""
 
-msgid "Update"
+msgid "Update and start"
 msgstr ""
 
 msgid "Settings"
