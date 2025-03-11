@@ -17,6 +17,7 @@ import com.coder.toolbox.views.NewEnvironmentPage
 import com.coder.toolbox.views.SignInPage
 import com.coder.toolbox.views.TokenPage
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
+import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.core.util.LoadableState
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
@@ -181,10 +182,16 @@ class CoderRemoteProvider(
     }
 
     override val svgIcon: SvgIcon =
-        SvgIcon(this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf())
+        SvgIcon(
+            this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf(),
+            type = IconType.Masked
+        )
 
     override val noEnvironmentsSvgIcon: SvgIcon? =
-        SvgIcon(this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf())
+        SvgIcon(
+            this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf(),
+            type = IconType.Masked
+        )
 
     /**
      * TODO@JB: It would be nice to show "loading workspaces" at first but it
