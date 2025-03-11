@@ -68,7 +68,7 @@ class CoderRemoteEnvironment(
                 }
             }
         },
-        Action(context.i18n.ptrl("Start"), enabled = { wsRawStatus.canStart() }) {
+        Action(context.i18n.ptrl("Start"), enabled = { wsRawStatus.canStart() && !workspace.outdated }) {
             val build = client.startWorkspace(workspace)
             workspace = workspace.copy(latestBuild = build)
             update(workspace, agent)
