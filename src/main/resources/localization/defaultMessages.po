@@ -76,6 +76,9 @@ msgstr ""
 msgid "Update and start"
 msgstr ""
 
+msgid "Update and restart"
+msgstr ""
+
 msgid "Settings"
 msgstr ""
 
