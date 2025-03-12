@@ -72,22 +72,19 @@ class CoderRemoteEnvironment(
         if (wsRawStatus.canStart() && !workspace.outdated) {
             actions.add(Action(context.i18n.ptrl("Start")) {
                 val build = client.startWorkspace(workspace)
-                workspace = workspace.copy(latestBuild = build)
-                update(workspace, agent)
+                update(workspace.copy(latestBuild = build), agent)
             })
         }
         if (wsRawStatus.canStop()) {
             actions.add(Action(context.i18n.ptrl("Stop")) {
                 val build = client.stopWorkspace(workspace)
-                workspace = workspace.copy(latestBuild = build)
-                update(workspace, agent)
+                update(workspace.copy(latestBuild = build), agent)
             })
         }
         if (workspace.outdated) {
             actions.add(Action(context.i18n.ptrl("Update and start")) {
                 val build = client.updateWorkspace(workspace)
-                workspace = workspace.copy(latestBuild = build)
-                update(workspace, agent)
+                update(workspace.copy(latestBuild = build), agent)
             })
         }
 
