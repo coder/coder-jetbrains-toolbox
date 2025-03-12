@@ -45,44 +45,54 @@ class CoderRemoteEnvironment(
 
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
 
-    private fun getAvailableActions(): List<ActionDescription> = listOf(
-        Action(context.i18n.ptrl("Open web terminal")) {
-            context.cs.launch {
-                BrowserUtil.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
-                    context.ui.showErrorInfoPopup(it)
+    private fun getAvailableActions(): List<ActionDescription> {
+        val actions = mutableListOf(
+            Action(context.i18n.ptrl("Open web terminal")) {
+                context.cs.launch {
+                    BrowserUtil.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
+                        context.ui.showErrorInfoPopup(it)
+                    }
                 }
-            }
-        },
-        Action(context.i18n.ptrl("Open in dashboard")) {
-            context.cs.launch {
-                BrowserUtil.browse(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()) {
-                    context.ui.showErrorInfoPopup(it)
+            },
+            Action(context.i18n.ptrl("Open in dashboard")) {
+                context.cs.launch {
+                    BrowserUtil.browse(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()) {
+                        context.ui.showErrorInfoPopup(it)
+                    }
                 }
-            }
-        },
+            },
 
-        Action(context.i18n.ptrl("View template")) {
-            context.cs.launch {
-                BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
-                    context.ui.showErrorInfoPopup(it)
+            Action(context.i18n.ptrl("View template")) {
+                context.cs.launch {
+                    BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
+                        context.ui.showErrorInfoPopup(it)
+                    }
                 }
-            }
-        },
-        Action(context.i18n.ptrl("Start"), enabled = { wsRawStatus.canStart() && !workspace.outdated }) {
-            val build = client.startWorkspace(workspace)
-            workspace = workspace.copy(latestBuild = build)
-            update(workspace, agent)
-        },
-        Action(context.i18n.ptrl("Stop"), enabled = { wsRawStatus.canStop() }) {
-            val build = client.stopWorkspace(workspace)
-            workspace = workspace.copy(latestBuild = build)
-            update(workspace, agent)
-        },
-        Action(context.i18n.ptrl("Update and start"), enabled = { workspace.outdated }) {
-            val build = client.updateWorkspace(workspace)
-            workspace = workspace.copy(latestBuild = build)
-            update(workspace, agent)
-        })
+            })
+        if (wsRawStatus.canStart() && !workspace.outdated) {
+            actions.add(Action(context.i18n.ptrl("Start")) {
+                val build = client.startWorkspace(workspace)
+                workspace = workspace.copy(latestBuild = build)
+                update(workspace, agent)
+            })
+        }
+        if (wsRawStatus.canStop()) {
+            actions.add(Action(context.i18n.ptrl("Stop")) {
+                val build = client.stopWorkspace(workspace)
+                workspace = workspace.copy(latestBuild = build)
+                update(workspace, agent)
+            })
+        }
+        if (workspace.outdated) {
+            actions.add(Action(context.i18n.ptrl("Update and start")) {
+                val build = client.updateWorkspace(workspace)
+                workspace = workspace.copy(latestBuild = build)
+                update(workspace, agent)
+            })
+        }
+
+        return actions
+    }
 
     /**
      * Update the workspace/agent status to the listeners, if it has changed.
