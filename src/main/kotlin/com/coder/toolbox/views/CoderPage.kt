@@ -2,6 +2,7 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
+import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
@@ -46,9 +47,12 @@ abstract class CoderPage(
      * This seems to only work on the first page.
      */
     override val svgIcon: SvgIcon? = if (showIcon) {
-        SvgIcon(this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf())
+        SvgIcon(
+            this::class.java.getResourceAsStream("/icon.svg")?.readAllBytes() ?: byteArrayOf(),
+            type = IconType.Masked
+        )
     } else {
-        SvgIcon(byteArrayOf())
+        SvgIcon(byteArrayOf(), type = IconType.Masked)
     }
 
     /**
