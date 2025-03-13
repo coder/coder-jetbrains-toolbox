@@ -7,8 +7,8 @@ import com.coder.toolbox.services.CoderSecretsService
 import com.coder.toolbox.services.CoderSettingsService
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.Source
+import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
-import com.coder.toolbox.util.LinkHandler
 import com.coder.toolbox.util.toQueryParameters
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderSettingsPage
@@ -47,13 +47,15 @@ class CoderRemoteProvider(
     private var pollJob: Job? = null
     private var lastEnvironments: Set<CoderRemoteEnvironment>? = null
 
+    private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
+
     // Create our services from the Toolbox ones.
     private val settingsService = CoderSettingsService(context.settingsStore)
     private val settings: CoderSettings = CoderSettings(settingsService, context.logger)
     private val secrets: CoderSecretsService = CoderSecretsService(context.secretsStore)
     private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, settingsService)
     private val dialogUi = DialogUi(context, settings)
-    private val linkHandler = LinkHandler(context, settings, httpClient, dialogUi)
+    private val linkHandler = CoderProtocolHandler(context, settings, httpClient, dialogUi, isInitialized)
 
     // The REST client, if we are signed in
     private var client: CoderRestClient? = null
@@ -65,7 +67,6 @@ class CoderRemoteProvider(
 
     // On the first load, automatically log in if we can.
     private var firstRun = true
-
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
         LoadableState.Value(emptyList())
     )
@@ -234,11 +235,7 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         val params = uri.toQueryParameters()
-        context.cs.launch {
-            val name = linkHandler.handle(params)
-            // TODO@JB: Now what?  How do we actually connect this workspace?
-            context.logger.debug("External request for $name: $uri")
-        }
+        linkHandler.handle(params)
     }
 
     /**
@@ -323,6 +320,7 @@ class CoderRemoteProvider(
         pollJob?.cancel()
         pollJob = poll(client, cli)
         goToEnvironmentsPage()
+        isInitialized.update { true }
     }
 
     /**

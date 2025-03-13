@@ -11,15 +11,20 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.Source
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import java.net.HttpURLConnection
 import java.net.URL
 
-open class LinkHandler(
+open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
     private val settings: CoderSettings,
     private val httpClient: OkHttpClient?,
     private val dialogUi: DialogUi,
+    private val isInitialized: StateFlow<Boolean>,
 ) {
     /**
      * Given a set of URL parameters, prepare the CLI then return a workspace to
@@ -31,7 +36,7 @@ open class LinkHandler(
     suspend fun handle(
         parameters: Map<String, String>,
         indicator: ((t: String) -> Unit)? = null,
-    ): String {
+    ) {
         val deploymentURL =
             parameters.url() ?: dialogUi.ask(
                 context.i18n.ptrl("Deployment URL"),
@@ -129,10 +134,16 @@ open class LinkHandler(
         indicator?.invoke("Configuring Coder CLI...")
         cli.configSsh(client.agentNames(workspaces))
 
-        val name = "${workspace.name}.${agent.name}"
-        // TODO@JB: Can we ask for the IDE and project path or how does
-        //          this work?
-        return name
+        isInitialized.waitForTrue()
+        context.cs.launch {
+            context.ui.showWindow()
+            yield()
+            context.envPageManager.showEnvironmentPage("${workspace.name}.${agent.name}", false)
+            // without a yield or a delay(0) the env page does not show up. My assumption is that
+            // the coroutine is finishing too fast without giving enough time to compose main thread
+            // to catch the state change. Yielding gives other coroutines the chance to run
+            yield()
+        }
     }
 
     /**
@@ -330,6 +341,10 @@ internal fun getMatchingAgent(
     }
 
     return agent
+}
+
+fun StateFlow<Boolean>.waitForTrue() {
+    this.filter { it }
 }
 
 class MissingArgumentException(message: String, ex: Throwable? = null) : IllegalArgumentException(message, ex)
