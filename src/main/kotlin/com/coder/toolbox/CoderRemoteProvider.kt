@@ -172,8 +172,7 @@ class CoderRemoteProvider(
     /**
      * Cancel polling and clear the client and environments.
      *
-     * Called as part of our own logout but it is unclear where it is called by
-     * Toolbox.  Maybe on uninstall?
+     * Also called as part of our own logout.
      */
     override fun close() {
         pollJob?.cancel()
