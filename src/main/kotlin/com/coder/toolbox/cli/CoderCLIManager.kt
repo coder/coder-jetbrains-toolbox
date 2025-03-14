@@ -60,7 +60,6 @@ fun ensureCLI(
     deploymentURL: URL,
     buildVersion: String,
     settings: CoderSettings,
-    indicator: ((t: String) -> Unit)? = null,
 ): CoderCLIManager {
     val cli = CoderCLIManager(deploymentURL, context.logger, settings)
 
@@ -76,7 +75,7 @@ fun ensureCLI(
 
     // If downloads are enabled download the new version.
     if (settings.enableDownloads) {
-        indicator?.invoke("Downloading Coder CLI...")
+        context.logger.info("Downloading Coder CLI...")
         try {
             cli.download()
             return cli
@@ -98,7 +97,7 @@ fun ensureCLI(
     }
 
     if (settings.enableDownloads) {
-        indicator?.invoke("Downloading Coder CLI...")
+        context.logger.info("Downloading Coder CLI...")
         dataCLI.download()
         return dataCLI
     }

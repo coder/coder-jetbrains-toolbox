@@ -101,9 +101,7 @@ class ConnectPage(
                 )
                 client.authenticate()
                 updateStatus(context.i18n.ptrl("Checking Coder binary..."), error = null)
-                val cli = ensureCLI(context, client.url, client.buildVersion, settings) { status ->
-                    updateStatus(context.i18n.pnotr(status), error = null)
-                }
+                val cli = ensureCLI(context, client.url, client.buildVersion, settings)
                 // We only need to log in if we are using token-based auth.
                 if (client.token != null) {
                     updateStatus(context.i18n.ptrl("Configuring CLI..."), error = null)

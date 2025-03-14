@@ -33,10 +33,7 @@ open class CoderProtocolHandler(
      * Throw if required arguments are not supplied or the workspace is not in a
      * connectable state.
      */
-    suspend fun handle(
-        parameters: Map<String, String>,
-        indicator: ((t: String) -> Unit)? = null,
-    ) {
+    suspend fun handle(parameters: Map<String, String>) {
         val deploymentURL =
             parameters.url() ?: dialogUi.ask(
                 context.i18n.ptrl("Deployment URL"),
@@ -121,17 +118,16 @@ open class CoderProtocolHandler(
                 context,
                 deploymentURL.toURL(),
                 client.buildInfo().version,
-                settings,
-                indicator,
+                settings
             )
 
         // We only need to log in if we are using token-based auth.
         if (client.token != null) {
-            indicator?.invoke("Authenticating Coder CLI...")
+            context.logger.info("Authenticating Coder CLI...")
             cli.login(client.token)
         }
 
-        indicator?.invoke("Configuring Coder CLI...")
+        context.logger.info("Configuring Coder CLI...")
         cli.configSsh(client.agentNames(workspaces))
 
         isInitialized.waitForTrue()
