@@ -9,7 +9,6 @@ import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.Source
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
-import com.coder.toolbox.util.toQueryParameters
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.ConnectPage
@@ -233,8 +232,7 @@ class CoderRemoteProvider(
      * Handle incoming links (like from the dashboard).
      */
     override suspend fun handleUri(uri: URI) {
-        val params = uri.toQueryParameters()
-        linkHandler.handle(params) { restClient, cli ->
+        linkHandler.handle(uri) { restClient, cli ->
             // stop polling and de-initialize resources
             close()
             // start initialization with the new settings

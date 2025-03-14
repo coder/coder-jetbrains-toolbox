@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 
 open class CoderProtocolHandler(
@@ -35,19 +36,19 @@ open class CoderProtocolHandler(
      * connectable state.
      */
     suspend fun handle(
-        parameters: Map<String, String>,
+        uri: URI,
         onReinitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
-        val deploymentURL =
-            parameters.url() ?: dialogUi.ask(
-                context.i18n.ptrl("Deployment URL"),
-                context.i18n.ptrl("Enter the full URL of your Coder deployment")
-            )
+        val params = uri.toQueryParameters()
+
+        val deploymentURL = params.url() ?: askUrl()
         if (deploymentURL.isNullOrBlank()) {
-            throw MissingArgumentException("Query parameter \"$URL\" is missing")
+            context.logger.error("Query parameter \"$URL\" is missing from URI $uri")
+            context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because query parameter \"$URL\" is missing"))
+            return
         }
 
-        val queryTokenRaw = parameters.token()
+        val queryTokenRaw = params.token()
         val queryToken = if (!queryTokenRaw.isNullOrBlank()) {
             Pair(queryTokenRaw, Source.QUERY)
         } else {
@@ -61,7 +62,7 @@ open class CoderProtocolHandler(
 
         // TODO: Show a dropdown and ask for the workspace if missing.
         val workspaceName =
-            parameters.workspace() ?: throw MissingArgumentException("Query parameter \"$WORKSPACE\" is missing")
+            params.workspace() ?: throw MissingArgumentException("Query parameter \"$WORKSPACE\" is missing")
 
         val workspaces = restClient.workspaces()
         val workspace =
@@ -99,7 +100,7 @@ open class CoderProtocolHandler(
         }
 
         // TODO: Show a dropdown and ask for an agent if missing.
-        val agent = getMatchingAgent(parameters, workspace)
+        val agent = getMatchingAgent(params, workspace)
         val status = WorkspaceAndAgentStatus.from(workspace, agent)
 
         if (status.pending()) {
@@ -145,6 +146,15 @@ open class CoderProtocolHandler(
             // to catch the state change. Yielding gives other coroutines the chance to run
             yield()
         }
+    }
+
+    private suspend fun askUrl(): String? {
+        context.ui.showWindow()
+        context.envPageManager.showPluginEnvironmentsPage(false)
+        return dialogUi.ask(
+            context.i18n.ptrl("Deployment URL"),
+            context.i18n.ptrl("Enter the full URL of your Coder deployment")
+        )
     }
 
     /**
