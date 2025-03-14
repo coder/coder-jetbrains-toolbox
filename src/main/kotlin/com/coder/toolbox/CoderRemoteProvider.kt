@@ -47,15 +47,12 @@ class CoderRemoteProvider(
     private var pollJob: Job? = null
     private var lastEnvironments: Set<CoderRemoteEnvironment>? = null
 
-    private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
-
     // Create our services from the Toolbox ones.
     private val settingsService = CoderSettingsService(context.settingsStore)
     private val settings: CoderSettings = CoderSettings(settingsService, context.logger)
     private val secrets: CoderSecretsService = CoderSecretsService(context.secretsStore)
     private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, settingsService)
     private val dialogUi = DialogUi(context, settings)
-    private val linkHandler = CoderProtocolHandler(context, settings, httpClient, dialogUi, isInitialized)
 
     // The REST client, if we are signed in
     private var client: CoderRestClient? = null
@@ -67,6 +64,9 @@ class CoderRemoteProvider(
 
     // On the first load, automatically log in if we can.
     private var firstRun = true
+    private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    private var coderHeaderPager = NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
+    private val linkHandler = CoderProtocolHandler(context, settings, httpClient, dialogUi, isInitialized)
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
         LoadableState.Value(emptyList())
     )
@@ -176,9 +176,10 @@ class CoderRemoteProvider(
      */
     override fun close() {
         pollJob?.cancel()
-        client = null
+        client?.close()
         lastEnvironments = null
         environments.value = LoadableState.Value(emptyList())
+        isInitialized.update { false }
     }
 
     override val svgIcon: SvgIcon =
@@ -213,8 +214,7 @@ class CoderRemoteProvider(
      * Just displays the deployment URL at the moment, but we could use this as
      * a form for creating new environments.
      */
-    override fun getNewEnvironmentUiPage(): UiPage =
-        NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
+    override fun getNewEnvironmentUiPage(): UiPage = coderHeaderPager
 
     /**
      * We always show a list of environments.
@@ -234,7 +234,14 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         val params = uri.toQueryParameters()
-        linkHandler.handle(params)
+        linkHandler.handle(params) { restClient, cli ->
+            // stop polling and de-initialize resources
+            close()
+            // start initialization with the new settings
+            this@CoderRemoteProvider.client = restClient
+            coderHeaderPager = NewEnvironmentPage(context, context.i18n.pnotr(restClient.url.toString()))
+            poll(restClient, cli)
+        }
     }
 
     /**

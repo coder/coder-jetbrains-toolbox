@@ -1,6 +1,7 @@
 package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.plugin.PluginManager
@@ -33,7 +34,10 @@ open class CoderProtocolHandler(
      * Throw if required arguments are not supplied or the workspace is not in a
      * connectable state.
      */
-    suspend fun handle(parameters: Map<String, String>) {
+    suspend fun handle(
+        parameters: Map<String, String>,
+        onReinitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
+    ) {
         val deploymentURL =
             parameters.url() ?: dialogUi.ask(
                 context.i18n.ptrl("Deployment URL"),
@@ -49,7 +53,7 @@ open class CoderProtocolHandler(
         } else {
             null
         }
-        val client = try {
+        val restClient = try {
             authenticate(deploymentURL, queryToken)
         } catch (ex: MissingArgumentException) {
             throw MissingArgumentException("Query parameter \"$TOKEN\" is missing", ex)
@@ -59,7 +63,7 @@ open class CoderProtocolHandler(
         val workspaceName =
             parameters.workspace() ?: throw MissingArgumentException("Query parameter \"$WORKSPACE\" is missing")
 
-        val workspaces = client.workspaces()
+        val workspaces = restClient.workspaces()
         val workspace =
             workspaces.firstOrNull {
                 it.name == workspaceName
@@ -117,23 +121,24 @@ open class CoderProtocolHandler(
             ensureCLI(
                 context,
                 deploymentURL.toURL(),
-                client.buildInfo().version,
+                restClient.buildInfo().version,
                 settings
             )
 
         // We only need to log in if we are using token-based auth.
-        if (client.token != null) {
+        if (restClient.token != null) {
             context.logger.info("Authenticating Coder CLI...")
-            cli.login(client.token)
+            cli.login(restClient.token)
         }
 
         context.logger.info("Configuring Coder CLI...")
-        cli.configSsh(client.agentNames(workspaces))
+        cli.configSsh(restClient.agentNames(workspaces))
 
-        isInitialized.waitForTrue()
+        onReinitialize(restClient, cli)
         context.cs.launch {
             context.ui.showWindow()
-            yield()
+            context.envPageManager.showPluginEnvironmentsPage(true)
+            isInitialized.waitForTrue()
             context.envPageManager.showEnvironmentPage("${workspace.name}.${agent.name}", false)
             // without a yield or a delay(0) the env page does not show up. My assumption is that
             // the coroutine is finishing too fast without giving enough time to compose main thread
