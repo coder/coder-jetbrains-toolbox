@@ -7,9 +7,8 @@ import com.coder.toolbox.services.CoderSecretsService
 import com.coder.toolbox.services.CoderSettingsService
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.Source
+import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
-import com.coder.toolbox.util.LinkHandler
-import com.coder.toolbox.util.toQueryParameters
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.ConnectPage
@@ -53,7 +52,6 @@ class CoderRemoteProvider(
     private val secrets: CoderSecretsService = CoderSecretsService(context.secretsStore)
     private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, settingsService)
     private val dialogUi = DialogUi(context, settings)
-    private val linkHandler = LinkHandler(context, settings, httpClient, dialogUi)
 
     // The REST client, if we are signed in
     private var client: CoderRestClient? = null
@@ -65,7 +63,9 @@ class CoderRemoteProvider(
 
     // On the first load, automatically log in if we can.
     private var firstRun = true
-
+    private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    private var coderHeaderPager = NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
+    private val linkHandler = CoderProtocolHandler(context, settings, httpClient, dialogUi, isInitialized)
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
         LoadableState.Value(emptyList())
     )
@@ -171,14 +171,14 @@ class CoderRemoteProvider(
     /**
      * Cancel polling and clear the client and environments.
      *
-     * Called as part of our own logout but it is unclear where it is called by
-     * Toolbox.  Maybe on uninstall?
+     * Also called as part of our own logout.
      */
     override fun close() {
         pollJob?.cancel()
-        client = null
+        client?.close()
         lastEnvironments = null
         environments.value = LoadableState.Value(emptyList())
+        isInitialized.update { false }
     }
 
     override val svgIcon: SvgIcon =
@@ -213,8 +213,7 @@ class CoderRemoteProvider(
      * Just displays the deployment URL at the moment, but we could use this as
      * a form for creating new environments.
      */
-    override fun getNewEnvironmentUiPage(): UiPage =
-        NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
+    override fun getNewEnvironmentUiPage(): UiPage = coderHeaderPager
 
     /**
      * We always show a list of environments.
@@ -233,11 +232,13 @@ class CoderRemoteProvider(
      * Handle incoming links (like from the dashboard).
      */
     override suspend fun handleUri(uri: URI) {
-        val params = uri.toQueryParameters()
-        context.cs.launch {
-            val name = linkHandler.handle(params)
-            // TODO@JB: Now what?  How do we actually connect this workspace?
-            context.logger.debug("External request for $name: $uri")
+        linkHandler.handle(uri) { restClient, cli ->
+            // stop polling and de-initialize resources
+            close()
+            // start initialization with the new settings
+            this@CoderRemoteProvider.client = restClient
+            coderHeaderPager = NewEnvironmentPage(context, context.i18n.pnotr(restClient.url.toString()))
+            poll(restClient, cli)
         }
     }
 
@@ -323,6 +324,7 @@ class CoderRemoteProvider(
         pollJob?.cancel()
         pollJob = poll(client, cli)
         goToEnvironmentsPage()
+        isInitialized.update { true }
     }
 
     /**

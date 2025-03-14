@@ -1,6 +1,7 @@
 package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.plugin.PluginManager
@@ -11,15 +12,21 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.Source
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 
-open class LinkHandler(
+open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
     private val settings: CoderSettings,
     private val httpClient: OkHttpClient?,
     private val dialogUi: DialogUi,
+    private val isInitialized: StateFlow<Boolean>,
 ) {
     /**
      * Given a set of URL parameters, prepare the CLI then return a workspace to
@@ -29,25 +36,25 @@ open class LinkHandler(
      * connectable state.
      */
     suspend fun handle(
-        parameters: Map<String, String>,
-        indicator: ((t: String) -> Unit)? = null,
-    ): String {
-        val deploymentURL =
-            parameters.url() ?: dialogUi.ask(
-                context.i18n.ptrl("Deployment URL"),
-                context.i18n.ptrl("Enter the full URL of your Coder deployment")
-            )
+        uri: URI,
+        onReinitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
+    ) {
+        val params = uri.toQueryParameters()
+
+        val deploymentURL = params.url() ?: askUrl()
         if (deploymentURL.isNullOrBlank()) {
-            throw MissingArgumentException("Query parameter \"$URL\" is missing")
+            context.logger.error("Query parameter \"$URL\" is missing from URI $uri")
+            context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because query parameter \"$URL\" is missing"))
+            return
         }
 
-        val queryTokenRaw = parameters.token()
+        val queryTokenRaw = params.token()
         val queryToken = if (!queryTokenRaw.isNullOrBlank()) {
             Pair(queryTokenRaw, Source.QUERY)
         } else {
             null
         }
-        val client = try {
+        val restClient = try {
             authenticate(deploymentURL, queryToken)
         } catch (ex: MissingArgumentException) {
             throw MissingArgumentException("Query parameter \"$TOKEN\" is missing", ex)
@@ -55,9 +62,9 @@ open class LinkHandler(
 
         // TODO: Show a dropdown and ask for the workspace if missing.
         val workspaceName =
-            parameters.workspace() ?: throw MissingArgumentException("Query parameter \"$WORKSPACE\" is missing")
+            params.workspace() ?: throw MissingArgumentException("Query parameter \"$WORKSPACE\" is missing")
 
-        val workspaces = client.workspaces()
+        val workspaces = restClient.workspaces()
         val workspace =
             workspaces.firstOrNull {
                 it.name == workspaceName
@@ -93,7 +100,7 @@ open class LinkHandler(
         }
 
         // TODO: Show a dropdown and ask for an agent if missing.
-        val agent = getMatchingAgent(parameters, workspace)
+        val agent = getMatchingAgent(params, workspace)
         val status = WorkspaceAndAgentStatus.from(workspace, agent)
 
         if (status.pending()) {
@@ -115,24 +122,39 @@ open class LinkHandler(
             ensureCLI(
                 context,
                 deploymentURL.toURL(),
-                client.buildInfo().version,
-                settings,
-                indicator,
+                restClient.buildInfo().version,
+                settings
             )
 
         // We only need to log in if we are using token-based auth.
-        if (client.token != null) {
-            indicator?.invoke("Authenticating Coder CLI...")
-            cli.login(client.token)
+        if (restClient.token != null) {
+            context.logger.info("Authenticating Coder CLI...")
+            cli.login(restClient.token)
         }
 
-        indicator?.invoke("Configuring Coder CLI...")
-        cli.configSsh(client.agentNames(workspaces))
+        context.logger.info("Configuring Coder CLI...")
+        cli.configSsh(restClient.agentNames(workspaces))
 
-        val name = "${workspace.name}.${agent.name}"
-        // TODO@JB: Can we ask for the IDE and project path or how does
-        //          this work?
-        return name
+        onReinitialize(restClient, cli)
+        context.cs.launch {
+            context.ui.showWindow()
+            context.envPageManager.showPluginEnvironmentsPage(true)
+            isInitialized.waitForTrue()
+            context.envPageManager.showEnvironmentPage("${workspace.name}.${agent.name}", false)
+            // without a yield or a delay(0) the env page does not show up. My assumption is that
+            // the coroutine is finishing too fast without giving enough time to compose main thread
+            // to catch the state change. Yielding gives other coroutines the chance to run
+            yield()
+        }
+    }
+
+    private suspend fun askUrl(): String? {
+        context.ui.showWindow()
+        context.envPageManager.showPluginEnvironmentsPage(false)
+        return dialogUi.ask(
+            context.i18n.ptrl("Deployment URL"),
+            context.i18n.ptrl("Enter the full URL of your Coder deployment")
+        )
     }
 
     /**
@@ -330,6 +352,10 @@ internal fun getMatchingAgent(
     }
 
     return agent
+}
+
+fun StateFlow<Boolean>.waitForTrue() {
+    this.filter { it }
 }
 
 class MissingArgumentException(message: String, ex: Throwable? = null) : IllegalArgumentException(message, ex)

@@ -272,4 +272,12 @@ open class CoderRestClient(
         }
         return buildResponse.body()!!
     }
+
+    fun close() {
+        httpClient.apply {
+            dispatcher.executorService.shutdown()
+            connectionPool.evictAll()
+            cache?.close()
+        }
+    }
 }
