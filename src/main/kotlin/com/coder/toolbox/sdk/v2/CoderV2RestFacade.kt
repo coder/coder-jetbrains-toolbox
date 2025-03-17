@@ -4,6 +4,7 @@ import com.coder.toolbox.sdk.v2.models.BuildInfo
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
+import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspacesResponse
@@ -29,6 +30,14 @@ interface CoderV2RestFacade {
     fun workspaces(
         @Query("q") searchParams: String,
     ): Call<WorkspacesResponse>
+
+    /**
+     * Retrieves a workspace with the provided id.
+     */
+    @GET("api/v2/workspaces/{workspaceID}")
+    fun workspace(
+        @Path("workspaceID") workspaceID: UUID
+    ): Call<Workspace>
 
     @GET("api/v2/buildinfo")
     fun buildInfo(): Call<BuildInfo>

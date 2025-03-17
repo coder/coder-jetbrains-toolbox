@@ -10,14 +10,20 @@ import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.settings.CoderSettings
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.time.withTimeout
 import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.toJavaDuration
 
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
@@ -81,29 +87,27 @@ open class CoderProtocolHandler(
 
         when (workspace.latestBuild.status) {
             WorkspaceStatus.PENDING, WorkspaceStatus.STARTING ->
-                // TODO: Wait for the workspace to turn on.
-                throw IllegalArgumentException(
-                    "The workspace \"$workspaceName\" is ${
-                        workspace.latestBuild.status.toString().lowercase()
-                    }; please wait then try again",
-                )
+                if (restClient.waitForReady(workspace) != true) {
+                    context.logger.error("$workspaceName from $deploymentURL could not be ready on time")
+                    context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be ready on time"))
+                    return
+                }
 
             WorkspaceStatus.STOPPING, WorkspaceStatus.STOPPED,
-            WorkspaceStatus.CANCELING, WorkspaceStatus.CANCELED,
-                ->
-                // TODO: Turn on the workspace.
-                throw IllegalArgumentException(
-                    "The workspace \"$workspaceName\" is ${
-                        workspace.latestBuild.status.toString().lowercase()
-                    }; please start the workspace and try again",
-                )
+            WorkspaceStatus.CANCELING, WorkspaceStatus.CANCELED -> {
+                restClient.startWorkspace(workspace)
+                if (restClient.waitForReady(workspace) != true) {
+                    context.logger.error("$workspaceName from $deploymentURL could not be started on time")
+                    context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be started on time"))
+                    return
+                }
+            }
 
-            WorkspaceStatus.FAILED, WorkspaceStatus.DELETING, WorkspaceStatus.DELETED ->
-                throw IllegalArgumentException(
-                    "The workspace \"$workspaceName\" is ${
-                        workspace.latestBuild.status.toString().lowercase()
-                    }; unable to connect",
-                )
+            WorkspaceStatus.FAILED, WorkspaceStatus.DELETING, WorkspaceStatus.DELETED -> {
+                context.logger.error("Unable to connect to $workspaceName from $deploymentURL")
+                context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because because we're unable to connect to workspace $workspaceName"))
+                return
+            }
 
             WorkspaceStatus.RUNNING -> Unit // All is well
         }
@@ -154,6 +158,21 @@ open class CoderProtocolHandler(
             // the coroutine is finishing too fast without giving enough time to compose main thread
             // to catch the state change. Yielding gives other coroutines the chance to run
             yield()
+        }
+    }
+
+    private suspend fun CoderRestClient.waitForReady(workspace: Workspace): Boolean {
+        var status = workspace.latestBuild.status
+        try {
+            withTimeout(2.minutes.toJavaDuration()) {
+                while (status != WorkspaceStatus.RUNNING) {
+                    delay(1.seconds)
+                    status = this@waitForReady.workspace(workspace.id).latestBuild.status
+                }
+            }
+            return true
+        } catch (_: TimeoutCancellationException) {
+            return false
         }
     }
 
