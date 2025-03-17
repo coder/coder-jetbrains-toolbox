@@ -49,19 +49,35 @@ open class CoderProtocolHandler(
         val queryToken = params.token()
         val restClient = try {
             authenticate(deploymentURL, queryToken)
-        } catch (ex: MissingArgumentException) {
-            throw MissingArgumentException("Query parameter \"$TOKEN\" is missing", ex)
+        } catch (ex: Exception) {
+            context.logger.error(ex, "Query parameter \"$TOKEN\" is missing from URI $uri")
+            context.ui.showErrorInfoPopup(
+                IllegalStateException(
+                    humanizeConnectionError(
+                        deploymentURL.toURL(),
+                        true,
+                        ex
+                    )
+                )
+            )
+            return
         }
 
-        // TODO: Show a dropdown and ask for the workspace if missing.
-        val workspaceName =
-            params.workspace() ?: throw MissingArgumentException("Query parameter \"$WORKSPACE\" is missing")
+        // TODO: Show a dropdown and ask for the workspace if missing. Right now it's not possible because dialogs are quite limited
+        val workspaceName = params.workspace()
+        if (workspaceName.isNullOrBlank()) {
+            context.logger.error("Query parameter \"$WORKSPACE\" is missing from URI $uri")
+            context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because query parameter \"$WORKSPACE\" is missing"))
+            return
+        }
 
         val workspaces = restClient.workspaces()
-        val workspace =
-            workspaces.firstOrNull {
-                it.name == workspaceName
-            } ?: throw IllegalArgumentException("The workspace $workspaceName does not exist")
+        val workspace = workspaces.firstOrNull { it.name == workspaceName }
+        if (workspace == null) {
+            context.logger.error("There is no workspace with name $workspaceName on $deploymentURL")
+            context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because workspace with name $workspaceName does not exist"))
+            return
+        }
 
         when (workspace.latestBuild.status) {
             WorkspaceStatus.PENDING, WorkspaceStatus.STARTING ->
@@ -188,13 +204,8 @@ open class CoderProtocolHandler(
             PluginManager.pluginInfo.version,
             httpClient
         )
-        return try {
-            client.authenticate()
-            client
-        } catch (ex: Exception) {
-            context.ui.showErrorInfoPopup(IllegalStateException(humanizeConnectionError(client.url, true, ex)))
-            throw ex
-        }
+        client.authenticate()
+        return client
     }
 
     /**
