@@ -6,12 +6,10 @@ import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.settings.CoderSettings
-import com.coder.toolbox.settings.Source
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
@@ -48,12 +46,7 @@ open class CoderProtocolHandler(
             return
         }
 
-        val queryTokenRaw = params.token()
-        val queryToken = if (!queryTokenRaw.isNullOrBlank()) {
-            Pair(queryTokenRaw, Source.QUERY)
-        } else {
-            null
-        }
+        val queryToken = params.token()
         val restClient = try {
             authenticate(deploymentURL, queryToken)
         } catch (ex: MissingArgumentException) {
@@ -158,35 +151,29 @@ open class CoderProtocolHandler(
     }
 
     /**
-     * Return an authenticated Coder CLI, asking for the token as long as it
-     * continues to result in an authentication failure and token authentication
-     * is required.
-     *
-     * Throw MissingArgumentException if the user aborts.  Any network or invalid
+     * Return an authenticated Coder CLI, asking for the token.
+     * Throw MissingArgumentException if the user aborts. Any network or invalid
      * token error may also be thrown.
      */
     private suspend fun authenticate(
         deploymentURL: String,
-        tryToken: Pair<String, Source>?,
-        error: String? = null,
+        tryToken: String?
     ): CoderRestClient {
         val token =
             if (settings.requireTokenAuth) {
                 // Try the provided token immediately on the first attempt.
-                if (tryToken != null && error == null) {
+                if (!tryToken.isNullOrBlank()) {
                     tryToken
                 } else {
+                    context.ui.showWindow()
+                    context.envPageManager.showPluginEnvironmentsPage(false)
                     // Otherwise ask for a new token, showing the previous token.
-                    dialogUi.askToken(
-                        deploymentURL.toURL(),
-                        tryToken,
-                        useExisting = true,
-                        error,
-                    )
+                    dialogUi.askToken(deploymentURL.toURL())
                 }
             } else {
                 null
             }
+
         if (settings.requireTokenAuth && token == null) { // User aborted.
             throw MissingArgumentException("Token is required")
         }
@@ -195,23 +182,18 @@ open class CoderProtocolHandler(
         val client = CoderRestClient(
             context,
             deploymentURL.toURL(),
-            token?.first,
+            token,
             settings,
-            proxyValues = null,
+            proxyValues = null, // TODO - not sure the above comment applies as we are creating our own http client
             PluginManager.pluginInfo.version,
             httpClient
         )
         return try {
             client.authenticate()
             client
-        } catch (ex: APIResponseException) {
-            // If doing token auth we can ask and try again.
-            if (settings.requireTokenAuth && ex.isUnauthorized) {
-                val msg = humanizeConnectionError(client.url, true, ex)
-                authenticate(deploymentURL, token, msg)
-            } else {
-                throw ex
-            }
+        } catch (ex: Exception) {
+            context.ui.showErrorInfoPopup(IllegalStateException(humanizeConnectionError(client.url, true, ex)))
+            throw ex
         }
     }
 
