@@ -122,6 +122,12 @@ class CoderRemoteProvider(
                 environments.update {
                     LoadableState.Value(resolvedEnvironments.toList())
                 }
+                if (isInitialized.value == false) {
+                    context.logger.info("Environments for ${client.url} are now initialized")
+                    isInitialized.update {
+                        true
+                    }
+                }
 
                 lastEnvironments = resolvedEnvironments
             } catch (_: CancellationException) {
@@ -238,7 +244,7 @@ class CoderRemoteProvider(
             // start initialization with the new settings
             this@CoderRemoteProvider.client = restClient
             coderHeaderPager = NewEnvironmentPage(context, context.i18n.pnotr(restClient.url.toString()))
-            poll(restClient, cli)
+            pollJob = poll(restClient, cli)
         }
     }
 
@@ -324,7 +330,6 @@ class CoderRemoteProvider(
         pollJob?.cancel()
         pollJob = poll(client, cli)
         goToEnvironmentsPage()
-        isInitialized.update { true }
     }
 
     /**

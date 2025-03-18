@@ -13,7 +13,7 @@ import com.coder.toolbox.settings.CoderSettings
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.withTimeout
 import kotlinx.coroutines.yield
@@ -41,7 +41,7 @@ open class CoderProtocolHandler(
      */
     suspend fun handle(
         uri: URI,
-        onReinitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
+        reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
         val params = uri.toQueryParameters()
 
@@ -148,11 +148,12 @@ open class CoderProtocolHandler(
         context.logger.info("Configuring Coder CLI...")
         cli.configSsh(restClient.agentNames(workspaces))
 
-        onReinitialize(restClient, cli)
+        isInitialized.waitForTrue()
+        reInitialize(restClient, cli)
+
         context.cs.launch {
             context.ui.showWindow()
             context.envPageManager.showPluginEnvironmentsPage(true)
-            isInitialized.waitForTrue()
             context.envPageManager.showEnvironmentPage("${workspace.name}.${agent.name}", false)
             // without a yield or a delay(0) the env page does not show up. My assumption is that
             // the coroutine is finishing too fast without giving enough time to compose main thread
@@ -366,8 +367,9 @@ internal fun getMatchingAgent(
     return agent
 }
 
-fun StateFlow<Boolean>.waitForTrue() {
-    this.filter { it }
-}
+/**
+ * Suspends the coroutine until first true value is received.
+ */
+suspend fun StateFlow<Boolean>.waitForTrue() = this.first { it }
 
 class MissingArgumentException(message: String, ex: Throwable? = null) : IllegalArgumentException(message, ex)
