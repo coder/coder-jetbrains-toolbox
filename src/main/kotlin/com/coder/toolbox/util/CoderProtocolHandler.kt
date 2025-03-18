@@ -151,10 +151,18 @@ open class CoderProtocolHandler(
         isInitialized.waitForTrue()
         reInitialize(restClient, cli)
 
+        val environmentId = "${workspace.name}.${agent.name}"
         context.cs.launch {
             context.ui.showWindow()
             context.envPageManager.showPluginEnvironmentsPage(true)
-            context.envPageManager.showEnvironmentPage("${workspace.name}.${agent.name}", false)
+            context.envPageManager.showEnvironmentPage(environmentId, false)
+            val productCode = params.ideProductCode()
+            val buildNumber = params.ideBuildNumber()
+            if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
+                val ideVersion = "$productCode-$buildNumber"
+                context.logger.info("installing $ideVersion on $environmentId")
+                context.ideOrchestrator.prepareClient(environmentId, ideVersion)
+            }
             // without a yield or a delay(0) the env page does not show up. My assumption is that
             // the coroutine is finishing too fast without giving enough time to compose main thread
             // to catch the state change. Yielding gives other coroutines the chance to run
@@ -228,73 +236,6 @@ open class CoderProtocolHandler(
         return client
     }
 
-    /**
-     * Check that the link is allowlisted.  If not, confirm with the user.
-     */
-    private suspend fun verifyDownloadLink(parameters: Map<String, String>) {
-        val link = parameters.ideDownloadLink()
-        if (link.isNullOrBlank()) {
-            return // Nothing to verify
-        }
-
-        val url =
-            try {
-                link.toURL()
-            } catch (ex: Exception) {
-                throw IllegalArgumentException("$link is not a valid URL")
-            }
-
-        val (allowlisted, https, linkWithRedirect) =
-            try {
-                isAllowlisted(url)
-            } catch (e: Exception) {
-                throw IllegalArgumentException("Unable to verify $url: $e")
-            }
-        if (allowlisted && https) {
-            return
-        }
-
-        val comment =
-            if (allowlisted) {
-                "The download link is from a non-allowlisted URL"
-            } else if (https) {
-                "The download link is not using HTTPS"
-            } else {
-                "The download link is from a non-allowlisted URL and is not using HTTPS"
-            }
-
-        if (!dialogUi.confirm(
-                context.i18n.ptrl("Confirm download URL"),
-                context.i18n.pnotr("$comment. Would you like to proceed to $linkWithRedirect?"),
-            )
-        ) {
-            throw IllegalArgumentException("$linkWithRedirect is not allowlisted")
-        }
-    }
-}
-
-/**
- * Return if the URL is allowlisted, https, and the URL and its final
- * destination, if it is a different host.
- */
-private fun isAllowlisted(url: URL): Triple<Boolean, Boolean, String> {
-    // TODO: Setting for the allowlist, and remember previously allowed
-    //  domains.
-    val domainAllowlist = listOf("intellij.net", "jetbrains.com")
-
-    // Resolve any redirects.
-    val finalUrl = resolveRedirects(url)
-
-    var linkWithRedirect = url.toString()
-    if (finalUrl.host != url.host) {
-        linkWithRedirect = "$linkWithRedirect (redirects to to $finalUrl)"
-    }
-
-    val allowlisted =
-        domainAllowlist.any { url.host == it || url.host.endsWith(".$it") } &&
-                domainAllowlist.any { finalUrl.host == it || finalUrl.host.endsWith(".$it") }
-    val https = url.protocol == "https" && finalUrl.protocol == "https"
-    return Triple(allowlisted, https, linkWithRedirect)
 }
 
 /**

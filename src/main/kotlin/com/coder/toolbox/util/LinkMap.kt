@@ -30,8 +30,6 @@ fun Map<String, String?>.agentID() = this[AGENT_ID]
 
 fun Map<String, String>.folder() = this[FOLDER]
 
-fun Map<String, String>.ideDownloadLink() = this[IDE_DOWNLOAD_LINK]
-
 fun Map<String, String>.ideProductCode() = this[IDE_PRODUCT_CODE]
 
 fun Map<String, String>.ideBuildNumber() = this[IDE_BUILD_NUMBER]
