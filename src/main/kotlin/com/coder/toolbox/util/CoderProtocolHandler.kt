@@ -15,8 +15,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.time.withTimeout
-import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import java.net.HttpURLConnection
 import java.net.URI
@@ -152,21 +152,21 @@ open class CoderProtocolHandler(
         reInitialize(restClient, cli)
 
         val environmentId = "${workspace.name}.${agent.name}"
-        context.cs.launch {
-            context.ui.showWindow()
-            context.envPageManager.showPluginEnvironmentsPage(true)
-            context.envPageManager.showEnvironmentPage(environmentId, false)
-            val productCode = params.ideProductCode()
-            val buildNumber = params.ideBuildNumber()
-            if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
+        context.ui.showWindow()
+        context.envPageManager.showPluginEnvironmentsPage(true)
+        context.envPageManager.showEnvironmentPage(environmentId, false)
+        val productCode = params.ideProductCode()
+        val buildNumber = params.ideBuildNumber()
+        if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
+            context.cs.launch {
                 val ideVersion = "$productCode-$buildNumber"
                 context.logger.info("installing $ideVersion on $environmentId")
-                context.ideOrchestrator.prepareClient(environmentId, ideVersion)
+                runBlocking {
+                    context.ideOrchestrator.prepareClient(environmentId, ideVersion)
+                }
+                context.logger.info("launching $ideVersion on $environmentId")
+                context.ideOrchestrator.connectToIde(environmentId, ideVersion, null)
             }
-            // without a yield or a delay(0) the env page does not show up. My assumption is that
-            // the coroutine is finishing too fast without giving enough time to compose main thread
-            // to catch the state change. Yielding gives other coroutines the chance to run
-            yield()
         }
     }
 
