@@ -11,7 +11,7 @@ private const val FOLDER = "folder"
 private const val IDE_DOWNLOAD_LINK = "ide_download_link"
 private const val IDE_PRODUCT_CODE = "ide_product_code"
 private const val IDE_BUILD_NUMBER = "ide_build_number"
-private const val IDE_PATH_ON_HOST = "ide_path_on_host"
+private const val IDE_PATH_ON_HOST = "project_path"
 
 // Helper functions for reading from the map.  Prefer these to directly
 // interacting with the map.
@@ -34,4 +34,4 @@ fun Map<String, String>.ideProductCode() = this[IDE_PRODUCT_CODE]
 
 fun Map<String, String>.ideBuildNumber() = this[IDE_BUILD_NUMBER]
 
-fun Map<String, String>.idePathOnHost() = this[IDE_PATH_ON_HOST]
+fun Map<String, String>.projectPath() = this[IDE_PATH_ON_HOST]

@@ -156,6 +156,7 @@ open class CoderProtocolHandler(
         context.envPageManager.showEnvironmentPage(environmentId, false)
         val productCode = params.ideProductCode()
         val buildNumber = params.ideBuildNumber()
+        val projectPath = params.projectPath()
         if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
             context.cs.launch {
                 val ideVersion = "$productCode-$buildNumber"
@@ -165,7 +166,7 @@ open class CoderProtocolHandler(
                 }
                 job.join()
                 context.logger.info("launching $ideVersion on $environmentId")
-                context.ideOrchestrator.connectToIde(environmentId, ideVersion, null)
+                context.ideOrchestrator.connectToIde(environmentId, ideVersion, projectPath)
             }
         }
     }
