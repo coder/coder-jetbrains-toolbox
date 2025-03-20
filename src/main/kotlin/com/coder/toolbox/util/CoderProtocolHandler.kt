@@ -15,7 +15,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.time.withTimeout
 import okhttp3.OkHttpClient
 import java.net.HttpURLConnection
@@ -161,9 +160,10 @@ open class CoderProtocolHandler(
             context.cs.launch {
                 val ideVersion = "$productCode-$buildNumber"
                 context.logger.info("installing $ideVersion on $environmentId")
-                runBlocking {
+                val job = context.cs.launch {
                     context.ideOrchestrator.prepareClient(environmentId, ideVersion)
                 }
+                job.join()
                 context.logger.info("launching $ideVersion on $environmentId")
                 context.ideOrchestrator.connectToIde(environmentId, ideVersion, null)
             }
