@@ -40,6 +40,7 @@ open class CoderProtocolHandler(
      */
     suspend fun handle(
         uri: URI,
+        shouldWaitForAutoLogin: Boolean,
         reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
         val params = uri.toQueryParameters()
@@ -147,7 +148,9 @@ open class CoderProtocolHandler(
         context.logger.info("Configuring Coder CLI...")
         cli.configSsh(restClient.agentNames(workspaces))
 
-        isInitialized.waitForTrue()
+        if (shouldWaitForAutoLogin) {
+            isInitialized.waitForTrue()
+        }
         reInitialize(restClient, cli)
 
         val environmentId = "${workspace.name}.${agent.name}"

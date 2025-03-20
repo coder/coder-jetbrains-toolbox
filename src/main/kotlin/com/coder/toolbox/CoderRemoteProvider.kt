@@ -238,7 +238,7 @@ class CoderRemoteProvider(
      * Handle incoming links (like from the dashboard).
      */
     override suspend fun handleUri(uri: URI) {
-        linkHandler.handle(uri) { restClient, cli ->
+        linkHandler.handle(uri, shouldDoAutoLogin()) { restClient, cli ->
             // stop polling and de-initialize resources
             close()
             // start initialization with the new settings
@@ -270,7 +270,7 @@ class CoderRemoteProvider(
         // Show sign in page if we have not configured the client yet.
         if (client == null) {
             // When coming back to the application, authenticate immediately.
-            val autologin = firstRun && secrets.rememberMe == "true"
+            val autologin = shouldDoAutoLogin()
             var autologinEx: Exception? = null
             secrets.lastToken.let { lastToken ->
                 secrets.lastDeploymentURL.let { lastDeploymentURL ->
@@ -308,6 +308,8 @@ class CoderRemoteProvider(
         }
         return null
     }
+
+    private fun shouldDoAutoLogin(): Boolean = firstRun && secrets.rememberMe == "true"
 
     /**
      * Create a connect page that starts polling and resets the UI on success.
