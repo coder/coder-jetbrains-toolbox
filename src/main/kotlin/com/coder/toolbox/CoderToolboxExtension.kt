@@ -7,6 +7,7 @@ import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.RemoteDevExtension
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
+import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
@@ -24,6 +25,7 @@ class CoderToolboxExtension : RemoteDevExtension {
                 serviceLocator.getService(ToolboxUi::class.java),
                 serviceLocator.getService(EnvironmentUiPageManager::class.java),
                 serviceLocator.getService(EnvironmentStateColorPalette::class.java),
+                serviceLocator.getService(ClientHelper::class.java),
                 serviceLocator.getService(CoroutineScope::class.java),
                 serviceLocator.getService(Logger::class.java),
                 serviceLocator.getService(LocalizableStringFactory::class.java),

@@ -170,6 +170,19 @@ open class CoderRestClient(
     }
 
     /**
+     * Retrieves a workspace with the provided id.
+     * @throws [APIResponseException].
+     */
+    fun workspace(workspaceID: UUID): Workspace {
+        val workspacesResponse = retroRestClient.workspace(workspaceID).execute()
+        if (!workspacesResponse.isSuccessful) {
+            throw APIResponseException("retrieve workspace", url, workspacesResponse)
+        }
+
+        return workspacesResponse.body()!!
+    }
+
+    /**
      * Retrieves all the agent names for all workspaces, including those that
      * are off.  Meant to be used when configuring SSH.
      */
@@ -271,5 +284,13 @@ open class CoderRestClient(
             throw APIResponseException("update workspace ${workspace.name}", url, buildResponse)
         }
         return buildResponse.body()!!
+    }
+
+    fun close() {
+        httpClient.apply {
+            dispatcher.executorService.shutdown()
+            connectionPool.evictAll()
+            cache?.close()
+        }
     }
 }

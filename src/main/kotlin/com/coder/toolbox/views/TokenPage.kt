@@ -20,7 +20,7 @@ import java.net.URL
  * enter their own.
  */
 class TokenPage(
-    private val context: CoderToolboxContext,
+    context: CoderToolboxContext,
     deploymentURL: URL,
     token: Pair<String, Source>?,
     private val onToken: ((token: String) -> Unit),
