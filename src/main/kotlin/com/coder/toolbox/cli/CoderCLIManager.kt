@@ -251,8 +251,8 @@ class CoderCLIManager(
         feats: Features,
     ): String? {
         val host = deploymentURL.safeHost()
-        val startBlock = "# --- START CODER JETBRAINS $host"
-        val endBlock = "# --- END CODER JETBRAINS $host"
+        val startBlock = "# --- START CODER TOOLBOX $host"
+        val endBlock = "# --- END CODER TOOLBOX $host"
         val isRemoving = workspaceNames.isEmpty()
         val baseArgs =
             listOfNotNull(
