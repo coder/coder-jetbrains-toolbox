@@ -64,7 +64,7 @@ class CoderRemoteProvider(
     // On the first load, automatically log in if we can.
     private var firstRun = true
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
-    private var coderHeaderPager = NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
+    private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
     private val linkHandler = CoderProtocolHandler(context, settings, httpClient, dialogUi, isInitialized)
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
         LoadableState.Value(emptyList())
@@ -219,7 +219,7 @@ class CoderRemoteProvider(
      * Just displays the deployment URL at the moment, but we could use this as
      * a form for creating new environments.
      */
-    override fun getNewEnvironmentUiPage(): UiPage = coderHeaderPager
+    override fun getNewEnvironmentUiPage(): UiPage = coderHeaderPage
 
     /**
      * We always show a list of environments.
@@ -243,7 +243,7 @@ class CoderRemoteProvider(
             close()
             // start initialization with the new settings
             this@CoderRemoteProvider.client = restClient
-            coderHeaderPager = NewEnvironmentPage(context, context.i18n.pnotr(restClient.url.toString()))
+            coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(restClient.url.toString()))
             pollJob = poll(restClient, cli)
         }
     }
