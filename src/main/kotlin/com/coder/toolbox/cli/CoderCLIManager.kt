@@ -484,7 +484,7 @@ class CoderCLIManager(
         fun getHostName(
             url: URL,
             workspaceName: String,
-        ): String = "coder-jetbrains--$workspaceName--${url.safeHost()}"
+        ): String = "coder-toolbox--$workspaceName--${url.safeHost()}"
 
         @JvmStatic
         fun getBackgroundHostName(
