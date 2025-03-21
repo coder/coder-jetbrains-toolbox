@@ -251,8 +251,8 @@ class CoderCLIManager(
         feats: Features,
     ): String? {
         val host = deploymentURL.safeHost()
-        val startBlock = "# --- START CODER JETBRAINS $host"
-        val endBlock = "# --- END CODER JETBRAINS $host"
+        val startBlock = "# --- START CODER TOOLBOX $host"
+        val endBlock = "# --- END CODER TOOLBOX $host"
         val isRemoving = workspaceNames.isEmpty()
         val baseArgs =
             listOfNotNull(
@@ -273,7 +273,7 @@ class CoderCLIManager(
         val proxyArgs = baseArgs + listOfNotNull(
             if (settings.sshLogDirectory.isNotBlank()) "--log-dir" else null,
             if (settings.sshLogDirectory.isNotBlank()) escape(settings.sshLogDirectory) else null,
-            if (feats.reportWorkspaceUsage) "--usage-app=jetbrains" else null,
+            if (feats.reportWorkspaceUsage) "--usage-app=toolbox" else null,
         )
         val backgroundProxyArgs =
             baseArgs + listOfNotNull(if (feats.reportWorkspaceUsage) "--usage-app=disable" else null)
@@ -484,7 +484,7 @@ class CoderCLIManager(
         fun getHostName(
             url: URL,
             workspaceName: String,
-        ): String = "coder-jetbrains--$workspaceName--${url.safeHost()}"
+        ): String = "coder-toolbox--$workspaceName--${url.safeHost()}"
 
         @JvmStatic
         fun getBackgroundHostName(
