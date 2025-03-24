@@ -1,5 +1,7 @@
 package com.coder.toolbox
 
+import com.coder.toolbox.services.CoderSecretsService
+import com.coder.toolbox.services.CoderSettingsService
 import com.jetbrains.toolbox.api.core.PluginSecretStore
 import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.ServiceLocator
@@ -29,8 +31,8 @@ class CoderToolboxExtension : RemoteDevExtension {
                 serviceLocator.getService(CoroutineScope::class.java),
                 serviceLocator.getService(Logger::class.java),
                 serviceLocator.getService(LocalizableStringFactory::class.java),
-                serviceLocator.getService(PluginSettingsStore::class.java),
-                serviceLocator.getService(PluginSecretStore::class.java),
+                CoderSettingsService(serviceLocator.getService(PluginSettingsStore::class.java)),
+                CoderSecretsService(serviceLocator.getService(PluginSecretStore::class.java)),
             ),
             OkHttpClient(),
         )

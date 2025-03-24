@@ -13,11 +13,11 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.sdk.v2.models.WorkspacesResponse
+import com.coder.toolbox.services.CoderSecretsService
+import com.coder.toolbox.services.CoderSettingsService
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.CoderSettingsState
 import com.coder.toolbox.util.sslContextFromPEMs
-import com.jetbrains.toolbox.api.core.PluginSecretStore
-import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
@@ -100,8 +100,8 @@ class CoderRestClientTest {
         mockk<CoroutineScope>(),
         mockk<Logger>(relaxed = true),
         mockk<LocalizableStringFactory>(),
-        mockk<PluginSettingsStore>(),
-        mockk<PluginSecretStore>()
+        mockk<CoderSettingsService>(),
+        mockk<CoderSecretsService>()
     )
 
     data class TestWorkspace(var workspace: Workspace, var resources: List<WorkspaceResource>? = emptyList())

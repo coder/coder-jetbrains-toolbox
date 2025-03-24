@@ -4,6 +4,8 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
+import com.coder.toolbox.services.CoderSecretsService
+import com.coder.toolbox.services.CoderSettingsService
 import com.coder.toolbox.settings.CODER_SSH_CONFIG_OPTIONS
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.settings.CoderSettingsState
@@ -15,8 +17,6 @@ import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.sha1
 import com.coder.toolbox.util.toURL
-import com.jetbrains.toolbox.api.core.PluginSecretStore
-import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
@@ -53,8 +53,8 @@ internal class CoderCLIManagerTest {
         mockk<CoroutineScope>(),
         mockk<Logger>(relaxed = true),
         mockk<LocalizableStringFactory>(),
-        mockk<PluginSettingsStore>(),
-        mockk<PluginSecretStore>()
+        mockk<CoderSettingsService>(),
+        mockk<CoderSecretsService>()
     )
 
     /**
