@@ -157,8 +157,7 @@ open class CoderProtocolHandler(
         reInitialize(restClient, cli)
 
         val environmentId = "${workspace.name}.${agent.name}"
-        context.ui.showWindow()
-        context.envPageManager.showPluginEnvironmentsPage(true)
+        context.popupPluginMainPage()
         context.envPageManager.showEnvironmentPage(environmentId, false)
         val productCode = params.ideProductCode()
         val buildNumber = params.ideBuildNumber()
@@ -193,8 +192,7 @@ open class CoderProtocolHandler(
     }
 
     private suspend fun askUrl(): String? {
-        context.ui.showWindow()
-        context.envPageManager.showPluginEnvironmentsPage(false)
+        context.popupPluginMainPage()
         return dialogUi.ask(
             context.i18n.ptrl("Deployment URL"),
             context.i18n.ptrl("Enter the full URL of your Coder deployment")
@@ -216,8 +214,7 @@ open class CoderProtocolHandler(
                 if (!tryToken.isNullOrBlank()) {
                     tryToken
                 } else {
-                    context.ui.showWindow()
-                    context.envPageManager.showPluginEnvironmentsPage(false)
+                    context.popupPluginMainPage()
                     // Otherwise ask for a new token, showing the previous token.
                     dialogUi.askToken(deploymentURL.toURL())
                 }
