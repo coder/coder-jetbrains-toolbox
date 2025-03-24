@@ -128,19 +128,10 @@ open class CoderProtocolHandler(
         val agent = getMatchingAgent(params, workspace)
         val status = WorkspaceAndAgentStatus.from(workspace, agent)
 
-        if (status.pending()) {
-            // TODO: Wait for the agent to be ready.
-            throw IllegalArgumentException(
-                "The agent \"${agent.name}\" has a status of \"${
-                    status.toString().lowercase()
-                }\"; please wait then try again",
-            )
-        } else if (!status.ready()) {
-            throw IllegalArgumentException(
-                "The agent \"${agent.name}\" has a status of \"${
-                    status.toString().lowercase()
-                }\"; unable to connect"
-            )
+        if (!status.ready()) {
+            context.logger.error("Agent ${agent.name} for workspace $workspaceName from $deploymentURL is not started")
+            context.showErrorPopup(MissingArgumentException("Can't handle URI because agent ${agent.name} for workspace $workspaceName from $deploymentURL is not started"))
+            return
         }
 
         val cli =
