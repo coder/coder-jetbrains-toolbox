@@ -10,6 +10,7 @@ import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.settings.CoderSettings
+import com.jetbrains.toolbox.api.localization.LocalizableString
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
@@ -48,7 +49,7 @@ open class CoderProtocolHandler(
         val deploymentURL = params.url() ?: askUrl()
         if (deploymentURL.isNullOrBlank()) {
             context.logger.error("Query parameter \"$URL\" is missing from URI $uri")
-            context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because query parameter \"$URL\" is missing"))
+            context.showErrorPopup(MissingArgumentException("Can't handle URI because query parameter \"$URL\" is missing"))
             return
         }
 
@@ -57,15 +58,7 @@ open class CoderProtocolHandler(
             authenticate(deploymentURL, queryToken)
         } catch (ex: Exception) {
             context.logger.error(ex, "Query parameter \"$TOKEN\" is missing from URI $uri")
-            context.ui.showErrorInfoPopup(
-                IllegalStateException(
-                    humanizeConnectionError(
-                        deploymentURL.toURL(),
-                        true,
-                        ex
-                    )
-                )
-            )
+            context.showErrorPopup(IllegalStateException(humanizeConnectionError(deploymentURL.toURL(), true, ex)))
             return
         }
 
@@ -73,7 +66,7 @@ open class CoderProtocolHandler(
         val workspaceName = params.workspace()
         if (workspaceName.isNullOrBlank()) {
             context.logger.error("Query parameter \"$WORKSPACE\" is missing from URI $uri")
-            context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because query parameter \"$WORKSPACE\" is missing"))
+            context.showErrorPopup(MissingArgumentException("Can't handle URI because query parameter \"$WORKSPACE\" is missing"))
             return
         }
 
@@ -81,7 +74,7 @@ open class CoderProtocolHandler(
         val workspace = workspaces.firstOrNull { it.name == workspaceName }
         if (workspace == null) {
             context.logger.error("There is no workspace with name $workspaceName on $deploymentURL")
-            context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because workspace with name $workspaceName does not exist"))
+            context.showErrorPopup(MissingArgumentException("Can't handle URI because workspace with name $workspaceName does not exist"))
             return
         }
 
@@ -89,18 +82,15 @@ open class CoderProtocolHandler(
             WorkspaceStatus.PENDING, WorkspaceStatus.STARTING ->
                 if (restClient.waitForReady(workspace) != true) {
                     context.logger.error("$workspaceName from $deploymentURL could not be ready on time")
-                    context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be ready on time"))
+                    context.showErrorPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be ready on time"))
                     return
                 }
 
             WorkspaceStatus.STOPPING, WorkspaceStatus.STOPPED,
             WorkspaceStatus.CANCELING, WorkspaceStatus.CANCELED -> {
                 if (context.settings.disableAutostart) {
-                    context.ui.showWindow()
-                    context.envPageManager.showPluginEnvironmentsPage(true)
-
                     context.logger.warn("$workspaceName from $deploymentURL is not started and autostart is disabled.")
-                    context.ui.showInfoPopup(
+                    context.showInfoPopup(
                         context.i18n.pnotr("$workspaceName is not running"),
                         context.i18n.ptrl("Can't handle URI because workspace is not running and autostart is disabled. Please start the workspace manually and execute the URI again."),
                         context.i18n.ptrl("OK")
@@ -111,14 +101,14 @@ open class CoderProtocolHandler(
                 restClient.startWorkspace(workspace)
                 if (restClient.waitForReady(workspace) != true) {
                     context.logger.error("$workspaceName from $deploymentURL could not be started on time")
-                    context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be started on time"))
+                    context.showErrorPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be started on time"))
                     return
                 }
             }
 
             WorkspaceStatus.FAILED, WorkspaceStatus.DELETING, WorkspaceStatus.DELETED -> {
                 context.logger.error("Unable to connect to $workspaceName from $deploymentURL")
-                context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because because we're unable to connect to workspace $workspaceName"))
+                context.showErrorPopup(MissingArgumentException("Can't handle URI because because we're unable to connect to workspace $workspaceName"))
                 return
             }
 
@@ -323,6 +313,25 @@ internal fun getMatchingAgent(
     }
 
     return agent
+}
+
+private suspend fun CoderToolboxContext.showErrorPopup(error: Throwable) {
+    popupPluginMainPage()
+    this.ui.showErrorInfoPopup(error)
+}
+
+private suspend fun CoderToolboxContext.showInfoPopup(
+    title: LocalizableString,
+    message: LocalizableString,
+    okLabel: LocalizableString
+) {
+    popupPluginMainPage()
+    this.ui.showInfoPopup(title, message, okLabel)
+}
+
+private fun CoderToolboxContext.popupPluginMainPage() {
+    this.ui.showWindow()
+    this.envPageManager.showPluginEnvironmentsPage(true)
 }
 
 /**
