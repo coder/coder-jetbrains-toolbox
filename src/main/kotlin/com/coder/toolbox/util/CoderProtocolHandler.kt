@@ -95,6 +95,19 @@ open class CoderProtocolHandler(
 
             WorkspaceStatus.STOPPING, WorkspaceStatus.STOPPED,
             WorkspaceStatus.CANCELING, WorkspaceStatus.CANCELED -> {
+                if (context.settings.disableAutostart) {
+                    context.ui.showWindow()
+                    context.envPageManager.showPluginEnvironmentsPage(true)
+
+                    context.logger.warn("$workspaceName from $deploymentURL is not started and autostart is disabled.")
+                    context.ui.showInfoPopup(
+                        context.i18n.pnotr("$workspaceName is not running"),
+                        context.i18n.ptrl("Can't handle URI because workspace is not running and autostart is disabled. Please start the workspace manually and execute the URI again."),
+                        context.i18n.ptrl("OK")
+                    )
+                    return
+                }
+
                 restClient.startWorkspace(workspace)
                 if (restClient.waitForReady(workspace) != true) {
                     context.logger.error("$workspaceName from $deploymentURL could not be started on time")
