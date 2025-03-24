@@ -98,7 +98,16 @@ open class CoderProtocolHandler(
                     return
                 }
 
-                restClient.startWorkspace(workspace)
+                try {
+                    restClient.startWorkspace(workspace)
+                } catch (e: Exception) {
+                    context.logger.error(
+                        e,
+                        "$workspaceName from $deploymentURL could not be started while handling URI"
+                    )
+                    context.showErrorPopup(MissingArgumentException("Can't handle URI because an error was encountered while trying to start workspace $workspaceName"))
+                    return
+                }
                 if (restClient.waitForReady(workspace) != true) {
                     context.logger.error("$workspaceName from $deploymentURL could not be started on time")
                     context.showErrorPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be started on time"))
