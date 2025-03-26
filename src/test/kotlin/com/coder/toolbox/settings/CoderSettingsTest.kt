@@ -25,7 +25,6 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 
 internal class CoderSettingsTest {
     private val logger = mockk<Logger>(relaxed = true)
@@ -114,6 +113,7 @@ internal class CoderSettingsTest {
         assertEquals(Path.of(expected).toAbsolutePath(), settings.readOnly().binPath(newUrl).parent)
     }
 
+    @Test
     fun testBinPath() {
         val settings = CoderSettingsStore(
             pluginTestSettingsStore(
@@ -134,7 +134,7 @@ internal class CoderSettingsTest {
         expected = "/tmp/coder-toolbox-test/data-dir/localhost"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.readOnly().binPath(url, true).parent)
 
-        assertNotEquals("foo-bar.baz", settings.readOnly().binPath(url).fileName.toString())
+        assertEquals("foo-bar.baz", settings.readOnly().binPath(url).fileName.toString())
     }
 
     @Test
@@ -158,7 +158,7 @@ internal class CoderSettingsTest {
                 OS.MAC -> "/tmp/coder-toolbox-test/cli-home/Library/Application Support/coderv2"
                 else -> "/tmp/coder-toolbox-test/cli-xdg-config/coderv2"
             }
-        assertEquals(expected, settings.readOnly().globalConfigDir)
+        assertEquals(Path.of(expected), Path.of(settings.readOnly().globalConfigDir))
 
         // Fall back to HOME on Linux.
         if (getOS() == OS.LINUX) {
@@ -174,7 +174,7 @@ internal class CoderSettingsTest {
                 logger
             )
             expected = "/tmp/coder-toolbox-test/cli-home/.config/coderv2"
-            assertEquals(expected, settings.readOnly().globalConfigDir)
+            assertEquals(Path.of(expected), Path.of(settings.readOnly().globalConfigDir))
         }
 
         // Read CODER_CONFIG_DIR.
@@ -193,7 +193,7 @@ internal class CoderSettingsTest {
                 logger
             )
         expected = "/tmp/coder-toolbox-test/coder-config-dir"
-        assertEquals(expected, settings.readOnly().globalConfigDir)
+        assertEquals(Path.of(expected), Path.of(settings.readOnly().globalConfigDir))
     }
 
     @Test
