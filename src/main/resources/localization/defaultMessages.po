@@ -150,3 +150,12 @@ msgstr ""
 
 msgid "Can't handle URI because workspace is not running and autostart is disabled. Please start the workspace manually and execute the URI again."
 msgstr ""
+
+msgid "Enable SSH wildcard config"
+msgstr ""
+
+msgid "Extra SSH options"
+msgstr ""
+
+msgid "SSH proxy log directory"
+msgstr ""
