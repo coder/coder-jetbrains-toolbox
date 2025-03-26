@@ -273,7 +273,7 @@ class CoderCLIManager(
         val proxyArgs = baseArgs + listOfNotNull(
             if (!settings.sshLogDirectory.isNullOrBlank()) "--log-dir" else null,
             if (!settings.sshLogDirectory.isNullOrBlank()) escape(settings.sshLogDirectory) else null,
-            if (feats.reportWorkspaceUsage) "--usage-app=toolbox" else null,
+            if (feats.reportWorkspaceUsage) "--usage-app=jetbrains" else null,
         )
         val backgroundProxyArgs =
             baseArgs + listOfNotNull(if (feats.reportWorkspaceUsage) "--usage-app=disable" else null)
