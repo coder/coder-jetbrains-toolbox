@@ -30,6 +30,8 @@ internal const val TLS_ALTERNATE_HOSTNAME = "tlsAlternateHostname"
 
 internal const val DISABLE_AUTOSTART = "disableAutostart"
 
+internal const val ENABLE_SSH_WILDCARD_CONFIG = "enableSshWildcardConfig"
+
 internal const val SSH_CONFIG_PATH = "sshConfigPath"
 
 internal const val SSH_LOG_DIR = "sshLogDir"

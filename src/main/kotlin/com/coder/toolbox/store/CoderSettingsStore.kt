@@ -37,7 +37,7 @@ class CoderSettingsStore(
             altHostname = store[TLS_ALTERNATE_HOSTNAME]
         ),
         disableAutostart = store[DISABLE_AUTOSTART]?.toBooleanStrictOrNull() ?: (getOS() == OS.MAC),
-
+        isSshWildcardConfigEnabled = store[ENABLE_SSH_WILDCARD_CONFIG]?.toBooleanStrictOrNull() ?: false,
         sshConfigPath = store[SSH_CONFIG_PATH].takeUnless { it.isNullOrEmpty() }
             ?: Path.of(System.getProperty("user.home")).resolve(".ssh/config").normalize().toString(),
         sshLogDirectory = store[SSH_LOG_DIR],
@@ -122,6 +122,11 @@ class CoderSettingsStore(
     fun updateDisableAutostart(shouldDisableAutostart: Boolean) {
         backingSettings = backingSettings.copy(disableAutostart = shouldDisableAutostart)
         store[DISABLE_AUTOSTART] = shouldDisableAutostart.toString()
+    }
+
+    fun updateEnableSshWildcardConfig(enable: Boolean) {
+        backingSettings = backingSettings.copy(isSshWildcardConfigEnabled = enable)
+        store[ENABLE_SSH_WILDCARD_CONFIG] = enable.toString()
     }
 
     fun updateSshLogDir(path: String) {

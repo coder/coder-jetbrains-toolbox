@@ -86,6 +86,8 @@ data class CoderSettings(
      */
     val disableAutostart: Boolean,
 
+    val isSshWildcardConfigEnabled: Boolean,
+
     /**
      * The location of the SSH config.  Defaults to ~/.ssh/config.
      */

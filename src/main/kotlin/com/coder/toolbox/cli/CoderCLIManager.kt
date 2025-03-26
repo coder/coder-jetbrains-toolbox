@@ -112,6 +112,7 @@ fun ensureCLI(
 data class Features(
     val disableAutostart: Boolean = false,
     val reportWorkspaceUsage: Boolean = false,
+    val wildcardSsh: Boolean = false,
 )
 
 /**
@@ -282,7 +283,37 @@ class CoderCLIManager(
             } else {
                 ""
             }
-        val blockContent =
+        val options = """
+            ConnectTimeout 0
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            LogLevel ERROR
+            SetEnv CODER_SSH_SESSION_TYPE=JetBrains
+        """.trimIndent()
+
+        val blockContent = if (settings.isSshWildcardConfigEnabled && feats.wildcardSsh) {
+            startBlock + System.lineSeparator() +
+                    """
+                    Host ${getWildcardHost(deploymentURL)}--*
+                      ProxyCommand ${proxyArgs.joinToString(" ")} --ssh-host-prefix ${getWildcardHost(deploymentURL)}-- %h
+                    """.trimIndent()
+                        .plus("\n" + options.prependIndent("  "))
+                        .plus(extraConfig)
+                        .plus("\n\n")
+                        .plus(
+                            """
+                            Host ${getWildcardHost(deploymentURL)}-bg--*
+                              ProxyCommand ${backgroundProxyArgs.joinToString(" ")} --ssh-host-prefix ${
+                                getWildcardHost(
+                                    deploymentURL
+                                )
+                            }-bg-- %h
+                            """.trimIndent()
+                                .plus("\n" + options.prependIndent("  "))
+                                .plus(extraConfig),
+                        ).replace("\n", System.lineSeparator()) +
+                    System.lineSeparator() + endBlock
+        } else {
             workspaceNames.joinToString(
                 System.lineSeparator(),
                 startBlock + System.lineSeparator(),
@@ -291,28 +322,21 @@ class CoderCLIManager(
                     """
                     Host ${getHostName(deploymentURL, it)}
                       ProxyCommand ${proxyArgs.joinToString(" ")} $it
-                      ConnectTimeout 0
-                      StrictHostKeyChecking no
-                      UserKnownHostsFile /dev/null
-                      LogLevel ERROR
-                      SetEnv CODER_SSH_SESSION_TYPE=JetBrains
                     """.trimIndent()
+                        .plus("\n" + options.prependIndent("  "))
                         .plus(extraConfig)
                         .plus("\n")
                         .plus(
                             """
                             Host ${getBackgroundHostName(deploymentURL, it)}
                               ProxyCommand ${backgroundProxyArgs.joinToString(" ")} $it
-                              ConnectTimeout 0
-                              StrictHostKeyChecking no
-                              UserKnownHostsFile /dev/null
-                              LogLevel ERROR
-                              SetEnv CODER_SSH_SESSION_TYPE=JetBrains
                             """.trimIndent()
+                                .plus("\n" + options.prependIndent("  "))
                                 .plus(extraConfig),
                         ).replace("\n", System.lineSeparator())
                 },
             )
+        }
 
         if (contents == null) {
             logger.info("No existing SSH config to modify")
@@ -475,12 +499,15 @@ class CoderCLIManager(
                 Features(
                     disableAutostart = version >= SemVer(2, 5, 0),
                     reportWorkspaceUsage = version >= SemVer(2, 13, 0),
+                    version >= SemVer(2, 19, 0),
                 )
             }
         }
 
     companion object {
         private val tokenRegex = "--token [^ ]+".toRegex()
+
+        fun getWildcardHost(url: URL): String = "coder-jetbrains-toolbox--${url.safeHost()}"
 
         @JvmStatic
         fun getHostName(

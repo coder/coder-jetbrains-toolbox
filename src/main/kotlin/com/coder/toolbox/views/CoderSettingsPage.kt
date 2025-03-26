@@ -45,6 +45,9 @@ class CoderSettingsPage(context: CoderToolboxContext) : CoderPage(context, conte
         TextField(context.i18n.ptrl("TLS alternate hostname"), settings.tls.altHostname ?: "", TextType.General)
     private val disableAutostartField =
         CheckboxField(settings.disableAutostart, context.i18n.ptrl("Disable autostart"))
+
+    private val enableSshWildCardConfig =
+        CheckboxField(settings.isSshWildcardConfigEnabled, context.i18n.ptrl("Enable SSH wildcard config"))
     private val sshExtraArgs =
         TextField(context.i18n.ptrl("Extra SSH options"), settings.sshConfigOptions ?: "", TextType.General)
     private val sshLogDirField =
@@ -64,6 +67,7 @@ class CoderSettingsPage(context: CoderToolboxContext) : CoderPage(context, conte
             tlsCAPathField,
             tlsAlternateHostnameField,
             disableAutostartField,
+            enableSshWildCardConfig,
             sshLogDirField,
             sshExtraArgs,
         )
@@ -83,6 +87,7 @@ class CoderSettingsPage(context: CoderToolboxContext) : CoderPage(context, conte
                 context.settingsStore.updateCAPath(tlsCAPathField.textState.value)
                 context.settingsStore.updateAltHostname(tlsAlternateHostnameField.textState.value)
                 context.settingsStore.updateDisableAutostart(disableAutostartField.checkedState.value)
+                context.settingsStore.updateEnableSshWildcardConfig(enableSshWildCardConfig.checkedState.value)
                 context.settingsStore.updateSshLogDir(sshLogDirField.textState.value)
                 context.settingsStore.updateSshConfigOptions(sshExtraArgs.textState.value)
             }
