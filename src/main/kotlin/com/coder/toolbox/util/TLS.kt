@@ -1,6 +1,6 @@
 package com.coder.toolbox.util
 
-import com.coder.toolbox.settings.CoderTLSSettings
+import com.coder.toolbox.settings.CTLSSettings
 import okhttp3.internal.tls.OkHostnameVerifier
 import java.io.File
 import java.io.FileInputStream
@@ -28,12 +28,12 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 fun sslContextFromPEMs(
-    certPath: String,
-    keyPath: String,
-    caPath: String,
+    certPath: String?,
+    keyPath: String?,
+    caPath: String?,
 ): SSLContext {
     var km: Array<KeyManager>? = null
-    if (certPath.isNotBlank() && keyPath.isNotBlank()) {
+    if (!certPath.isNullOrBlank() && !keyPath.isNullOrBlank()) {
         val certificateFactory = CertificateFactory.getInstance("X.509")
         val certInputStream = FileInputStream(expand(certPath))
         val certChain = certificateFactory.generateCertificates(certInputStream)
@@ -81,18 +81,18 @@ fun sslContextFromPEMs(
     return sslContext
 }
 
-fun coderSocketFactory(settings: CoderTLSSettings): SSLSocketFactory {
+fun coderSocketFactory(settings: CTLSSettings): SSLSocketFactory {
     val sslContext = sslContextFromPEMs(settings.certPath, settings.keyPath, settings.caPath)
-    if (settings.altHostname.isBlank()) {
+    if (settings.altHostname.isNullOrBlank()) {
         return sslContext.socketFactory
     }
 
     return AlternateNameSSLSocketFactory(sslContext.socketFactory, settings.altHostname)
 }
 
-fun coderTrustManagers(tlsCAPath: String): Array<TrustManager> {
+fun coderTrustManagers(tlsCAPath: String?): Array<TrustManager> {
     val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
-    if (tlsCAPath.isBlank()) {
+    if (tlsCAPath.isNullOrBlank()) {
         // return default trust managers
         trustManagerFactory.init(null as KeyStore?)
         return trustManagerFactory.trustManagers
@@ -111,7 +111,7 @@ fun coderTrustManagers(tlsCAPath: String): Array<TrustManager> {
     return trustManagerFactory.trustManagers.map { MergedSystemTrustManger(it as X509TrustManager) }.toTypedArray()
 }
 
-class AlternateNameSSLSocketFactory(private val delegate: SSLSocketFactory, private val alternateName: String) :
+class AlternateNameSSLSocketFactory(private val delegate: SSLSocketFactory, private val alternateName: String?) :
     SSLSocketFactory() {
     override fun getDefaultCipherSuites(): Array<String> = delegate.defaultCipherSuites
 
@@ -181,12 +181,12 @@ class AlternateNameSSLSocketFactory(private val delegate: SSLSocketFactory, priv
     }
 }
 
-class CoderHostnameVerifier(private val alternateName: String) : HostnameVerifier {
+class CoderHostnameVerifier(private val alternateName: String?) : HostnameVerifier {
     override fun verify(
         host: String,
         session: SSLSession,
     ): Boolean {
-        if (alternateName.isEmpty()) {
+        if (alternateName.isNullOrBlank()) {
             return OkHostnameVerifier.verify(host, session)
         }
         val certs = session.peerCertificates ?: return false

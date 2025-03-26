@@ -15,8 +15,6 @@ import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
-import com.coder.toolbox.settings.CoderSettings
-import com.coder.toolbox.settings.CoderSettingsState
 import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.coderSocketFactory
 import com.coder.toolbox.util.coderTrustManagers
@@ -53,11 +51,11 @@ open class CoderRestClient(
     context: CoderToolboxContext,
     val url: URL,
     val token: String?,
-    private val settings: CoderSettings = CoderSettings(CoderSettingsState(), context.logger),
     private val proxyValues: ProxyValues? = null,
     private val pluginVersion: String = "development",
     existingHttpClient: OkHttpClient? = null,
 ) {
+    private val settings = context.settingsStore.readOnly()
     private val httpClient: OkHttpClient
     private val retroRestClient: CoderV2RestFacade
 

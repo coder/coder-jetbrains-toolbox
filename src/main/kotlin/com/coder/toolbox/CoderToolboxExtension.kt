@@ -1,7 +1,8 @@
 package com.coder.toolbox
 
-import com.coder.toolbox.services.CoderSecretsService
-import com.coder.toolbox.services.CoderSettingsService
+import com.coder.toolbox.settings.Environment
+import com.coder.toolbox.store.CoderSecretsStore
+import com.coder.toolbox.store.CoderSettingsStore
 import com.jetbrains.toolbox.api.core.PluginSecretStore
 import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.ServiceLocator
@@ -22,6 +23,7 @@ import okhttp3.OkHttpClient
 class CoderToolboxExtension : RemoteDevExtension {
     // All services must be passed in here and threaded as necessary.
     override fun createRemoteProviderPluginInstance(serviceLocator: ServiceLocator): RemoteProvider {
+        val logger = serviceLocator.getService(Logger::class.java)
         return CoderRemoteProvider(
             CoderToolboxContext(
                 serviceLocator.getService(ToolboxUi::class.java),
@@ -31,8 +33,8 @@ class CoderToolboxExtension : RemoteDevExtension {
                 serviceLocator.getService(CoroutineScope::class.java),
                 serviceLocator.getService(Logger::class.java),
                 serviceLocator.getService(LocalizableStringFactory::class.java),
-                CoderSettingsService(serviceLocator.getService(PluginSettingsStore::class.java)),
-                CoderSecretsService(serviceLocator.getService(PluginSecretStore::class.java)),
+                CoderSettingsStore(serviceLocator.getService(PluginSettingsStore::class.java), Environment(), logger),
+                CoderSecretsStore(serviceLocator.getService(PluginSecretStore::class.java)),
             ),
             OkHttpClient(),
         )

@@ -5,7 +5,6 @@ import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
 import com.coder.toolbox.settings.CoderSettings
-import com.coder.toolbox.settings.CoderSettingsState
 import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.OS
@@ -59,8 +58,8 @@ fun ensureCLI(
     context: CoderToolboxContext,
     deploymentURL: URL,
     buildVersion: String,
-    settings: CoderSettings,
 ): CoderCLIManager {
+    val settings = context.settingsStore.readOnly()
     val cli = CoderCLIManager(deploymentURL, context.logger, settings)
 
     // Short-circuit if we already have the expected version.  This
@@ -123,7 +122,7 @@ class CoderCLIManager(
     private val deploymentURL: URL,
     private val logger: Logger,
     // Plugin configuration.
-    private val settings: CoderSettings = CoderSettings(CoderSettingsState(), logger),
+    private val settings: CoderSettings,
     // If the binary directory is not writable, this can be used to force the
     // manager to download to the data directory instead.
     forceDownloadToData: Boolean = false,
@@ -138,7 +137,7 @@ class CoderCLIManager(
     fun download(): Boolean {
         val eTag = getBinaryETag()
         val conn = remoteBinaryURL.openConnection() as HttpURLConnection
-        if (settings.headerCommand.isNotBlank()) {
+        if (!settings.headerCommand.isNullOrBlank()) {
             val headersFromHeaderCommand = getHeaders(deploymentURL, settings.headerCommand)
             for ((key, value) in headersFromHeaderCommand) {
                 conn.setRequestProperty(key, value)
@@ -232,7 +231,7 @@ class CoderCLIManager(
      * Return the contents of the SSH config or null if it does not exist.
      */
     private fun readSSHConfig(): String? = try {
-        settings.sshConfigPath.toFile().readText()
+        Path.of(settings.sshConfigPath).toFile().readText()
     } catch (e: FileNotFoundException) {
         null
     }
@@ -264,21 +263,21 @@ class CoderCLIManager(
                 // always use the correct URL.
                 "--url",
                 escape(deploymentURL.toString()),
-                if (settings.headerCommand.isNotBlank()) "--header-command" else null,
-                if (settings.headerCommand.isNotBlank()) escapeSubcommand(settings.headerCommand) else null,
+                if (!settings.headerCommand.isNullOrBlank()) "--header-command" else null,
+                if (!settings.headerCommand.isNullOrBlank()) escapeSubcommand(settings.headerCommand) else null,
                 "ssh",
                 "--stdio",
                 if (settings.disableAutostart && feats.disableAutostart) "--disable-autostart" else null,
             )
         val proxyArgs = baseArgs + listOfNotNull(
-            if (settings.sshLogDirectory.isNotBlank()) "--log-dir" else null,
-            if (settings.sshLogDirectory.isNotBlank()) escape(settings.sshLogDirectory) else null,
+            if (!settings.sshLogDirectory.isNullOrBlank()) "--log-dir" else null,
+            if (!settings.sshLogDirectory.isNullOrBlank()) escape(settings.sshLogDirectory) else null,
             if (feats.reportWorkspaceUsage) "--usage-app=toolbox" else null,
         )
         val backgroundProxyArgs =
             baseArgs + listOfNotNull(if (feats.reportWorkspaceUsage) "--usage-app=disable" else null)
         val extraConfig =
-            if (settings.sshConfigOptions.isNotBlank()) {
+            if (!settings.sshConfigOptions.isNullOrBlank()) {
                 "\n" + settings.sshConfigOptions.prependIndent("  ")
             } else {
                 ""
@@ -379,10 +378,13 @@ class CoderCLIManager(
      */
     private fun writeSSHConfig(contents: String?) {
         if (contents != null) {
-            settings.sshConfigPath.parent.toFile().mkdirs()
-            settings.sshConfigPath.toFile().writeText(contents)
+            if (!settings.sshConfigPath.isNullOrBlank()) {
+                val sshConfPath = Path.of(settings.sshConfigPath)
+                sshConfPath.parent.toFile().mkdirs()
+                sshConfPath.toFile().writeText(contents)
+            }
             // The Coder cli will *not* create the log directory.
-            if (settings.sshLogDirectory.isNotBlank()) {
+            if (!settings.sshLogDirectory.isNullOrBlank()) {
                 Path.of(settings.sshLogDirectory).toFile().mkdirs()
             }
         }

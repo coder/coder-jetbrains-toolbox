@@ -13,10 +13,12 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.sdk.v2.models.WorkspacesResponse
-import com.coder.toolbox.services.CoderSecretsService
-import com.coder.toolbox.services.CoderSettingsService
-import com.coder.toolbox.settings.CoderSettings
-import com.coder.toolbox.settings.CoderSettingsState
+import com.coder.toolbox.settings.Environment
+import com.coder.toolbox.store.CoderSecretsStore
+import com.coder.toolbox.store.CoderSettingsStore
+import com.coder.toolbox.store.TLS_ALTERNATE_HOSTNAME
+import com.coder.toolbox.store.TLS_CA_PATH
+import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.util.sslContextFromPEMs
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
@@ -100,8 +102,8 @@ class CoderRestClientTest {
         mockk<CoroutineScope>(),
         mockk<Logger>(relaxed = true),
         mockk<LocalizableStringFactory>(),
-        mockk<CoderSettingsService>(),
-        mockk<CoderSecretsService>()
+        CoderSettingsStore(pluginTestSettingsStore(), Environment(), mockk<Logger>(relaxed = true)),
+        mockk<CoderSecretsStore>()
     )
 
     data class TestWorkspace(var workspace: Workspace, var resources: List<WorkspaceResource>? = emptyList())
@@ -431,16 +433,17 @@ class CoderRestClientTest {
     @Test
     fun testValidSelfSignedCert() {
         val settings =
-            CoderSettings(
-                CoderSettingsState(
-                    tlsCAPath = Path.of("src/test/resources/fixtures/tls", "self-signed.crt").toString(),
-                    tlsAlternateHostname = "localhost",
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    TLS_CA_PATH to Path.of("src/test/resources/fixtures/tls", "self-signed.crt").toString(),
+                    TLS_ALTERNATE_HOSTNAME to "localhost",
                 ),
+                Environment(),
                 context.logger
             )
         val user = DataGen.user()
         val (srv, url) = mockTLSServer("self-signed")
-        val client = CoderRestClient(context, URL(url), "token", settings)
+        val client = CoderRestClient(context.copy(settingsStore = settings), URL(url), "token")
         srv.createContext(
             "/api/v2/users/me",
             BaseHttpHandler("GET") { exchange ->
@@ -458,15 +461,16 @@ class CoderRestClientTest {
     @Test
     fun testWrongHostname() {
         val settings =
-            CoderSettings(
-                CoderSettingsState(
-                    tlsCAPath = Path.of("src/test/resources/fixtures/tls", "self-signed.crt").toString(),
-                    tlsAlternateHostname = "fake.example.com",
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    TLS_CA_PATH to Path.of("src/test/resources/fixtures/tls", "self-signed.crt").toString(),
+                    TLS_ALTERNATE_HOSTNAME to "fake.example.com",
                 ),
+                Environment(),
                 context.logger
             )
         val (srv, url) = mockTLSServer("self-signed")
-        val client = CoderRestClient(context, URL(url), "token", settings)
+        val client = CoderRestClient(context.copy(settingsStore = settings), URL(url), "token")
 
         assertFailsWith(
             exceptionClass = SSLPeerUnverifiedException::class,
@@ -478,15 +482,15 @@ class CoderRestClientTest {
 
     @Test
     fun testCertNotTrusted() {
-        val settings =
-            CoderSettings(
-                CoderSettingsState(
-                    tlsCAPath = Path.of("src/test/resources/fixtures/tls", "self-signed.crt").toString(),
-                ),
-                context.logger
-            )
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                TLS_CA_PATH to Path.of("src/test/resources/fixtures/tls", "self-signed.crt").toString(),
+            ),
+            Environment(),
+            context.logger
+        )
         val (srv, url) = mockTLSServer("no-signing")
-        val client = CoderRestClient(context, URL(url), "token", settings)
+        val client = CoderRestClient(context.copy(settingsStore = settings), URL(url), "token")
 
         assertFailsWith(
             exceptionClass = SSLHandshakeException::class,
@@ -499,15 +503,16 @@ class CoderRestClientTest {
     @Test
     fun testValidChain() {
         val settings =
-            CoderSettings(
-                CoderSettingsState(
-                    tlsCAPath = Path.of("src/test/resources/fixtures/tls", "chain-root.crt").toString(),
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    TLS_CA_PATH to Path.of("src/test/resources/fixtures/tls", "chain-root.crt").toString(),
                 ),
+                Environment(),
                 context.logger
             )
         val user = DataGen.user()
         val (srv, url) = mockTLSServer("chain")
-        val client = CoderRestClient(context, URL(url), "token", settings)
+        val client = CoderRestClient(context.copy(settingsStore = settings), URL(url), "token")
         srv.createContext(
             "/api/v2/users/me",
             BaseHttpHandler("GET") { exchange ->
@@ -524,7 +529,7 @@ class CoderRestClientTest {
 
     @Test
     fun usesProxy() {
-        val settings = CoderSettings(CoderSettingsState(), context.logger)
+        val settings = CoderSettingsStore(pluginTestSettingsStore(), Environment(), context.logger)
         val workspaces = listOf(DataGen.workspace("ws1"))
         val (srv1, url1) = mockServer()
         srv1.createContext(
@@ -539,10 +544,9 @@ class CoderRestClientTest {
         val srv2 = mockProxy()
         val client =
             CoderRestClient(
-                context,
+                context.copy(settingsStore = settings),
                 URL(url1),
                 "token",
-                settings,
                 ProxyValues(
                     "foo",
                     "bar",

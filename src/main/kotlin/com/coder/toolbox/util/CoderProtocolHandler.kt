@@ -9,7 +9,6 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.coder.toolbox.settings.CoderSettings
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
@@ -27,11 +26,12 @@ import kotlin.time.toJavaDuration
 
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
-    private val settings: CoderSettings,
     private val httpClient: OkHttpClient?,
     private val dialogUi: DialogUi,
     private val isInitialized: StateFlow<Boolean>,
 ) {
+    private val settings = context.settingsStore.readOnly()
+
     /**
      * Given a set of URL parameters, prepare the CLI then return a workspace to
      * connect.
@@ -88,7 +88,7 @@ open class CoderProtocolHandler(
 
             WorkspaceStatus.STOPPING, WorkspaceStatus.STOPPED,
             WorkspaceStatus.CANCELING, WorkspaceStatus.CANCELED -> {
-                if (context.settings.disableAutostart) {
+                if (settings.disableAutostart) {
                     context.logger.warn("$workspaceName from $deploymentURL is not started and autostart is disabled.")
                     context.showInfoPopup(
                         context.i18n.pnotr("$workspaceName is not running"),
@@ -134,13 +134,11 @@ open class CoderProtocolHandler(
             return
         }
 
-        val cli =
-            ensureCLI(
-                context,
-                deploymentURL.toURL(),
-                restClient.buildInfo().version,
-                settings
-            )
+        val cli = ensureCLI(
+            context,
+            deploymentURL.toURL(),
+            restClient.buildInfo().version
+        )
 
         // We only need to log in if we are using token-based auth.
         if (restClient.token != null) {
@@ -231,7 +229,6 @@ open class CoderProtocolHandler(
             context,
             deploymentURL.toURL(),
             token,
-            settings,
             proxyValues = null, // TODO - not sure the above comment applies as we are creating our own http client
             PluginManager.pluginInfo.version,
             httpClient

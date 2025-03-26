@@ -4,17 +4,27 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
-import com.coder.toolbox.services.CoderSecretsService
-import com.coder.toolbox.services.CoderSettingsService
-import com.coder.toolbox.settings.CODER_SSH_CONFIG_OPTIONS
-import com.coder.toolbox.settings.CoderSettings
-import com.coder.toolbox.settings.CoderSettingsState
 import com.coder.toolbox.settings.Environment
+import com.coder.toolbox.store.BINARY_DIRECTORY
+import com.coder.toolbox.store.BINARY_NAME
+import com.coder.toolbox.store.BINARY_SOURCE
+import com.coder.toolbox.store.CODER_SSH_CONFIG_OPTIONS
+import com.coder.toolbox.store.CoderSecretsStore
+import com.coder.toolbox.store.CoderSettingsStore
+import com.coder.toolbox.store.DATA_DIRECTORY
+import com.coder.toolbox.store.DISABLE_AUTOSTART
+import com.coder.toolbox.store.ENABLE_BINARY_DIR_FALLBACK
+import com.coder.toolbox.store.ENABLE_DOWNLOADS
+import com.coder.toolbox.store.HEADER_COMMAND
+import com.coder.toolbox.store.SSH_CONFIG_OPTIONS
+import com.coder.toolbox.store.SSH_CONFIG_PATH
+import com.coder.toolbox.store.SSH_LOG_DIR
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.getOS
+import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.util.sha1
 import com.coder.toolbox.util.toURL
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
@@ -53,8 +63,12 @@ internal class CoderCLIManagerTest {
         mockk<CoroutineScope>(),
         mockk<Logger>(relaxed = true),
         mockk<LocalizableStringFactory>(),
-        mockk<CoderSettingsService>(),
-        mockk<CoderSecretsService>()
+        CoderSettingsStore(
+            pluginTestSettingsStore(),
+            Environment(),
+            mockk<Logger>(relaxed = true)
+        ),
+        mockk<CoderSecretsStore>()
     )
 
     /**
@@ -107,7 +121,15 @@ internal class CoderCLIManagerTest {
     @Test
     fun testServerInternalError() {
         val (srv, url) = mockServer(HttpURLConnection.HTTP_INTERNAL_ERROR)
-        val ccm = CoderCLIManager(url, context.logger)
+        val ccm = CoderCLIManager(
+            url,
+            context.logger,
+            CoderSettingsStore(
+                pluginTestSettingsStore(),
+                Environment(),
+                mockk<Logger>(relaxed = true)
+            ).readOnly()
+        )
 
         val ex =
             assertFailsWith(
@@ -121,14 +143,14 @@ internal class CoderCLIManagerTest {
 
     @Test
     fun testUsesSettings() {
-        val settings =
-            CoderSettings(
-                CoderSettingsState(
-                    dataDirectory = tmpdir.resolve("cli-data-dir").toString(),
-                    binaryDirectory = tmpdir.resolve("cli-bin-dir").toString(),
-                ),
-                context.logger
-            )
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                DATA_DIRECTORY to tmpdir.resolve("cli-data-dir").toString(),
+                BINARY_DIRECTORY to tmpdir.resolve("cli-bin-dir").toString(),
+            ),
+            Environment(),
+            context.logger
+        ).readOnly()
         val url = URL("http://localhost")
 
         val ccm1 = CoderCLIManager(url, context.logger, settings)
@@ -150,17 +172,17 @@ internal class CoderCLIManagerTest {
         }
 
         val (srv, url) = mockServer()
-        val ccm =
-            CoderCLIManager(
-                url,
-                context.logger,
-                CoderSettings(
-                    CoderSettingsState(
-                        dataDirectory = tmpdir.resolve("cli-dir-fail-to-write").toString(),
-                    ),
-                    context.logger
+        val ccm = CoderCLIManager(
+            url,
+            context.logger,
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    DATA_DIRECTORY to tmpdir.resolve("cli-dir-fail-to-write").toString(),
                 ),
-            )
+                Environment(),
+                context.logger
+            ).readOnly(),
+        )
 
         ccm.localBinaryPath.parent.toFile().mkdirs()
         ccm.localBinaryPath.parent.toFile().setWritable(false)
@@ -184,17 +206,17 @@ internal class CoderCLIManagerTest {
             url = "https://dev.coder.com"
         }
 
-        val ccm =
-            CoderCLIManager(
-                url.toURL(),
-                context.logger,
-                CoderSettings(
-                    CoderSettingsState(
-                        dataDirectory = tmpdir.resolve("real-cli").toString(),
-                    ),
-                    context.logger
+        val ccm = CoderCLIManager(
+            url.toURL(),
+            context.logger,
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    DATA_DIRECTORY to tmpdir.resolve("real-cli").toString(),
                 ),
-            )
+                Environment(),
+                context.logger
+            ).readOnly(),
+        )
 
         assertTrue(ccm.download())
         assertDoesNotThrow { ccm.version() }
@@ -212,18 +234,18 @@ internal class CoderCLIManagerTest {
     @Test
     fun testDownloadMockCLI() {
         val (srv, url) = mockServer()
-        var ccm =
-            CoderCLIManager(
-                url,
-                context.logger,
-                CoderSettings(
-                    CoderSettingsState(
-                        dataDirectory = tmpdir.resolve("mock-cli").toString(),
-                    ),
-                    context.logger,
-                    binaryName = "coder.bat",
+        var ccm = CoderCLIManager(
+            url,
+            context.logger,
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    BINARY_NAME to "coder.bat",
+                    DATA_DIRECTORY to tmpdir.resolve("mock-cli").toString(),
                 ),
-            )
+                Environment(),
+                context.logger,
+            ).readOnly(),
+        )
 
         assertEquals(true, ccm.download())
         assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
@@ -232,18 +254,18 @@ internal class CoderCLIManagerTest {
         assertEquals(false, ccm.download())
 
         // Should use the source override.
-        ccm =
-            CoderCLIManager(
-                url,
-                context.logger,
-                CoderSettings(
-                    CoderSettingsState(
-                        binarySource = "/bin/override",
-                        dataDirectory = tmpdir.resolve("mock-cli").toString(),
-                    ),
-                    context.logger
+        ccm = CoderCLIManager(
+            url,
+            context.logger,
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    BINARY_SOURCE to "/bin/override",
+                    DATA_DIRECTORY to tmpdir.resolve("mock-cli").toString(),
                 ),
-            )
+                Environment(),
+                context.logger
+            ).readOnly(),
+        )
 
         assertEquals(true, ccm.download())
         assertContains(ccm.localBinaryPath.toFile().readText(), "0.0.0")
@@ -253,17 +275,17 @@ internal class CoderCLIManagerTest {
 
     @Test
     fun testRunNonExistentBinary() {
-        val ccm =
-            CoderCLIManager(
-                URL("https://foo"),
-                context.logger,
-                CoderSettings(
-                    CoderSettingsState(
-                        dataDirectory = tmpdir.resolve("does-not-exist").toString(),
-                    ),
-                    context.logger
+        val ccm = CoderCLIManager(
+            URL("https://foo"),
+            context.logger,
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    DATA_DIRECTORY to tmpdir.resolve("does-not-exist").toString(),
                 ),
-            )
+                Environment(),
+                context.logger
+            ).readOnly(),
+        )
 
         assertFailsWith(
             exceptionClass = ProcessInitException::class,
@@ -274,17 +296,17 @@ internal class CoderCLIManagerTest {
     @Test
     fun testOverwritesWrongVersion() {
         val (srv, url) = mockServer()
-        val ccm =
-            CoderCLIManager(
-                url,
-                context.logger,
-                CoderSettings(
-                    CoderSettingsState(
-                        dataDirectory = tmpdir.resolve("overwrite-cli").toString(),
-                    ),
-                    context.logger
+        val ccm = CoderCLIManager(
+            url,
+            context.logger,
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    DATA_DIRECTORY to tmpdir.resolve("overwrite-cli").toString(),
                 ),
-            )
+                Environment(),
+                context.logger
+            ).readOnly(),
+        )
 
         ccm.localBinaryPath.parent.toFile().mkdirs()
         ccm.localBinaryPath.toFile().writeText("cli")
@@ -307,13 +329,13 @@ internal class CoderCLIManagerTest {
         val (srv1, url1) = mockServer()
         val (srv2, url2) = mockServer()
 
-        val settings =
-            CoderSettings(
-                CoderSettingsState(
-                    dataDirectory = tmpdir.resolve("clobber-cli").toString(),
-                ),
-                context.logger
-            )
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                DATA_DIRECTORY to tmpdir.resolve("clobber-cli").toString(),
+            ),
+            Environment(),
+            context.logger
+        ).readOnly()
 
         val ccm1 = CoderCLIManager(url1, context.logger, settings)
         val ccm2 = CoderCLIManager(url2, context.logger, settings)
@@ -438,28 +460,29 @@ internal class CoderCLIManagerTest {
 
         tests.forEach {
             val settings =
-                CoderSettings(
-                    CoderSettingsState(
-                        disableAutostart = it.disableAutostart,
-                        dataDirectory = tmpdir.resolve("configure-ssh").toString(),
-                        headerCommand = it.headerCommand,
-                        sshConfigOptions = it.extraConfig,
-                        sshLogDirectory = it.sshLogDirectory?.toString() ?: "",
+                CoderSettingsStore(
+                    pluginTestSettingsStore(
+                        DISABLE_AUTOSTART to it.disableAutostart.toString(),
+                        DATA_DIRECTORY to tmpdir.resolve("configure-ssh").toString(),
+                        HEADER_COMMAND to it.headerCommand,
+                        SSH_CONFIG_PATH to tmpdir.resolve(it.input + "_to_" + it.output + ".conf").toString(),
+                        SSH_CONFIG_OPTIONS to it.extraConfig,
+                        SSH_LOG_DIR to (it.sshLogDirectory?.toString() ?: "")
                     ),
-                    context.logger,
-                    sshConfigPath = tmpdir.resolve(it.input + "_to_" + it.output + ".conf"),
                     env = it.env,
-                )
+                    context.logger,
+                ).readOnly()
 
             val ccm = CoderCLIManager(URL("https://test.coder.invalid"), context.logger, settings)
 
+            val sshConfigPath = Path.of(settings.sshConfigPath)
             // Input is the configuration that we start with, if any.
             if (it.input != null) {
-                settings.sshConfigPath.parent.toFile().mkdirs()
+                sshConfigPath.parent.toFile().mkdirs()
                 val originalConf =
                     Path.of("src/test/resources/fixtures/inputs").resolve(it.input + ".conf").toFile().readText()
                         .replace(newlineRe, System.lineSeparator())
-                settings.sshConfigPath.toFile().writeText(originalConf)
+                sshConfigPath.toFile().writeText(originalConf)
             }
 
             // Output is the configuration we expect to have after configuring.
@@ -483,7 +506,7 @@ internal class CoderCLIManagerTest {
             // Add workspaces.
             ccm.configSsh(it.workspaces.toSet(), it.features)
 
-            assertEquals(expectedConf, settings.sshConfigPath.toFile().readText())
+            assertEquals(expectedConf, sshConfigPath.toFile().readText())
 
             // SSH log directory should have been created.
             if (it.sshLogDirectory != null) {
@@ -495,7 +518,7 @@ internal class CoderCLIManagerTest {
 
             // Remove is the configuration we expect after removing.
             assertEquals(
-                settings.sshConfigPath.toFile().readText(),
+                sshConfigPath.toFile().readText(),
                 Path.of("src/test/resources/fixtures/inputs").resolve(it.remove + ".conf").toFile()
                     .readText().replace(newlineRe, System.lineSeparator()),
             )
@@ -513,15 +536,17 @@ internal class CoderCLIManagerTest {
             )
 
         tests.forEach {
-            val settings =
-                CoderSettings(
-                    CoderSettingsState(),
-                    context.logger,
-                    sshConfigPath = tmpdir.resolve("configured$it.conf"),
-                )
-            settings.sshConfigPath.parent.toFile().mkdirs()
+            val settings = CoderSettingsStore(
+                pluginTestSettingsStore(
+                    SSH_CONFIG_PATH to tmpdir.resolve("configured$it.conf").normalize().toString(),
+                ),
+                Environment(),
+                context.logger
+            ).readOnly()
+            val sshConfigPath = Path.of(settings.sshConfigPath)
+            sshConfigPath.parent.toFile().mkdirs()
             Path.of("src/test/resources/fixtures/inputs").resolve("$it.conf").toFile().copyTo(
-                settings.sshConfigPath.toFile(),
+                sshConfigPath.toFile(),
                 true,
             )
 
@@ -542,17 +567,17 @@ internal class CoderCLIManagerTest {
             )
 
         tests.forEach {
-            val ccm =
-                CoderCLIManager(
-                    URL("https://test.coder.invalid"),
-                    context.logger,
-                    CoderSettings(
-                        CoderSettingsState(
-                            headerCommand = it,
-                        ),
-                        context.logger
+            val ccm = CoderCLIManager(
+                URL("https://test.coder.invalid"),
+                context.logger,
+                CoderSettingsStore(
+                    pluginTestSettingsStore(
+                        HEADER_COMMAND to it,
                     ),
-                )
+                    Environment(),
+                    context.logger
+                ).readOnly(),
+            )
 
             assertFailsWith(
                 exceptionClass = Exception::class,
@@ -593,18 +618,18 @@ internal class CoderCLIManagerTest {
                 exit(1) to InvalidExitValueException::class,
             )
 
-        val ccm =
-            CoderCLIManager(
-                URL("https://test.coder.parse-fail.invalid"),
-                context.logger,
-                CoderSettings(
-                    CoderSettingsState(
-                        binaryDirectory = tmpdir.resolve("bad-version").toString(),
-                    ),
-                    context.logger,
-                    binaryName = "coder.bat",
+        val ccm = CoderCLIManager(
+            URL("https://test.coder.parse-fail.invalid"),
+            context.logger,
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    BINARY_NAME to "coder.bat",
+                    BINARY_DIRECTORY to tmpdir.resolve("bad-version").toString(),
                 ),
-            )
+                Environment(),
+                context.logger,
+            ).readOnly(),
+        )
         ccm.localBinaryPath.parent.toFile().mkdirs()
 
         tests.forEach {
@@ -646,18 +671,18 @@ internal class CoderCLIManagerTest {
                 Triple(exit(1), "v1.0.0", null),
             )
 
-        val ccm =
-            CoderCLIManager(
-                URL("https://test.coder.matches-version.invalid"),
-                context.logger,
-                CoderSettings(
-                    CoderSettingsState(
-                        binaryDirectory = tmpdir.resolve("matches-version").toString(),
-                    ),
-                    context.logger,
-                    binaryName = "coder.bat",
+        val ccm = CoderCLIManager(
+            URL("https://test.coder.matches-version.invalid"),
+            context.logger,
+            CoderSettingsStore(
+                pluginTestSettingsStore(
+                    BINARY_NAME to "coder.bat",
+                    BINARY_DIRECTORY to tmpdir.resolve("matches-version").toString(),
                 ),
-            )
+                Environment(),
+                context.logger,
+            ).readOnly(),
+        )
         ccm.localBinaryPath.parent.toFile().mkdirs()
 
         test.forEach {
@@ -745,17 +770,18 @@ internal class CoderCLIManagerTest {
         val (srv, url) = mockServer()
 
         tests.forEach {
-            val settings =
-                CoderSettings(
-                    CoderSettingsState(
-                        enableDownloads = it.enableDownloads,
-                        enableBinaryDirectoryFallback = it.enableFallback,
-                        dataDirectory = tmpdir.resolve("ensure-data-dir").toString(),
-                        binaryDirectory = tmpdir.resolve("ensure-bin-dir").toString(),
-                    ),
-                    context.logger
-                )
-
+            val settingsStore = CoderSettingsStore(
+                pluginTestSettingsStore(
+                    ENABLE_DOWNLOADS to it.enableDownloads.toString(),
+                    ENABLE_BINARY_DIR_FALLBACK to it.enableFallback.toString(),
+                    DATA_DIRECTORY to tmpdir.resolve("ensure-data-dir").toString(),
+                    BINARY_DIRECTORY to tmpdir.resolve("ensure-bin-dir").toString(),
+                ),
+                Environment(),
+                context.logger
+            )
+            val settings = settingsStore.readOnly()
+            val localContext = context.copy(settingsStore = settingsStore)
             // Clean up from previous test.
             tmpdir.resolve("ensure-data-dir").toFile().deleteRecursively()
             tmpdir.resolve("ensure-bin-dir").toFile().deleteRecursively()
@@ -784,12 +810,12 @@ internal class CoderCLIManagerTest {
                 Result.ERROR -> {
                     assertFailsWith(
                         exceptionClass = AccessDeniedException::class,
-                        block = { ensureCLI(context, url, it.buildVersion, settings) },
+                        block = { ensureCLI(localContext, url, it.buildVersion) },
                     )
                 }
 
                 Result.NONE -> {
-                    val ccm = ensureCLI(context, url, it.buildVersion, settings)
+                    val ccm = ensureCLI(localContext, url, it.buildVersion)
                     assertEquals(settings.binPath(url), ccm.localBinaryPath)
                     assertFailsWith(
                         exceptionClass = ProcessInitException::class,
@@ -798,25 +824,25 @@ internal class CoderCLIManagerTest {
                 }
 
                 Result.DL_BIN -> {
-                    val ccm = ensureCLI(context, url, it.buildVersion, settings)
+                    val ccm = ensureCLI(localContext, url, it.buildVersion)
                     assertEquals(settings.binPath(url), ccm.localBinaryPath)
                     assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
                 }
 
                 Result.DL_DATA -> {
-                    val ccm = ensureCLI(context, url, it.buildVersion, settings)
+                    val ccm = ensureCLI(localContext, url, it.buildVersion)
                     assertEquals(settings.binPath(url, true), ccm.localBinaryPath)
                     assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
                 }
 
                 Result.USE_BIN -> {
-                    val ccm = ensureCLI(context, url, it.buildVersion, settings)
+                    val ccm = ensureCLI(localContext, url, it.buildVersion)
                     assertEquals(settings.binPath(url), ccm.localBinaryPath)
                     assertEquals(SemVer.parse(it.version ?: ""), ccm.version())
                 }
 
                 Result.USE_DATA -> {
-                    val ccm = ensureCLI(context, url, it.buildVersion, settings)
+                    val ccm = ensureCLI(localContext, url, it.buildVersion)
                     assertEquals(settings.binPath(url, true), ccm.localBinaryPath)
                     assertEquals(SemVer.parse(it.fallbackVersion ?: ""), ccm.version())
                 }
@@ -844,18 +870,18 @@ internal class CoderCLIManagerTest {
 
         tests.forEach {
             val (srv, url) = mockServer(version = it.first)
-            val ccm =
-                CoderCLIManager(
-                    url,
-                    context.logger,
-                    CoderSettings(
-                        CoderSettingsState(
-                            dataDirectory = tmpdir.resolve("features").toString(),
-                        ),
-                        context.logger,
-                        binaryName = "coder.bat",
+            val ccm = CoderCLIManager(
+                url,
+                context.logger,
+                CoderSettingsStore(
+                    pluginTestSettingsStore(
+                        BINARY_NAME to "coder.bat",
+                        DATA_DIRECTORY to tmpdir.resolve("features").toString(),
                     ),
-                )
+                    Environment(),
+                    context.logger,
+                ).readOnly(),
+            )
             assertEquals(true, ccm.download())
             assertEquals(it.second, ccm.features, "version: ${it.first}")
 

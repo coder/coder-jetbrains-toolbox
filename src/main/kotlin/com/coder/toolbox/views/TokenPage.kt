@@ -1,7 +1,7 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.settings.Source
+import com.coder.toolbox.settings.SettingSource
 import com.coder.toolbox.util.withPath
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.LabelField
@@ -22,7 +22,7 @@ import java.net.URL
 class TokenPage(
     context: CoderToolboxContext,
     deploymentURL: URL,
-    token: Pair<String, Source>?,
+    token: Pair<String, SettingSource>?,
     private val onToken: ((token: String) -> Unit),
 ) : CoderPage(context, context.i18n.ptrl("Enter your token")) {
     private val tokenField = TextField(context.i18n.ptrl("Token"), token?.first ?: "", TextType.Password)

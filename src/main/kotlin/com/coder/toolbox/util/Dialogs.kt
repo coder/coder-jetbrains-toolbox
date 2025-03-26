@@ -2,7 +2,6 @@ package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.browser.BrowserUtil
-import com.coder.toolbox.settings.CoderSettings
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.TextType
 import java.net.URL
@@ -12,10 +11,7 @@ import java.net.URL
  *
  * This is meant to mimic ToolboxUi.
  */
-class DialogUi(
-    private val context: CoderToolboxContext,
-    private val settings: CoderSettings,
-) {
+class DialogUi(private val context: CoderToolboxContext) {
 
     suspend fun confirm(title: LocalizableString, description: LocalizableString): Boolean {
         return context.ui.showOkCancelPopup(title, description, context.i18n.ptrl("Yes"), context.i18n.ptrl("No"))

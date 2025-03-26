@@ -17,32 +17,39 @@ import kotlinx.coroutines.flow.StateFlow
  *          I have not been able to test this page.
  */
 class CoderSettingsPage(context: CoderToolboxContext) : CoderPage(context, context.i18n.ptrl("Coder Settings"), false) {
+    private val settings = context.settingsStore.readOnly()
+
     // TODO: Copy over the descriptions, holding until I can test this page.
     private val binarySourceField =
-        TextField(context.i18n.ptrl("Binary source"), context.settings.binarySource, TextType.General)
+        TextField(context.i18n.ptrl("Binary source"), settings.binarySource ?: "", TextType.General)
     private val binaryDirectoryField =
-        TextField(context.i18n.ptrl("Binary directory"), context.settings.binaryDirectory, TextType.General)
+        TextField(context.i18n.ptrl("Binary directory"), settings.binaryDirectory ?: "", TextType.General)
     private val dataDirectoryField =
-        TextField(context.i18n.ptrl("Data directory"), context.settings.dataDirectory, TextType.General)
+        TextField(context.i18n.ptrl("Data directory"), settings.dataDirectory ?: "", TextType.General)
     private val enableDownloadsField =
-        CheckboxField(context.settings.enableDownloads, context.i18n.ptrl("Enable downloads"))
+        CheckboxField(settings.enableDownloads, context.i18n.ptrl("Enable downloads"))
     private val enableBinaryDirectoryFallbackField =
         CheckboxField(
-            context.settings.enableBinaryDirectoryFallback,
+            settings.enableBinaryDirectoryFallback,
             context.i18n.ptrl("Enable binary directory fallback")
         )
     private val headerCommandField =
-        TextField(context.i18n.ptrl("Header command"), context.settings.headerCommand, TextType.General)
+        TextField(context.i18n.ptrl("Header command"), settings.headerCommand ?: "", TextType.General)
     private val tlsCertPathField =
-        TextField(context.i18n.ptrl("TLS cert path"), context.settings.tlsCertPath, TextType.General)
+        TextField(context.i18n.ptrl("TLS cert path"), settings.tls.certPath ?: "", TextType.General)
     private val tlsKeyPathField =
-        TextField(context.i18n.ptrl("TLS key path"), context.settings.tlsKeyPath, TextType.General)
+        TextField(context.i18n.ptrl("TLS key path"), settings.tls.keyPath ?: "", TextType.General)
     private val tlsCAPathField =
-        TextField(context.i18n.ptrl("TLS CA path"), context.settings.tlsCAPath, TextType.General)
+        TextField(context.i18n.ptrl("TLS CA path"), settings.tls.caPath ?: "", TextType.General)
     private val tlsAlternateHostnameField =
-        TextField(context.i18n.ptrl("TLS alternate hostname"), context.settings.tlsAlternateHostname, TextType.General)
+        TextField(context.i18n.ptrl("TLS alternate hostname"), settings.tls.altHostname ?: "", TextType.General)
     private val disableAutostartField =
-        CheckboxField(context.settings.disableAutostart, context.i18n.ptrl("Disable autostart"))
+        CheckboxField(settings.disableAutostart, context.i18n.ptrl("Disable autostart"))
+    private val sshExtraArgs =
+        TextField(context.i18n.ptrl("Extra SSH options"), settings.sshConfigOptions ?: "", TextType.General)
+    private val sshLogDirField =
+        TextField(context.i18n.ptrl("SSH proxy log directory"), settings.sshLogDirectory ?: "", TextType.General)
+
 
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
         listOf(
@@ -56,25 +63,29 @@ class CoderSettingsPage(context: CoderToolboxContext) : CoderPage(context, conte
             tlsKeyPathField,
             tlsCAPathField,
             tlsAlternateHostnameField,
-            disableAutostartField
+            disableAutostartField,
+            sshLogDirField,
+            sshExtraArgs,
         )
     )
 
     override val actionButtons: StateFlow<List<RunnableActionDescription>> = MutableStateFlow(
         listOf(
             Action(context.i18n.ptrl("Save"), closesPage = true) {
-                context.settings.binarySource = binarySourceField.textState.value
-                context.settings.binaryDirectory = binaryDirectoryField.textState.value
-                context.settings.dataDirectory = dataDirectoryField.textState.value
-                context.settings.enableDownloads = enableDownloadsField.checkedState.value
-                context.settings.enableBinaryDirectoryFallback = enableBinaryDirectoryFallbackField.checkedState.value
-                context.settings.headerCommand = headerCommandField.textState.value
-                context.settings.tlsCertPath = tlsCertPathField.textState.value
-                context.settings.tlsKeyPath = tlsKeyPathField.textState.value
-                context.settings.tlsCAPath = tlsCAPathField.textState.value
-                context.settings.tlsAlternateHostname = tlsAlternateHostnameField.textState.value
-                context.settings.disableAutostart = disableAutostartField.checkedState.value
-            },
+                context.settingsStore.updateBinarySource(binarySourceField.textState.value)
+                context.settingsStore.updateBinaryDirectory(binaryDirectoryField.textState.value)
+                context.settingsStore.updateDataDirectory(dataDirectoryField.textState.value)
+                context.settingsStore.updateEnableDownloads(enableDownloadsField.checkedState.value)
+                context.settingsStore.updateBinaryDirectoryFallback(enableBinaryDirectoryFallbackField.checkedState.value)
+                context.settingsStore.updateHeaderCommand(headerCommandField.textState.value)
+                context.settingsStore.updateCertPath(tlsCertPathField.textState.value)
+                context.settingsStore.updateKeyPath(tlsKeyPathField.textState.value)
+                context.settingsStore.updateCAPath(tlsCAPathField.textState.value)
+                context.settingsStore.updateAltHostname(tlsAlternateHostnameField.textState.value)
+                context.settingsStore.updateDisableAutostart(disableAutostartField.checkedState.value)
+                context.settingsStore.updateSshLogDir(sshLogDirField.textState.value)
+                context.settingsStore.updateSshConfigOptions(sshExtraArgs.textState.value)
+            }
         )
     )
 }
