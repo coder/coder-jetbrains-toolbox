@@ -145,7 +145,8 @@ fun CopySpec.fromCompileDependencies() {
                     "core-api",
                     "ui-api",
                     "annotations",
-                    "localization-api"
+                    "localization-api",
+                    "slf4j-api"
                 ).any { file.name.contains(it) }
             }
         },
