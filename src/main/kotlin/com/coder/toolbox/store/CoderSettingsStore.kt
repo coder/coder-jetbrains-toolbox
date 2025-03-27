@@ -37,7 +37,7 @@ class CoderSettingsStore(
             altHostname = store[TLS_ALTERNATE_HOSTNAME]
         ),
         disableAutostart = store[DISABLE_AUTOSTART]?.toBooleanStrictOrNull() ?: (getOS() == OS.MAC),
-        isSshWildcardConfigEnabled = store[ENABLE_SSH_WILDCARD_CONFIG]?.toBooleanStrictOrNull() ?: false,
+        isSshWildcardConfigEnabled = store[ENABLE_SSH_WILDCARD_CONFIG]?.toBooleanStrictOrNull() ?: true,
         sshConfigPath = store[SSH_CONFIG_PATH].takeUnless { it.isNullOrEmpty() }
             ?: Path.of(System.getProperty("user.home")).resolve(".ssh/config").normalize().toString(),
         sshLogDirectory = store[SSH_LOG_DIR],
