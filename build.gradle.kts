@@ -155,13 +155,24 @@ fun CopySpec.fromCompileDependencies() {
     )
 }
 
-val pluginZip by tasks.creating(Zip::class) {
+/**
+ * Useful when doing manual local install.
+ */
+val pluginPrettyZip by tasks.creating(Zip::class) {
     archiveBaseName.set(properties("name"))
     dependsOn(tasks.jar)
     dependsOn(tasks.getByName("generateLicenseReport"))
 
     fromCompileDependencies()
     into(extension.id) // folder like com.coder.toolbox
+}
+
+val pluginZip by tasks.creating(Zip::class) {
+    dependsOn(tasks.jar)
+    dependsOn(tasks.getByName("generateLicenseReport"))
+
+    fromCompileDependencies()
+    archiveBaseName.set(extension.id)
 }
 
 tasks.register("cleanAll", Delete::class.java) {
