@@ -1,4 +1,4 @@
-package com.coder.toolbox.services
+package com.coder.toolbox.store
 
 import com.jetbrains.toolbox.api.core.PluginSecretStore
 
@@ -6,7 +6,7 @@ import com.jetbrains.toolbox.api.core.PluginSecretStore
 /**
  * Provides Coder secrets backed by the secrets store service.
  */
-class CoderSecretsService(private val store: PluginSecretStore) {
+class CoderSecretsStore(private val store: PluginSecretStore) {
     private fun get(key: String): String = store[key] ?: ""
 
     private fun set(key: String, value: String) {

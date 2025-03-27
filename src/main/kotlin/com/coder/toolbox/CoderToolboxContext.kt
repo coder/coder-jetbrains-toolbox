@@ -1,7 +1,7 @@
 package com.coder.toolbox
 
-import com.jetbrains.toolbox.api.core.PluginSecretStore
-import com.jetbrains.toolbox.api.core.PluginSettingsStore
+import com.coder.toolbox.store.CoderSecretsStore
+import com.coder.toolbox.store.CoderSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
@@ -18,6 +18,6 @@ data class CoderToolboxContext(
     val cs: CoroutineScope,
     val logger: Logger,
     val i18n: LocalizableStringFactory,
-    val settingsStore: PluginSettingsStore,
-    val secretsStore: PluginSecretStore
+    val settingsStore: CoderSettingsStore,
+    val secrets: CoderSecretsStore
 )

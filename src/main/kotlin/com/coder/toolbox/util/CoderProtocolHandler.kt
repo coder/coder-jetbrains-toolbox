@@ -9,7 +9,7 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.coder.toolbox.settings.CoderSettings
+import com.jetbrains.toolbox.api.localization.LocalizableString
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
@@ -26,11 +26,12 @@ import kotlin.time.toJavaDuration
 
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
-    private val settings: CoderSettings,
     private val httpClient: OkHttpClient?,
     private val dialogUi: DialogUi,
     private val isInitialized: StateFlow<Boolean>,
 ) {
+    private val settings = context.settingsStore.readOnly()
+
     /**
      * Given a set of URL parameters, prepare the CLI then return a workspace to
      * connect.
@@ -48,7 +49,7 @@ open class CoderProtocolHandler(
         val deploymentURL = params.url() ?: askUrl()
         if (deploymentURL.isNullOrBlank()) {
             context.logger.error("Query parameter \"$URL\" is missing from URI $uri")
-            context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because query parameter \"$URL\" is missing"))
+            context.showErrorPopup(MissingArgumentException("Can't handle URI because query parameter \"$URL\" is missing"))
             return
         }
 
@@ -57,15 +58,7 @@ open class CoderProtocolHandler(
             authenticate(deploymentURL, queryToken)
         } catch (ex: Exception) {
             context.logger.error(ex, "Query parameter \"$TOKEN\" is missing from URI $uri")
-            context.ui.showErrorInfoPopup(
-                IllegalStateException(
-                    humanizeConnectionError(
-                        deploymentURL.toURL(),
-                        true,
-                        ex
-                    )
-                )
-            )
+            context.showErrorPopup(IllegalStateException(humanizeConnectionError(deploymentURL.toURL(), true, ex)))
             return
         }
 
@@ -73,7 +66,7 @@ open class CoderProtocolHandler(
         val workspaceName = params.workspace()
         if (workspaceName.isNullOrBlank()) {
             context.logger.error("Query parameter \"$WORKSPACE\" is missing from URI $uri")
-            context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because query parameter \"$WORKSPACE\" is missing"))
+            context.showErrorPopup(MissingArgumentException("Can't handle URI because query parameter \"$WORKSPACE\" is missing"))
             return
         }
 
@@ -81,7 +74,7 @@ open class CoderProtocolHandler(
         val workspace = workspaces.firstOrNull { it.name == workspaceName }
         if (workspace == null) {
             context.logger.error("There is no workspace with name $workspaceName on $deploymentURL")
-            context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because workspace with name $workspaceName does not exist"))
+            context.showErrorPopup(MissingArgumentException("Can't handle URI because workspace with name $workspaceName does not exist"))
             return
         }
 
@@ -89,23 +82,42 @@ open class CoderProtocolHandler(
             WorkspaceStatus.PENDING, WorkspaceStatus.STARTING ->
                 if (restClient.waitForReady(workspace) != true) {
                     context.logger.error("$workspaceName from $deploymentURL could not be ready on time")
-                    context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be ready on time"))
+                    context.showErrorPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be ready on time"))
                     return
                 }
 
             WorkspaceStatus.STOPPING, WorkspaceStatus.STOPPED,
             WorkspaceStatus.CANCELING, WorkspaceStatus.CANCELED -> {
-                restClient.startWorkspace(workspace)
+                if (settings.disableAutostart) {
+                    context.logger.warn("$workspaceName from $deploymentURL is not started and autostart is disabled.")
+                    context.showInfoPopup(
+                        context.i18n.pnotr("$workspaceName is not running"),
+                        context.i18n.ptrl("Can't handle URI because workspace is not running and autostart is disabled. Please start the workspace manually and execute the URI again."),
+                        context.i18n.ptrl("OK")
+                    )
+                    return
+                }
+
+                try {
+                    restClient.startWorkspace(workspace)
+                } catch (e: Exception) {
+                    context.logger.error(
+                        e,
+                        "$workspaceName from $deploymentURL could not be started while handling URI"
+                    )
+                    context.showErrorPopup(MissingArgumentException("Can't handle URI because an error was encountered while trying to start workspace $workspaceName"))
+                    return
+                }
                 if (restClient.waitForReady(workspace) != true) {
                     context.logger.error("$workspaceName from $deploymentURL could not be started on time")
-                    context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be started on time"))
+                    context.showErrorPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be started on time"))
                     return
                 }
             }
 
             WorkspaceStatus.FAILED, WorkspaceStatus.DELETING, WorkspaceStatus.DELETED -> {
                 context.logger.error("Unable to connect to $workspaceName from $deploymentURL")
-                context.ui.showErrorInfoPopup(MissingArgumentException("Can't handle URI because because we're unable to connect to workspace $workspaceName"))
+                context.showErrorPopup(MissingArgumentException("Can't handle URI because because we're unable to connect to workspace $workspaceName"))
                 return
             }
 
@@ -116,28 +128,17 @@ open class CoderProtocolHandler(
         val agent = getMatchingAgent(params, workspace)
         val status = WorkspaceAndAgentStatus.from(workspace, agent)
 
-        if (status.pending()) {
-            // TODO: Wait for the agent to be ready.
-            throw IllegalArgumentException(
-                "The agent \"${agent.name}\" has a status of \"${
-                    status.toString().lowercase()
-                }\"; please wait then try again",
-            )
-        } else if (!status.ready()) {
-            throw IllegalArgumentException(
-                "The agent \"${agent.name}\" has a status of \"${
-                    status.toString().lowercase()
-                }\"; unable to connect"
-            )
+        if (!status.ready()) {
+            context.logger.error("Agent ${agent.name} for workspace $workspaceName from $deploymentURL is not started")
+            context.showErrorPopup(MissingArgumentException("Can't handle URI because agent ${agent.name} for workspace $workspaceName from $deploymentURL is not started"))
+            return
         }
 
-        val cli =
-            ensureCLI(
-                context,
-                deploymentURL.toURL(),
-                restClient.buildInfo().version,
-                settings
-            )
+        val cli = ensureCLI(
+            context,
+            deploymentURL.toURL(),
+            restClient.buildInfo().version
+        )
 
         // We only need to log in if we are using token-based auth.
         if (restClient.token != null) {
@@ -154,8 +155,7 @@ open class CoderProtocolHandler(
         reInitialize(restClient, cli)
 
         val environmentId = "${workspace.name}.${agent.name}"
-        context.ui.showWindow()
-        context.envPageManager.showPluginEnvironmentsPage(true)
+        context.popupPluginMainPage()
         context.envPageManager.showEnvironmentPage(environmentId, false)
         val productCode = params.ideProductCode()
         val buildNumber = params.ideBuildNumber()
@@ -190,8 +190,7 @@ open class CoderProtocolHandler(
     }
 
     private suspend fun askUrl(): String? {
-        context.ui.showWindow()
-        context.envPageManager.showPluginEnvironmentsPage(false)
+        context.popupPluginMainPage()
         return dialogUi.ask(
             context.i18n.ptrl("Deployment URL"),
             context.i18n.ptrl("Enter the full URL of your Coder deployment")
@@ -213,8 +212,7 @@ open class CoderProtocolHandler(
                 if (!tryToken.isNullOrBlank()) {
                     tryToken
                 } else {
-                    context.ui.showWindow()
-                    context.envPageManager.showPluginEnvironmentsPage(false)
+                    context.popupPluginMainPage()
                     // Otherwise ask for a new token, showing the previous token.
                     dialogUi.askToken(deploymentURL.toURL())
                 }
@@ -231,7 +229,6 @@ open class CoderProtocolHandler(
             context,
             deploymentURL.toURL(),
             token,
-            settings,
             proxyValues = null, // TODO - not sure the above comment applies as we are creating our own http client
             PluginManager.pluginInfo.version,
             httpClient
@@ -310,6 +307,25 @@ internal fun getMatchingAgent(
     }
 
     return agent
+}
+
+private suspend fun CoderToolboxContext.showErrorPopup(error: Throwable) {
+    popupPluginMainPage()
+    this.ui.showErrorInfoPopup(error)
+}
+
+private suspend fun CoderToolboxContext.showInfoPopup(
+    title: LocalizableString,
+    message: LocalizableString,
+    okLabel: LocalizableString
+) {
+    popupPluginMainPage()
+    this.ui.showInfoPopup(title, message, okLabel)
+}
+
+private fun CoderToolboxContext.popupPluginMainPage() {
+    this.ui.showWindow()
+    this.envPageManager.showPluginEnvironmentsPage(true)
 }
 
 /**

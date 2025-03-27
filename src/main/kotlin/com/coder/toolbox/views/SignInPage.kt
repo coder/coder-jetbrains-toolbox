@@ -1,7 +1,7 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.settings.Source
+import com.coder.toolbox.settings.SettingSource
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.TextField
@@ -19,7 +19,7 @@ import java.net.URL
  */
 class SignInPage(
     private val context: CoderToolboxContext,
-    private val deploymentURL: Pair<String, Source>?,
+    private val deploymentURL: Pair<String, SettingSource>?,
     private val onSignIn: (deploymentURL: URL) -> Unit,
 ) : CoderPage(context, context.i18n.ptrl("Sign In to Coder")) {
     private val urlField = TextField(context.i18n.ptrl("Deployment URL"), deploymentURL?.first ?: "", TextType.General)

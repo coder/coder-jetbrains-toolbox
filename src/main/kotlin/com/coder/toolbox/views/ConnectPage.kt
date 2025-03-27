@@ -5,7 +5,6 @@ import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.util.humanizeConnectionError
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
@@ -25,7 +24,6 @@ class ConnectPage(
     private val context: CoderToolboxContext,
     private val url: URL,
     private val token: String?,
-    private val settings: CoderSettings,
     private val httpClient: OkHttpClient,
     private val onCancel: () -> Unit,
     private val onConnect: (
@@ -33,6 +31,7 @@ class ConnectPage(
         cli: CoderCLIManager,
     ) -> Unit,
 ) : CoderPage(context, context.i18n.ptrl("Connecting to Coder")) {
+    private val settings = context.settingsStore.readOnly()
     private var signInJob: Job? = null
 
     private var statusField = LabelField(context.i18n.pnotr("Connecting to ${url.host}..."))
@@ -94,14 +93,13 @@ class ConnectPage(
                     context,
                     url,
                     token,
-                    settings,
                     proxyValues = null,
                     PluginManager.pluginInfo.version,
                     httpClient
                 )
                 client.authenticate()
                 updateStatus(context.i18n.ptrl("Checking Coder binary..."), error = null)
-                val cli = ensureCLI(context, client.url, client.buildVersion, settings)
+                val cli = ensureCLI(context, client.url, client.buildVersion)
                 // We only need to log in if we are using token-based auth.
                 if (client.token != null) {
                     updateStatus(context.i18n.ptrl("Configuring CLI..."), error = null)

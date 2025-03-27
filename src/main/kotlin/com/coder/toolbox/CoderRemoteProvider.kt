@@ -3,10 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.coder.toolbox.services.CoderSecretsService
-import com.coder.toolbox.services.CoderSettingsService
-import com.coder.toolbox.settings.CoderSettings
-import com.coder.toolbox.settings.Source
+import com.coder.toolbox.settings.SettingSource
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.views.Action
@@ -46,12 +43,11 @@ class CoderRemoteProvider(
     private var pollJob: Job? = null
     private var lastEnvironments: Set<CoderRemoteEnvironment>? = null
 
+    private val cSettings = context.settingsStore.readOnly()
+
     // Create our services from the Toolbox ones.
-    private val settingsService = CoderSettingsService(context.settingsStore)
-    private val settings: CoderSettings = CoderSettings(settingsService, context.logger)
-    private val secrets: CoderSecretsService = CoderSecretsService(context.secretsStore)
-    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, settingsService)
-    private val dialogUi = DialogUi(context, settings)
+    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context)
+    private val dialogUi = DialogUi(context)
 
     // The REST client, if we are signed in
     private var client: CoderRestClient? = null
@@ -65,7 +61,7 @@ class CoderRemoteProvider(
     private var firstRun = true
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
     private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
-    private val linkHandler = CoderProtocolHandler(context, settings, httpClient, dialogUi, isInitialized)
+    private val linkHandler = CoderProtocolHandler(context, httpClient, dialogUi, isInitialized)
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
         LoadableState.Value(emptyList())
     )
@@ -151,7 +147,7 @@ class CoderRemoteProvider(
     private fun logout() {
         // Keep the URL and token to make it easy to log back in, but set
         // rememberMe to false so we do not try to automatically log in.
-        secrets.rememberMe = "false"
+        context.secrets.rememberMe = "false"
         close()
     }
 
@@ -272,9 +268,9 @@ class CoderRemoteProvider(
             // When coming back to the application, authenticate immediately.
             val autologin = shouldDoAutoLogin()
             var autologinEx: Exception? = null
-            secrets.lastToken.let { lastToken ->
-                secrets.lastDeploymentURL.let { lastDeploymentURL ->
-                    if (autologin && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !settings.requireTokenAuth)) {
+            context.secrets.lastToken.let { lastToken ->
+                context.secrets.lastDeploymentURL.let { lastDeploymentURL ->
+                    if (autologin && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !cSettings.requireTokenAuth)) {
                         try {
                             return createConnectPage(URL(lastDeploymentURL), lastToken)
                         } catch (ex: Exception) {
@@ -309,7 +305,7 @@ class CoderRemoteProvider(
         return null
     }
 
-    private fun shouldDoAutoLogin(): Boolean = firstRun && secrets.rememberMe == "true"
+    private fun shouldDoAutoLogin(): Boolean = firstRun && context.secrets.rememberMe == "true"
 
     /**
      * Create a connect page that starts polling and resets the UI on success.
@@ -318,15 +314,14 @@ class CoderRemoteProvider(
         context,
         deploymentURL,
         token,
-        settings,
         httpClient,
         ::goToEnvironmentsPage,
     ) { client, cli ->
         // Store the URL and token for use next time.
-        secrets.lastDeploymentURL = client.url.toString()
-        secrets.lastToken = client.token ?: ""
+        context.secrets.lastDeploymentURL = client.url.toString()
+        context.secrets.lastToken = client.token ?: ""
         // Currently we always remember, but this could be made an option.
-        secrets.rememberMe = "true"
+        context.secrets.rememberMe = "true"
         this.client = client
         pollError = null
         pollJob?.cancel()
@@ -343,11 +338,11 @@ class CoderRemoteProvider(
      * 2. Token on disk for this deployment.
      * 3. Global token for Coder, if it matches the deployment.
      */
-    private fun getToken(deploymentURL: URL): Pair<String, Source>? = secrets.lastToken.let {
-        if (it.isNotBlank() && secrets.lastDeploymentURL == deploymentURL.toString()) {
-            it to Source.LAST_USED
+    private fun getToken(deploymentURL: URL): Pair<String, SettingSource>? = context.secrets.lastToken.let {
+        if (it.isNotBlank() && context.secrets.lastDeploymentURL == deploymentURL.toString()) {
+            it to SettingSource.LAST_USED
         } else {
-            settings.token(deploymentURL)
+            cSettings.token(deploymentURL)
         }
     }
 
@@ -361,11 +356,11 @@ class CoderRemoteProvider(
      * 3. CODER_URL.
      * 4. URL in global cli config.
      */
-    private fun getDeploymentURL(): Pair<String, Source>? = secrets.lastDeploymentURL.let {
+    private fun getDeploymentURL(): Pair<String, SettingSource>? = context.secrets.lastDeploymentURL.let {
         if (it.isNotBlank()) {
-            it to Source.LAST_USED
+            it to SettingSource.LAST_USED
         } else {
-            settings.defaultURL()
+            context.settingsStore.defaultURL()
         }
     }
 }

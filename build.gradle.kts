@@ -71,7 +71,7 @@ val extension = ExtensionJson(
 
     version = properties("version"),
     meta = ExtensionJsonMeta(
-        name = "Coder Toolbox",
+        name = "Coder",
         description = "Connects your JetBrains IDE to Coder workspaces",
         vendor = "Coder",
         url = "https://github.com/coder/coder-jetbrains-toolbox-plugin",
@@ -145,7 +145,8 @@ fun CopySpec.fromCompileDependencies() {
                     "core-api",
                     "ui-api",
                     "annotations",
-                    "localization-api"
+                    "localization-api",
+                    "slf4j-api"
                 ).any { file.name.contains(it) }
             }
         },
