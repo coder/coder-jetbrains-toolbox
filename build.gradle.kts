@@ -5,6 +5,8 @@ import com.github.jk1.license.render.JsonReportRenderer
 import com.jetbrains.plugin.structure.toolbox.ToolboxMeta
 import com.jetbrains.plugin.structure.toolbox.ToolboxPluginDescriptor
 import org.jetbrains.intellij.pluginRepository.PluginRepositoryFactory
+import org.jetbrains.intellij.pluginRepository.model.LicenseUrl
+import org.jetbrains.intellij.pluginRepository.model.ProductFamily
 import org.jetbrains.kotlin.com.intellij.openapi.util.SystemInfoRt
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.nio.file.Path
@@ -153,13 +155,24 @@ fun CopySpec.fromCompileDependencies() {
     )
 }
 
-val pluginZip by tasks.creating(Zip::class) {
+/**
+ * Useful when doing manual local install.
+ */
+val pluginPrettyZip by tasks.creating(Zip::class) {
     archiveBaseName.set(properties("name"))
     dependsOn(tasks.jar)
     dependsOn(tasks.getByName("generateLicenseReport"))
 
     fromCompileDependencies()
     into(extension.id) // folder like com.coder.toolbox
+}
+
+val pluginZip by tasks.creating(Zip::class) {
+    dependsOn(tasks.jar)
+    dependsOn(tasks.getByName("generateLicenseReport"))
+
+    fromCompileDependencies()
+    archiveBaseName.set(extension.id)
 }
 
 tasks.register("cleanAll", Delete::class.java) {
@@ -187,20 +200,43 @@ private fun getPluginInstallDir(): Path {
     return pluginsDir / extension.id
 }
 
-val publishPlugin by tasks.creating {
+val publishPlugin by tasks.registering {
     dependsOn(pluginZip)
 
     doLast {
+        val pluginMarketplaceToken: String = if (System.getenv("JETBRAINS_MARKETPLACE_PUBLISH_TOKEN").isNullOrBlank()) {
+            error("Env. variable `JETBRAINS_MARKETPLACE_PUBLISH_TOKEN` does not exist. Please set the env. variable to a token obtained from the marketplace.")
+        } else {
+            System.getenv("JETBRAINS_MARKETPLACE_PUBLISH_TOKEN")
+        }
+
+        println("Plugin Marketplace Token: ${pluginMarketplaceToken.take(5)}*****")
+
         val instance = PluginRepositoryFactory.create(
             "https://plugins.jetbrains.com",
-            project.property("PUBLISH_TOKEN").toString()
+            pluginMarketplaceToken
         )
 
-        // first upload
-        // instance.uploader.uploadNewPlugin(pluginZip.outputs.files.singleFile, listOf("toolbox", "gateway"), LicenseUrl.APACHE_2_0, ProductFamily.TOOLBOX)
-
-        // subsequent updates
-        instance.uploader.upload(extension.id, pluginZip.outputs.files.singleFile)
+        if (extension.version == "0.1.0") {
+            instance.uploader.uploadNewPlugin(
+                pluginZip.outputs.files.singleFile,
+                listOf("toolbox", "gateway"), // do not change
+                LicenseUrl.MIT, // choose wisely
+                ProductFamily.TOOLBOX, // do not change
+                extension.meta.vendor,  // do not change
+                isHidden = true
+            )
+        } else {
+            // !!! subsequent updates !!!
+            instance.uploader.uploadUpdateByXmlIdAndFamily(
+                extension.id,  // do not change
+                ProductFamily.TOOLBOX,  // do not change
+                pluginZip.outputs.files.singleFile,  // do not change
+                null,  // do not change. Channels will be available later
+                "Bug fixes and improvements",
+                true
+            )
+        }
     }
 }
 
