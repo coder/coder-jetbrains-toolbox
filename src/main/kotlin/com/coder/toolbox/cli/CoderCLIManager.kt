@@ -4,6 +4,8 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
+import com.coder.toolbox.sdk.v2.models.Workspace
+import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.settings.CoderSettings
 import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.InvalidVersionException
@@ -294,17 +296,17 @@ class CoderCLIManager(
         val blockContent = if (settings.isSshWildcardConfigEnabled && feats.wildcardSsh) {
             startBlock + System.lineSeparator() +
                     """
-                    Host ${getWildcardHost(deploymentURL)}--*
-                      ProxyCommand ${proxyArgs.joinToString(" ")} --ssh-host-prefix ${getWildcardHost(deploymentURL)}-- %h
+                    Host ${getHostnamePrefix(deploymentURL)}--*
+                      ProxyCommand ${proxyArgs.joinToString(" ")} --ssh-host-prefix ${getHostnamePrefix(deploymentURL)}-- %h
                     """.trimIndent()
                         .plus("\n" + options.prependIndent("  "))
                         .plus(extraConfig)
                         .plus("\n\n")
                         .plus(
                             """
-                            Host ${getWildcardHost(deploymentURL)}-bg--*
+                            Host ${getHostnamePrefix(deploymentURL)}-bg--*
                               ProxyCommand ${backgroundProxyArgs.joinToString(" ")} --ssh-host-prefix ${
-                                getWildcardHost(
+                                getHostnamePrefix(
                                     deploymentURL
                                 )
                             }-bg-- %h
@@ -507,23 +509,22 @@ class CoderCLIManager(
     companion object {
         private val tokenRegex = "--token [^ ]+".toRegex()
 
-        fun getWildcardHost(url: URL): String = "coder-jetbrains-toolbox--${url.safeHost()}"
+        fun getHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}"
 
-        @JvmStatic
+        fun getWildcardHostname(url: URL, workspace: Workspace, agent: WorkspaceAgent): String =
+            "${getHostnamePrefix(url)}-bg--${workspace.name}.${agent.name}"
+
+        fun getHostname(url: URL, workspace: Workspace, agent: WorkspaceAgent) =
+            getHostName(url, "${workspace.name}.${agent.name}")
+
         fun getHostName(
             url: URL,
             workspaceName: String,
-        ): String = "coder-jetbrains-toolbox--$workspaceName--${url.safeHost()}"
+        ): String = "coder-jetbrains-toolbox-$workspaceName--${url.safeHost()}"
 
-        @JvmStatic
         fun getBackgroundHostName(
             url: URL,
             workspaceName: String,
         ): String = getHostName(url, workspaceName) + "--bg"
-
-        @JvmStatic
-        fun getBackgroundHostName(
-            hostname: String,
-        ): String = hostname + "--bg"
     }
 }

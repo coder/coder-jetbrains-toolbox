@@ -123,7 +123,12 @@ class CoderRemoteEnvironment(
      * have to do is provide it a host name.
      */
     override suspend
-    fun getContentsView(): EnvironmentContentsView = EnvironmentView(client.url, workspace, agent)
+    fun getContentsView(): EnvironmentContentsView = EnvironmentView(
+        context.settingsStore.readOnly(),
+        client.url,
+        workspace,
+        agent
+    )
 
     override val connectionRequest: MutableStateFlow<Boolean>? = MutableStateFlow(false)
 
