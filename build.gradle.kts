@@ -75,8 +75,8 @@ val extension = ExtensionJson(
     meta = ExtensionJsonMeta(
         name = "Coder",
         description = "Connects your JetBrains IDE to Coder workspaces",
-        vendor = "Coder",
-        url = "https://github.com/coder/coder-jetbrains-toolbox-plugin",
+        vendor = "Coder Technologies, Inc.",
+        url = "https://github.com/coder/coder-jetbrains-toolbox",
     )
 )
 
