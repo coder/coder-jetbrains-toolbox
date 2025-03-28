@@ -6,8 +6,11 @@ import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.UiField
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /**
  * A page for modifying Coder settings.
@@ -16,7 +19,8 @@ import kotlinx.coroutines.flow.StateFlow
  * TODO@JB: There is no scroll, and our settings do not fit.  As a consequence,
  *          I have not been able to test this page.
  */
-class CoderSettingsPage(context: CoderToolboxContext) : CoderPage(context, context.i18n.ptrl("Coder Settings"), false) {
+class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<Boolean>) :
+    CoderPage(context, context.i18n.ptrl("Coder Settings"), false) {
     private val settings = context.settingsStore.readOnly()
 
     // TODO: Copy over the descriptions, holding until I can test this page.
@@ -87,7 +91,18 @@ class CoderSettingsPage(context: CoderToolboxContext) : CoderPage(context, conte
                 context.settingsStore.updateCAPath(tlsCAPathField.textState.value)
                 context.settingsStore.updateAltHostname(tlsAlternateHostnameField.textState.value)
                 context.settingsStore.updateDisableAutostart(disableAutostartField.checkedState.value)
+                val oldIsSshWildcardConfigEnabled = settings.isSshWildcardConfigEnabled
                 context.settingsStore.updateEnableSshWildcardConfig(enableSshWildCardConfig.checkedState.value)
+
+                if (enableSshWildCardConfig.checkedState.value != oldIsSshWildcardConfigEnabled) {
+                    context.cs.launch {
+                        try {
+                            triggerSshConfig.send(true)
+                            context.logger.info("Wildcard settings have been modified from $oldIsSshWildcardConfigEnabled to ${!oldIsSshWildcardConfigEnabled}, ssh config is going to be regenerated...")
+                        } catch (_: ClosedSendChannelException) {
+                        }
+                    }
+                }
                 context.settingsStore.updateSshLogDir(sshLogDirField.textState.value)
                 context.settingsStore.updateSshConfigOptions(sshExtraArgs.textState.value)
             }
