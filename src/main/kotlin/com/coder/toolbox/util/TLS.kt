@@ -1,6 +1,6 @@
 package com.coder.toolbox.util
 
-import com.coder.toolbox.settings.CTLSSettings
+import com.coder.toolbox.settings.ReadOnlyTLSSettings
 import okhttp3.internal.tls.OkHostnameVerifier
 import java.io.File
 import java.io.FileInputStream
@@ -81,7 +81,7 @@ fun sslContextFromPEMs(
     return sslContext
 }
 
-fun coderSocketFactory(settings: CTLSSettings): SSLSocketFactory {
+fun coderSocketFactory(settings: ReadOnlyTLSSettings): SSLSocketFactory {
     val sslContext = sslContextFromPEMs(settings.certPath, settings.keyPath, settings.caPath)
     if (settings.altHostname.isNullOrBlank()) {
         return sslContext.socketFactory
