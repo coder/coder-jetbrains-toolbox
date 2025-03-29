@@ -204,4 +204,8 @@ class CoderRemoteEnvironment(
      * Companion to equals, for sets.
      */
     override fun hashCode(): Int = id.hashCode()
+
+    override fun toString(): String {
+        return "CoderRemoteEnvironment(name='$name')"
+    }
 }

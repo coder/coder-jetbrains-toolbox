@@ -6,7 +6,7 @@ import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
-import com.coder.toolbox.settings.CoderSettings
+import com.coder.toolbox.settings.ReadOnlyCoderSettings
 import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.OS
@@ -125,7 +125,7 @@ class CoderCLIManager(
     private val deploymentURL: URL,
     private val logger: Logger,
     // Plugin configuration.
-    private val settings: CoderSettings,
+    private val settings: ReadOnlyCoderSettings,
     // If the binary directory is not writable, this can be used to force the
     // manager to download to the data directory instead.
     forceDownloadToData: Boolean = false,
@@ -267,21 +267,21 @@ class CoderCLIManager(
                 "--url",
                 escape(deploymentURL.toString()),
                 if (!settings.headerCommand.isNullOrBlank()) "--header-command" else null,
-                if (!settings.headerCommand.isNullOrBlank()) escapeSubcommand(settings.headerCommand) else null,
+                if (!settings.headerCommand.isNullOrBlank()) escapeSubcommand(settings.headerCommand!!) else null,
                 "ssh",
                 "--stdio",
                 if (settings.disableAutostart && feats.disableAutostart) "--disable-autostart" else null,
             )
         val proxyArgs = baseArgs + listOfNotNull(
             if (!settings.sshLogDirectory.isNullOrBlank()) "--log-dir" else null,
-            if (!settings.sshLogDirectory.isNullOrBlank()) escape(settings.sshLogDirectory) else null,
+            if (!settings.sshLogDirectory.isNullOrBlank()) escape(settings.sshLogDirectory!!) else null,
             if (feats.reportWorkspaceUsage) "--usage-app=jetbrains" else null,
         )
         val backgroundProxyArgs =
             baseArgs + listOfNotNull(if (feats.reportWorkspaceUsage) "--usage-app=disable" else null)
         val extraConfig =
             if (!settings.sshConfigOptions.isNullOrBlank()) {
-                "\n" + settings.sshConfigOptions.prependIndent("  ")
+                "\n" + settings.sshConfigOptions!!.prependIndent("  ")
             } else {
                 ""
             }

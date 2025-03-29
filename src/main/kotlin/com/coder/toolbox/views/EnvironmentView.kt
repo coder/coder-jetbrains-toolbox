@@ -3,7 +3,7 @@ package com.coder.toolbox.views
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
-import com.coder.toolbox.settings.CoderSettings
+import com.coder.toolbox.settings.ReadOnlyCoderSettings
 import com.jetbrains.toolbox.api.remoteDev.environments.SshEnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.ssh.SshConnectionInfo
 import java.net.URL
@@ -17,7 +17,7 @@ import java.net.URL
  * SSH must be configured before this will work.
  */
 class EnvironmentView(
-    private val settings: CoderSettings,
+    private val settings: ReadOnlyCoderSettings,
     private val url: URL,
     private val workspace: Workspace,
     private val agent: WorkspaceAgent,

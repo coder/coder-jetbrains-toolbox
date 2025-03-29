@@ -20,13 +20,16 @@ import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
 import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.onTimeout
+import kotlinx.coroutines.selects.select
 import okhttp3.OkHttpClient
 import java.net.URI
 import java.net.URL
@@ -35,18 +38,20 @@ import kotlin.time.Duration.Companion.seconds
 import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as DropDownMenu
 import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as dropDownFactory
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CoderRemoteProvider(
     private val context: CoderToolboxContext,
     private val httpClient: OkHttpClient,
 ) : RemoteProvider("Coder") {
     // Current polling job.
     private var pollJob: Job? = null
-    private var lastEnvironments: Set<CoderRemoteEnvironment>? = null
+    private val lastEnvironments = mutableSetOf<CoderRemoteEnvironment>()
 
-    private val cSettings = context.settingsStore.readOnly()
+    private val settings = context.settingsStore.readOnly()
 
     // Create our services from the Toolbox ones.
-    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context)
+    private val triggerSshConfig = Channel<Boolean>(Channel.CONFLATED)
+    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig)
     private val dialogUi = DialogUi(context)
 
     // The REST client, if we are signed in
@@ -92,7 +97,7 @@ class CoderRemoteProvider(
                         }?.map { agent ->
                             // If we have an environment already, update that.
                             val env = CoderRemoteEnvironment(context, client, ws, agent)
-                            lastEnvironments?.firstOrNull { it == env }?.let {
+                            lastEnvironments.firstOrNull { it == env }?.let {
                                 it.update(ws, agent)
                                 it
                             } ?: env
@@ -107,9 +112,7 @@ class CoderRemoteProvider(
 
                 // Reconfigure if a new environment is found.
                 // TODO@JB: Should we use the add/remove listeners instead?
-                val newEnvironments = lastEnvironments
-                    ?.let { resolvedEnvironments.subtract(it) }
-                    ?: resolvedEnvironments
+                val newEnvironments = resolvedEnvironments.subtract(lastEnvironments)
                 if (newEnvironments.isNotEmpty()) {
                     context.logger.info("Found new environment(s), reconfiguring CLI: $newEnvironments")
                     cli.configSsh(newEnvironments.map { it.name }.toSet())
@@ -124,8 +127,10 @@ class CoderRemoteProvider(
                         true
                     }
                 }
-
-                lastEnvironments = resolvedEnvironments
+                lastEnvironments.apply {
+                    clear()
+                    addAll(resolvedEnvironments)
+                }
             } catch (_: CancellationException) {
                 context.logger.debug("${client.url} polling loop canceled")
                 break
@@ -136,7 +141,17 @@ class CoderRemoteProvider(
                 break
             }
             // TODO: Listening on a web socket might be better?
-            delay(5.seconds)
+            select<Unit> {
+                onTimeout(5.seconds) {
+                    context.logger.trace("workspace poller waked up by the 5 seconds timeout")
+                }
+                triggerSshConfig.onReceive { shouldTrigger ->
+                    if (shouldTrigger) {
+                        context.logger.trace("workspace poller waked up because it should reconfigure the ssh configurations")
+                        cli.configSsh(lastEnvironments.map { it.name }.toSet())
+                    }
+                }
+            }
         }
     }
 
@@ -178,7 +193,7 @@ class CoderRemoteProvider(
     override fun close() {
         pollJob?.cancel()
         client?.close()
-        lastEnvironments = null
+        lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
     }
@@ -270,7 +285,7 @@ class CoderRemoteProvider(
             var autologinEx: Exception? = null
             context.secrets.lastToken.let { lastToken ->
                 context.secrets.lastDeploymentURL.let { lastDeploymentURL ->
-                    if (autologin && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !cSettings.requireTokenAuth)) {
+                    if (autologin && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !settings.requireTokenAuth)) {
                         try {
                             return createConnectPage(URL(lastDeploymentURL), lastToken)
                         } catch (ex: Exception) {
@@ -342,7 +357,7 @@ class CoderRemoteProvider(
         if (it.isNotBlank() && context.secrets.lastDeploymentURL == deploymentURL.toString()) {
             it to SettingSource.LAST_USED
         } else {
-            cSettings.token(deploymentURL)
+            settings.token(deploymentURL)
         }
     }
 
