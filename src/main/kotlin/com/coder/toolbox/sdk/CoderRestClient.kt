@@ -103,6 +103,7 @@ open class CoderRestClient(
             builder
                 .sslSocketFactory(socketFactory, trustManagers[0] as X509TrustManager)
                 .hostnameVerifier(CoderHostnameVerifier(settings.tls.altHostname))
+                .retryOnConnectionFailure(true)
                 .addInterceptor {
                     it.proceed(
                         it.request().newBuilder().addHeader(
