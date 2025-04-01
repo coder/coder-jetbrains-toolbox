@@ -68,7 +68,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./gradlew clean pluginZip --info
-          gh release upload ${{ github.event.release.tag_name }} ./build/distributions/*
+          gh release upload ${{ github.event.release.tag_name }} ./build/distributions/* --clobber
 
       # Create pull request
       - name: Create Pull Request
