@@ -66,7 +66,9 @@ jobs:
       - name: Upload Release Asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload ${{ github.event.release.tag_name }} ./build/distributions/*
+        run: |
+          ./gradlew clean pluginZip --info
+          gh release upload ${{ github.event.release.tag_name }} ./build/distributions/*
 
       # Create pull request
       - name: Create Pull Request
