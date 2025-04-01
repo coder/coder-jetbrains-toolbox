@@ -30,18 +30,20 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
-import okhttp3.OkHttpClient
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.URL
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as DropDownMenu
 import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as dropDownFactory
+
+private val POLL_INTERVAL = 5.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CoderRemoteProvider(
     private val context: CoderToolboxContext,
-    private val httpClient: OkHttpClient,
 ) : RemoteProvider("Coder") {
     // Current polling job.
     private var pollJob: Job? = null
@@ -66,7 +68,7 @@ class CoderRemoteProvider(
     private var firstRun = true
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
     private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
-    private val linkHandler = CoderProtocolHandler(context, httpClient, dialogUi, isInitialized)
+    private val linkHandler = CoderProtocolHandler(context, dialogUi, isInitialized)
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
         LoadableState.Value(emptyList())
     )
@@ -77,6 +79,7 @@ class CoderRemoteProvider(
      * first time).
      */
     private fun poll(client: CoderRestClient, cli: CoderCLIManager): Job = context.cs.launch {
+        var lastPollTime = TimeSource.Monotonic.markNow()
         while (isActive) {
             try {
                 context.logger.debug("Fetching workspace agents from ${client.url}")
@@ -134,16 +137,28 @@ class CoderRemoteProvider(
             } catch (_: CancellationException) {
                 context.logger.debug("${client.url} polling loop canceled")
                 break
+            } catch (ex: SocketTimeoutException) {
+                val elapsed = lastPollTime.elapsedNow()
+                if (elapsed > POLL_INTERVAL * 2) {
+                    context.logger.info("wake-up from an OS sleep was detected, going to re-initialize the http client...")
+                    client.setupSession()
+                } else {
+                    context.logger.error(ex, "workspace polling error encountered")
+                    pollError = ex
+                    logout()
+                    break
+                }
             } catch (ex: Exception) {
-                context.logger.info(ex, "workspace polling error encountered")
+                context.logger.error(ex, "workspace polling error encountered")
                 pollError = ex
                 logout()
                 break
             }
+
             // TODO: Listening on a web socket might be better?
             select<Unit> {
-                onTimeout(5.seconds) {
-                    context.logger.trace("workspace poller waked up by the 5 seconds timeout")
+                onTimeout(POLL_INTERVAL) {
+                    context.logger.trace("workspace poller waked up by the $POLL_INTERVAL timeout")
                 }
                 triggerSshConfig.onReceive { shouldTrigger ->
                     if (shouldTrigger) {
@@ -152,6 +167,7 @@ class CoderRemoteProvider(
                     }
                 }
             }
+            lastPollTime = TimeSource.Monotonic.markNow()
         }
     }
 
@@ -329,7 +345,6 @@ class CoderRemoteProvider(
         context,
         deploymentURL,
         token,
-        httpClient,
         ::goToEnvironmentsPage,
     ) { client, cli ->
         // Store the URL and token for use next time.

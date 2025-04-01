@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.withTimeout
-import okhttp3.OkHttpClient
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -26,7 +25,6 @@ import kotlin.time.toJavaDuration
 
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
-    private val httpClient: OkHttpClient?,
     private val dialogUi: DialogUi,
     private val isInitialized: StateFlow<Boolean>,
 ) {
@@ -230,8 +228,7 @@ open class CoderProtocolHandler(
             deploymentURL.toURL(),
             token,
             proxyValues = null, // TODO - not sure the above comment applies as we are creating our own http client
-            PluginManager.pluginInfo.version,
-            httpClient
+            PluginManager.pluginInfo.version
         )
         client.authenticate()
         return client

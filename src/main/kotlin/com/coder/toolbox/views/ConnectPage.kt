@@ -14,7 +14,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
 import java.net.URL
 
 /**
@@ -24,7 +23,6 @@ class ConnectPage(
     private val context: CoderToolboxContext,
     private val url: URL,
     private val token: String?,
-    private val httpClient: OkHttpClient,
     private val onCancel: () -> Unit,
     private val onConnect: (
         client: CoderRestClient,
@@ -95,7 +93,6 @@ class ConnectPage(
                     token,
                     proxyValues = null,
                     PluginManager.pluginInfo.version,
-                    httpClient
                 )
                 client.authenticate()
                 updateStatus(context.i18n.ptrl("Checking Coder binary..."), error = null)

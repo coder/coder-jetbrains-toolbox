@@ -15,7 +15,6 @@ import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import kotlinx.coroutines.CoroutineScope
-import okhttp3.OkHttpClient
 
 /**
  * Entry point into the extension.
@@ -35,8 +34,7 @@ class CoderToolboxExtension : RemoteDevExtension {
                 serviceLocator.getService(LocalizableStringFactory::class.java),
                 CoderSettingsStore(serviceLocator.getService(PluginSettingsStore::class.java), Environment(), logger),
                 CoderSecretsStore(serviceLocator.getService(PluginSecretStore::class.java)),
-            ),
-            OkHttpClient(),
+            )
         )
     }
 }
