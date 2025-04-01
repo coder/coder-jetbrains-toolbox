@@ -5,7 +5,6 @@ import com.github.jk1.license.render.JsonReportRenderer
 import com.jetbrains.plugin.structure.toolbox.ToolboxMeta
 import com.jetbrains.plugin.structure.toolbox.ToolboxPluginDescriptor
 import org.jetbrains.intellij.pluginRepository.PluginRepositoryFactory
-import org.jetbrains.intellij.pluginRepository.model.LicenseUrl
 import org.jetbrains.intellij.pluginRepository.model.ProductFamily
 import org.jetbrains.kotlin.com.intellij.openapi.util.SystemInfoRt
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -217,26 +216,15 @@ val publishPlugin by tasks.registering {
             pluginMarketplaceToken
         )
 
-        if (extension.version == "0.1.0") {
-            instance.uploader.uploadNewPlugin(
-                pluginZip.outputs.files.singleFile,
-                listOf("toolbox", "gateway"), // do not change
-                LicenseUrl.MIT, // choose wisely
-                ProductFamily.TOOLBOX, // do not change
-                extension.meta.vendor,  // do not change
-                isHidden = true
-            )
-        } else {
-            // !!! subsequent updates !!!
-            instance.uploader.uploadUpdateByXmlIdAndFamily(
-                extension.id,  // do not change
-                ProductFamily.TOOLBOX,  // do not change
-                pluginZip.outputs.files.singleFile,  // do not change
-                null,  // do not change. Channels will be available later
-                "Bug fixes and improvements",
-                true
-            )
-        }
+        // !!! subsequent updates !!!
+        instance.uploader.uploadUpdateByXmlIdAndFamily(
+            extension.id,  // do not change
+            ProductFamily.TOOLBOX,  // do not change
+            pluginZip.outputs.files.singleFile,  // do not change
+            null,  // do not change. Channels will be available later
+            "Bug fixes and improvements",
+            true
+        )
     }
 }
 
