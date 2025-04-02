@@ -131,7 +131,7 @@ class CoderRemoteProvider(
                 }
                 lastEnvironments.apply {
                     clear()
-                    addAll(resolvedEnvironments)
+                    addAll(resolvedEnvironments.sortedBy { it.id })
                 }
             } catch (_: CancellationException) {
                 context.logger.debug("${client.url} polling loop canceled")
