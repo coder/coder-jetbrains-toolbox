@@ -53,16 +53,19 @@ open class CoderRestClient(
     val token: String?,
     private val proxyValues: ProxyValues? = null,
     private val pluginVersion: String = "development",
-    existingHttpClient: OkHttpClient? = null,
 ) {
     private val settings = context.settingsStore.readOnly()
-    private val httpClient: OkHttpClient
-    private val retroRestClient: CoderV2RestFacade
+    private lateinit var httpClient: OkHttpClient
+    private lateinit var retroRestClient: CoderV2RestFacade
 
     lateinit var me: User
     lateinit var buildVersion: String
 
     init {
+        setupSession()
+    }
+
+    fun setupSession() {
         val moshi =
             Moshi.Builder()
                 .add(ArchConverter())
@@ -73,7 +76,7 @@ open class CoderRestClient(
 
         val socketFactory = coderSocketFactory(settings.tls)
         val trustManagers = coderTrustManagers(settings.tls.caPath)
-        var builder = existingHttpClient?.newBuilder() ?: OkHttpClient.Builder()
+        var builder = OkHttpClient.Builder()
 
         if (proxyValues != null) {
             builder =
@@ -103,6 +106,7 @@ open class CoderRestClient(
             builder
                 .sslSocketFactory(socketFactory, trustManagers[0] as X509TrustManager)
                 .hostnameVerifier(CoderHostnameVerifier(settings.tls.altHostname))
+                .retryOnConnectionFailure(true)
                 .addInterceptor {
                     it.proceed(
                         it.request().newBuilder().addHeader(
