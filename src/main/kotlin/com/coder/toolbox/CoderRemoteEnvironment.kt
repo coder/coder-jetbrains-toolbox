@@ -194,10 +194,9 @@ class CoderRemoteEnvironment(
      */
     override fun equals(other: Any?): Boolean {
         if (other == null) return false
-        if (this === other) return true // Note the triple ===
+        if (this === other) return true
         if (other !is CoderRemoteEnvironment) return false
-        if (id != other.id) return false
-        return true
+        return id == other.id
     }
 
     /**
