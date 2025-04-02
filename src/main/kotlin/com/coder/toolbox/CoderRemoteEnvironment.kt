@@ -165,6 +165,12 @@ class CoderRemoteEnvironment(
         context.cs.launch {
             try {
                 client.removeWorkspace(workspace)
+                // mark the env as deleting otherwise we will have to
+                // wait for the poller to update the status in the next 5 seconds
+                state.update {
+                    WorkspaceAndAgentStatus.DELETING.toRemoteEnvironmentState(context)
+                }
+
                 context.cs.launch {
                     withTimeout(5.minutes) {
                         var workspaceStillExists = true
