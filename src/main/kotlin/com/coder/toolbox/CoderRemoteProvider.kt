@@ -187,7 +187,10 @@ class CoderRemoteProvider(
     override fun getAccountDropDown(): DropDownMenu? {
         val username = client?.me?.username
         if (username != null) {
-            return dropDownFactory(context.i18n.pnotr(username), { logout() })
+            return dropDownFactory(context.i18n.pnotr(username)) {
+                logout()
+                context.ui.showUiPage(getOverrideUiPage()!!)
+            }
         }
         return null
     }
@@ -211,6 +214,7 @@ class CoderRemoteProvider(
         lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
+        client = null
     }
 
     override val svgIcon: SvgIcon =
