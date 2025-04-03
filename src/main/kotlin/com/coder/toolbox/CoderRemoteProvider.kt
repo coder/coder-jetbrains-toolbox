@@ -288,7 +288,7 @@ class CoderRemoteProvider(
      * than using multiple root pages.
      */
     private fun goToEnvironmentsPage() {
-        context.envPageManager.showPluginEnvironmentsPage(true)
+        context.envPageManager.showMainPageWithUrlVisible()
     }
 
     /**
