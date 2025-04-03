@@ -9,6 +9,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.EnvironmentView
+import com.jetbrains.toolbox.api.remoteDev.DeleteEnvironmentConfirmationParams
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
@@ -149,42 +150,42 @@ class CoderRemoteEnvironment(
         }
     }
 
+    override fun getDeleteEnvironmentConfirmationParams(): DeleteEnvironmentConfirmationParams? {
+        return object : DeleteEnvironmentConfirmationParams {
+            override val cancelButtonText: String = "Cancel"
+            override val confirmButtonText: String = "Delete"
+            override val message: String =
+                if (wsRawStatus.canStop()) "Workspace will be closed and all the information will be lost, including all files, unsaved changes, historical info and usage data."
+                else "All the information in this workspace will be lost, including all files, unsaved changes, historical info and usage data."
+            override val title: String = if (wsRawStatus.canStop()) "Delete running workspace?" else "Delete workspace?"
+        }
+    }
+
     override fun onDelete() {
         context.cs.launch {
-            val shouldDelete = if (wsRawStatus.canStop()) {
-                context.ui.showOkCancelPopup(
-                    context.i18n.ptrl("Delete running workspace?"),
-                    context.i18n.ptrl("Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical."),
-                    context.i18n.ptrl("Delete"),
-                    context.i18n.ptrl("Cancel")
-                )
-            } else {
-                context.ui.showOkCancelPopup(
-                    context.i18n.ptrl("Delete workspace?"),
-                    context.i18n.ptrl("All the information in this workspace will be lost, including all files, unsaved changes and historical."),
-                    context.i18n.ptrl("Delete"),
-                    context.i18n.ptrl("Cancel")
-                )
-            }
-            if (shouldDelete) {
-                try {
-                    client.removeWorkspace(workspace)
-                    context.cs.launch {
-                        withTimeout(5.minutes) {
-                            var workspaceStillExists = true
-                            while (context.cs.isActive && workspaceStillExists) {
-                                if (wsRawStatus == WorkspaceAndAgentStatus.DELETING || wsRawStatus == WorkspaceAndAgentStatus.DELETED) {
-                                    workspaceStillExists = false
-                                    context.envPageManager.showPluginEnvironmentsPage()
-                                } else {
-                                    delay(1.seconds)
-                                }
+            try {
+                client.removeWorkspace(workspace)
+                // mark the env as deleting otherwise we will have to
+                // wait for the poller to update the status in the next 5 seconds
+                state.update {
+                    WorkspaceAndAgentStatus.DELETING.toRemoteEnvironmentState(context)
+                }
+
+                context.cs.launch {
+                    withTimeout(5.minutes) {
+                        var workspaceStillExists = true
+                        while (context.cs.isActive && workspaceStillExists) {
+                            if (wsRawStatus == WorkspaceAndAgentStatus.DELETING || wsRawStatus == WorkspaceAndAgentStatus.DELETED) {
+                                workspaceStillExists = false
+                                context.envPageManager.showPluginEnvironmentsPage()
+                            } else {
+                                delay(1.seconds)
                             }
                         }
                     }
-                } catch (e: APIResponseException) {
-                    context.ui.showErrorInfoPopup(e)
                 }
+            } catch (e: APIResponseException) {
+                context.ui.showErrorInfoPopup(e)
             }
         }
     }

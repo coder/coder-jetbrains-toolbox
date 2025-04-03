@@ -28,22 +28,7 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-msgid "Delete"
-msgstr ""
-
 msgid "Cancel"
-msgstr ""
-
-msgid "Delete running workspace?"
-msgstr ""
-
-msgid "Delete workspace?"
-msgstr ""
-
-msgid "Workspace will be closed and all the information in this workspace will be lost, including all files, unsaved changes and historical."
-msgstr ""
-
-msgid "All the information in this workspace will be lost, including all files, unsaved changes and historical."
 msgstr ""
 
 msgid "Session Token"
