@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- after log out, user is redirected back to the initial log in screen 
+
 ## 0.1.1 - 2025-04-03
 
 ### Fixed
