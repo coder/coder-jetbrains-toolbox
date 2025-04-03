@@ -177,7 +177,7 @@ class CoderRemoteEnvironment(
                         while (context.cs.isActive && workspaceStillExists) {
                             if (wsRawStatus == WorkspaceAndAgentStatus.DELETING || wsRawStatus == WorkspaceAndAgentStatus.DELETED) {
                                 workspaceStillExists = false
-                                context.envPageManager.showPluginEnvironmentsPage()
+                                context.envPageManager.showPluginEnvironmentsPage(true)
                             } else {
                                 delay(1.seconds)
                             }

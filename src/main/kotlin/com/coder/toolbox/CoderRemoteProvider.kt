@@ -67,7 +67,8 @@ class CoderRemoteProvider(
     // On the first load, automatically log in if we can.
     private var firstRun = true
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
-    private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
+    private var coderHeaderPage =
+        NewEnvironmentPage(context, context.i18n.pnotr("Coder"), getDeploymentURL()?.first ?: "")
     private val linkHandler = CoderProtocolHandler(context, dialogUi, isInitialized)
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
         LoadableState.Value(emptyList())
@@ -243,7 +244,7 @@ class CoderRemoteProvider(
      *          this changes it would be nice to have a new spot to show the
      *          URL.
      */
-    override val canCreateNewEnvironments: Boolean = false
+    override val canCreateNewEnvironments: Boolean = true
 
     /**
      * Just displays the deployment URL at the moment, but we could use this as
@@ -273,7 +274,7 @@ class CoderRemoteProvider(
             close()
             // start initialization with the new settings
             this@CoderRemoteProvider.client = restClient
-            coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(restClient.url.toString()))
+            coderHeaderPage.refreshUrl(restClient.url.toString())
             pollJob = poll(restClient, cli)
         }
     }
@@ -287,7 +288,7 @@ class CoderRemoteProvider(
      * than using multiple root pages.
      */
     private fun goToEnvironmentsPage() {
-        context.envPageManager.showPluginEnvironmentsPage()
+        context.envPageManager.showPluginEnvironmentsPage(true)
     }
 
     /**
@@ -359,6 +360,7 @@ class CoderRemoteProvider(
         pollError = null
         pollJob?.cancel()
         pollJob = poll(client, cli)
+        coderHeaderPage.refreshUrl(getDeploymentURL()?.first ?: "")
         goToEnvironmentsPage()
     }
 
