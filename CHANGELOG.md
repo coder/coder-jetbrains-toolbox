@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1 - 2025-04-03
+
 ### Fixed
 
 - SSH config is regenerated correctly when Workspaces are added or removed
