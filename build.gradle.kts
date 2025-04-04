@@ -223,7 +223,7 @@ val publishPlugin by tasks.registering {
             pluginZip.outputs.files.singleFile,  // do not change
             null,  // do not change. Channels will be available later
             "Bug fixes and improvements",
-            true
+            false
         )
     }
 }
