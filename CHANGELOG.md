@@ -4,7 +4,8 @@
 
 ### Fixed
 
-- after log out, user is redirected back to the initial log in screen 
+- after log out, user is redirected back to the initial log in screen
+- url on the main page is now refreshed when switching between multiple deployments (via logout/login or URI handling)
 
 ## 0.1.1 - 2025-04-03
 

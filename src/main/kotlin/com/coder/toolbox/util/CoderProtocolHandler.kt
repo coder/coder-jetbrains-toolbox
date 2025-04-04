@@ -9,6 +9,7 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.showMainPageWithUrlVisible
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
@@ -322,7 +323,7 @@ private suspend fun CoderToolboxContext.showInfoPopup(
 
 private fun CoderToolboxContext.popupPluginMainPage() {
     this.ui.showWindow()
-    this.envPageManager.showPluginEnvironmentsPage(true)
+    this.envPageManager.showMainPageWithUrlVisible()
 }
 
 /**
