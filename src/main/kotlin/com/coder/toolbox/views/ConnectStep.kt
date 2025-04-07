@@ -6,75 +6,46 @@ import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.util.humanizeConnectionError
+import com.coder.toolbox.util.toURL
+import com.coder.toolbox.views.state.AuthWizardState
 import com.jetbrains.toolbox.api.localization.LocalizableString
-import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.LabelField
-import com.jetbrains.toolbox.api.ui.components.UiField
+import com.jetbrains.toolbox.api.ui.components.RowGroup
+import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.net.URL
 
 /**
  * A page that connects a REST client and cli to Coder.
  */
-class ConnectPage(
+class ConnectStep(
     private val context: CoderToolboxContext,
-    private val url: URL,
-    private val token: String?,
-    private val onCancel: () -> Unit,
+    private val notify: (String, Throwable) -> Unit,
     private val onConnect: (
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,
-) : CoderPage(context, context.i18n.ptrl("Connecting to Coder")) {
+) : WizardStep {
     private val settings = context.settingsStore.readOnly()
     private var signInJob: Job? = null
 
-    private var statusField = LabelField(context.i18n.pnotr("Connecting to ${url.host}..."))
+    private val statusField = LabelField(context.i18n.pnotr(""))
 
-    override val description: LocalizableString =
-        context.i18n.pnotr("Please wait while we configure Toolbox for ${url.host}.")
+    //    override val description: LocalizableString = context.i18n.pnotr("Please wait while we configure Toolbox for ${url.host}.")
+    private val errorField = ValidationErrorField(context.i18n.pnotr(""))
 
-    init {
-        connect()
-    }
-
-    /**
-     * Fields for this page, displayed in order.
-     *
-     * TODO@JB: This looks kinda sparse.  A centered spinner would be welcome.
-     */
-    override val fields: StateFlow<List<UiField>> = MutableStateFlow(
-        listOfNotNull(
-            statusField,
-            errorField
-        )
+    override val panel: RowGroup = RowGroup(
+        RowGroup.RowField(statusField),
+        RowGroup.RowField(errorField)
     )
 
-    /**
-     * Show a retry button on error.
-     */
-    override val actionButtons: StateFlow<List<RunnableActionDescription>> = MutableStateFlow(
-        listOfNotNull(
-            if (errorField != null) Action(context.i18n.ptrl("Retry"), closesPage = false) { retry() } else null,
-            if (errorField != null) Action(context.i18n.ptrl("Cancel"), closesPage = false) { onCancel() } else null,
-        ))
+    override val nextButtonTitle: LocalizableString? = null
+    override val closesWizard: Boolean = false
 
-    /**
-     * Update the status and error fields then refresh.
-     */
-    private fun updateStatus(newStatus: LocalizableString, error: String?) {
-        statusField = LabelField(newStatus)
-        updateError(error) // Will refresh.
-    }
-
-    /**
-     * Try connecting again after an error.
-     */
-    private fun retry() {
-        updateStatus(context.i18n.pnotr("Connecting to ${url.host}..."), null)
+    override fun onVisible() {
+        val url = context.deploymentUrl?.first?.toURL()
+        statusField.textState.update { context.i18n.pnotr("Connecting to ${url?.host}...") }
         connect()
     }
 
@@ -82,6 +53,17 @@ class ConnectPage(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
+        val url = context.deploymentUrl?.first?.toURL()
+        val token = context.getToken(context.deploymentUrl?.first)?.first
+        if (url == null) {
+            errorField.textState.update { context.i18n.ptrl("URL is required") }
+            return
+        }
+
+        if (token.isNullOrBlank()) {
+            errorField.textState.update { context.i18n.ptrl("Token is required") }
+            return
+        }
         signInJob?.cancel()
         signInJob = context.cs.launch {
             try {
@@ -103,6 +85,7 @@ class ConnectPage(
                     cli.login(client.token)
                 }
                 onConnect(client, cli)
+                AuthWizardState.resetSteps()
 
             } catch (ex: Exception) {
                 val msg = humanizeConnectionError(url, settings.requireTokenAuth, ex)
@@ -111,4 +94,30 @@ class ConnectPage(
             }
         }
     }
+
+    override fun onNext(): Boolean {
+        return false
+    }
+
+    override fun onBack() {
+        AuthWizardState.goToPreviousStep()
+    }
+
+    /**
+     * Update the status and error fields then refresh.
+     */
+    private fun updateStatus(newStatus: LocalizableString, error: String?) {
+        statusField.textState.update { newStatus }
+        if (!error.isNullOrBlank()) {
+            errorField.textState.update { context.i18n.pnotr(error) }
+        }
+    }
+//
+//    /**
+//     * Try connecting again after an error.
+//     */
+//    private fun retry() {
+//        updateStatus(context.i18n.pnotr("Connecting to ${url.host}..."), null)
+//        connect()
+//    }
 }

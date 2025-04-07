@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Toolbox remembers the authentication page that was last visible on the screen 
+
 ## 0.1.2 - 2025-04-04
 
 ### Fixed
