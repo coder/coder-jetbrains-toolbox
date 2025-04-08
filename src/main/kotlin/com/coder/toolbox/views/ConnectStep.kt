@@ -5,7 +5,6 @@ import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.util.humanizeConnectionError
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.views.state.AuthWizardState
 import com.jetbrains.toolbox.api.localization.LocalizableString
@@ -15,6 +14,10 @@ import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
+import java.util.concurrent.CancellationException
+
+private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
 
 /**
  * A page that connects a REST client and cli to Coder.
@@ -27,12 +30,9 @@ class ConnectStep(
         cli: CoderCLIManager,
     ) -> Unit,
 ) : WizardStep {
-    private val settings = context.settingsStore.readOnly()
     private var signInJob: Job? = null
 
     private val statusField = LabelField(context.i18n.pnotr(""))
-
-    //    override val description: LocalizableString = context.i18n.pnotr("Please wait while we configure Toolbox for ${url.host}.")
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
 
     override val panel: RowGroup = RowGroup(
@@ -75,21 +75,29 @@ class ConnectStep(
                     proxyValues = null,
                     PluginManager.pluginInfo.version,
                 )
+                // allows interleaving with the back/cancel action
+                yield()
                 client.authenticate()
-                updateStatus(context.i18n.ptrl("Checking Coder binary..."), error = null)
+                statusField.textState.update { (context.i18n.ptrl("Checking Coder binary...")) }
                 val cli = ensureCLI(context, client.url, client.buildVersion)
                 // We only need to log in if we are using token-based auth.
                 if (client.token != null) {
-                    updateStatus(context.i18n.ptrl("Configuring CLI..."), error = null)
+                    statusField.textState.update { (context.i18n.ptrl("Configuring CLI...")) }
+                    // allows interleaving with the back/cancel action
+                    yield()
                     cli.login(client.token)
                 }
+                // allows interleaving with the back/cancel action
+                yield()
                 onConnect(client, cli)
                 AuthWizardState.resetSteps()
-
+            } catch (ex: CancellationException) {
+                if (ex.message == USER_HIT_THE_BACK_BUTTON) {
+                    return@launch
+                }
+                notify("Connection to ${url.host} was configured", ex)
             } catch (ex: Exception) {
-                val msg = humanizeConnectionError(url, settings.requireTokenAuth, ex)
                 notify("Failed to configure ${url.host}", ex)
-                updateStatus(context.i18n.pnotr("Failed to configure ${url.host}"), msg)
             }
         }
     }
@@ -99,24 +107,10 @@ class ConnectStep(
     }
 
     override fun onBack() {
-        AuthWizardState.goToPreviousStep()
-    }
-
-    /**
-     * Update the status and error fields then refresh.
-     */
-    private fun updateStatus(newStatus: LocalizableString, error: String?) {
-        statusField.textState.update { newStatus }
-        if (!error.isNullOrBlank()) {
-            errorField.textState.update { context.i18n.pnotr(error) }
+        try {
+            signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
+        } finally {
+            AuthWizardState.goToPreviousStep()
         }
     }
-//
-//    /**
-//     * Try connecting again after an error.
-//     */
-//    private fun retry() {
-//        updateStatus(context.i18n.pnotr("Connecting to ${url.host}..."), null)
-//        connect()
-//    }
 }
