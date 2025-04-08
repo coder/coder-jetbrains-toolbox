@@ -3,7 +3,6 @@ package com.coder.toolbox
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.coder.toolbox.settings.SettingSource
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.views.Action
@@ -32,7 +31,6 @@ import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.net.SocketTimeoutException
 import java.net.URI
-import java.net.URL
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -342,22 +340,5 @@ class CoderRemoteProvider(
         pollJob?.cancel()
         pollJob = poll(client, cli)
         goToEnvironmentsPage()
-    }
-
-    /**
-     * Try to find a token.
-     *
-     * Order of preference:
-     *
-     * 1. Last used token, if it was for this deployment.
-     * 2. Token on disk for this deployment.
-     * 3. Global token for Coder, if it matches the deployment.
-     */
-    private fun getToken(deploymentURL: URL): Pair<String, SettingSource>? = context.secrets.lastToken.let {
-        if (it.isNotBlank() && context.secrets.lastDeploymentURL == deploymentURL.toString()) {
-            it to SettingSource.LAST_USED
-        } else {
-            settings.token(deploymentURL)
-        }
     }
 }
