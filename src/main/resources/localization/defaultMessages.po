@@ -40,9 +40,6 @@ msgstr ""
 msgid "Enter the full URL of your Coder deployment"
 msgstr ""
 
-msgid "Confirm download URL"
-msgstr ""
-
 msgid "Open web terminal"
 msgstr ""
 
@@ -103,25 +100,13 @@ msgstr ""
 msgid "Disable autostart"
 msgstr ""
 
-msgid "Connecting to Coder"
-msgstr ""
-
 msgid "Checking Coder binary..."
 msgstr ""
 
 msgid "Configuring CLI..."
 msgstr ""
 
-msgid "Retry"
-msgstr ""
-
 msgid "Sign In"
-msgstr ""
-
-msgid "Sign In to Coder"
-msgstr ""
-
-msgid "Enter your token"
 msgstr ""
 
 msgid "Token"
