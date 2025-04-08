@@ -4,7 +4,7 @@ import java.net.IDN
 import java.net.URI
 import java.net.URL
 
-fun String.toURL(): URL = URL(this)
+fun String.toURL(): URL = URI.create(this).toURL()
 
 fun URL.withPath(path: String): URL = URL(
     this.protocol,

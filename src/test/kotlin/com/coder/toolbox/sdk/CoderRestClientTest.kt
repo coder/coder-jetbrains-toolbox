@@ -35,6 +35,7 @@ import com.sun.net.httpserver.HttpsConfigurator
 import com.sun.net.httpserver.HttpsServer
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.runBlocking
 import okio.buffer
 import okio.source
 import java.io.IOException
@@ -156,10 +157,10 @@ class CoderRestClientTest {
     fun testUnauthorized() {
         val workspace = DataGen.workspace("ws1")
         val tests = listOf<Pair<String, (CoderRestClient) -> Unit>>(
-            "/api/v2/workspaces" to { it.workspaces() },
-            "/api/v2/users/me" to { it.me() },
-            "/api/v2/buildinfo" to { it.buildInfo() },
-            "/api/v2/templates/${workspace.templateID}" to { it.updateWorkspace(workspace) },
+            "/api/v2/workspaces" to { runBlocking { it.workspaces() } },
+            "/api/v2/users/me" to { runBlocking { it.me() } },
+            "/api/v2/buildinfo" to { runBlocking { it.buildInfo() } },
+            "/api/v2/templates/${workspace.templateID}" to { runBlocking { it.updateWorkspace(workspace) } },
         )
         tests.forEach { (endpoint, block) ->
             val (srv, url) = mockServer()
@@ -204,14 +205,14 @@ class CoderRestClientTest {
         )
 
         val client = CoderRestClient(context, URL(url), "token")
-        assertEquals(user.username, client.me().username)
+        assertEquals(user.username, runBlocking { client.me() }.username)
 
         val tests = listOf("invalid", null)
         tests.forEach { token ->
             val ex =
                 assertFailsWith(
                     exceptionClass = APIResponseException::class,
-                    block = { CoderRestClient(context, URL(url), token).me() },
+                    block = { runBlocking { CoderRestClient(context, URL(url), token).me() } },
                 )
             assertEquals(true, ex.isUnauthorized)
         }
@@ -242,7 +243,7 @@ class CoderRestClientTest {
                     exchange.responseBody.write(body)
                 },
             )
-            assertEquals(workspaces.map { ws -> ws.name }, client.workspaces().map { ws -> ws.name })
+            assertEquals(workspaces.map { ws -> ws.name }, runBlocking { client.workspaces() }.map { ws -> ws.name })
             srv.stop(0)
         }
     }
@@ -326,7 +327,7 @@ class CoderRestClientTest {
             )
 
             workspaces.forEach { ws ->
-                assertEquals(ws.resources, client.resources(ws.workspace))
+                assertEquals(ws.resources, runBlocking { client.resources(ws.workspace) })
             }
 
             srv.stop(0)
@@ -404,7 +405,7 @@ class CoderRestClientTest {
         val ex =
             assertFailsWith(
                 exceptionClass = APIResponseException::class,
-                block = { client.updateWorkspace(badWorkspace) },
+                block = { runBlocking { client.updateWorkspace(badWorkspace) } },
             )
         assertEquals(
             listOf(
@@ -417,7 +418,7 @@ class CoderRestClientTest {
         actions.clear()
 
         with(workspaces[0]) {
-            client.updateWorkspace(this)
+            runBlocking { client.updateWorkspace(this@with) }
             val expected =
                 listOf(
                     Pair("get_template", templateID),
@@ -453,7 +454,7 @@ class CoderRestClientTest {
             },
         )
 
-        assertEquals(user.username, client.me().username)
+        assertEquals(user.username, runBlocking { client.me() }.username)
 
         srv.stop(0)
     }
@@ -474,7 +475,7 @@ class CoderRestClientTest {
 
         assertFailsWith(
             exceptionClass = SSLPeerUnverifiedException::class,
-            block = { client.me() },
+            block = { runBlocking { client.me() } },
         )
 
         srv.stop(0)
@@ -494,7 +495,7 @@ class CoderRestClientTest {
 
         assertFailsWith(
             exceptionClass = SSLHandshakeException::class,
-            block = { client.me() },
+            block = { runBlocking { client.me() } },
         )
 
         srv.stop(0)
@@ -522,7 +523,7 @@ class CoderRestClientTest {
             },
         )
 
-        assertEquals(user.username, client.me().username)
+        assertEquals(user.username, runBlocking { client.me() }.username)
 
         srv.stop(0)
     }
@@ -566,7 +567,7 @@ class CoderRestClientTest {
                 ),
             )
 
-        assertEquals(workspaces.map { ws -> ws.name }, client.workspaces().map { ws -> ws.name })
+        assertEquals(workspaces.map { ws -> ws.name }, runBlocking { client.workspaces() }.map { ws -> ws.name })
 
         srv1.stop(0)
         srv2.stop(0)

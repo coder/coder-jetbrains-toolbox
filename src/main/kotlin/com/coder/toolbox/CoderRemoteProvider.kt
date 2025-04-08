@@ -3,15 +3,14 @@ package com.coder.toolbox
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.coder.toolbox.settings.SettingSource
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.views.Action
+import com.coder.toolbox.views.AuthWizardPage
 import com.coder.toolbox.views.CoderSettingsPage
-import com.coder.toolbox.views.ConnectPage
 import com.coder.toolbox.views.NewEnvironmentPage
-import com.coder.toolbox.views.SignInPage
-import com.coder.toolbox.views.TokenPage
+import com.coder.toolbox.views.state.AuthWizardState
+import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.core.util.LoadableState
@@ -32,7 +31,6 @@ import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.net.SocketTimeoutException
 import java.net.URI
-import java.net.URL
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -67,7 +65,7 @@ class CoderRemoteProvider(
     // On the first load, automatically log in if we can.
     private var firstRun = true
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
-    private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(getDeploymentURL()?.first ?: ""))
+    private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(context.deploymentUrl?.first ?: ""))
     private val linkHandler = CoderProtocolHandler(context, dialogUi, isInitialized)
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
         LoadableState.Value(emptyList())
@@ -177,7 +175,7 @@ class CoderRemoteProvider(
     private fun logout() {
         // Keep the URL and token to make it easy to log back in, but set
         // rememberMe to false so we do not try to automatically log in.
-        context.secrets.rememberMe = "false"
+        context.secrets.rememberMe = false
         close()
     }
 
@@ -189,7 +187,7 @@ class CoderRemoteProvider(
         if (username != null) {
             return dropDownFactory(context.i18n.pnotr(username)) {
                 logout()
-                context.ui.showUiPage(getOverrideUiPage()!!)
+                context.envPageManager.showPluginEnvironmentsPage()
             }
         }
         return null
@@ -215,6 +213,7 @@ class CoderRemoteProvider(
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
         client = null
+        AuthWizardState.resetSteps()
     }
 
     override val svgIcon: SvgIcon =
@@ -293,7 +292,7 @@ class CoderRemoteProvider(
     /**
      * Return the sign-in page if we do not have a valid client.
 
-     * Otherwise return null, which causes Toolbox to display the environment
+     * Otherwise, return null, which causes Toolbox to display the environment
      * list.
      */
     override fun getOverrideUiPage(): UiPage? {
@@ -306,7 +305,8 @@ class CoderRemoteProvider(
                 context.secrets.lastDeploymentURL.let { lastDeploymentURL ->
                     if (autologin && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !settings.requireTokenAuth)) {
                         try {
-                            return createConnectPage(URL(lastDeploymentURL), lastToken)
+                            AuthWizardState.goToStep(WizardStep.LOGIN)
+                            return AuthWizardPage(context, true, ::onConnect)
                         } catch (ex: Exception) {
                             autologinEx = ex
                         }
@@ -316,84 +316,29 @@ class CoderRemoteProvider(
             firstRun = false
 
             // Login flow.
-            val signInPage =
-                SignInPage(context, getDeploymentURL()) { deploymentURL ->
-                    context.ui.showUiPage(
-                        TokenPage(
-                            context,
-                            deploymentURL,
-                            getToken(deploymentURL)
-                        ) { selectedToken ->
-                            context.ui.showUiPage(createConnectPage(deploymentURL, selectedToken))
-                        },
-                    )
-                }
-
+            val authWizard = AuthWizardPage(context, false, ::onConnect)
             // We might have tried and failed to automatically log in.
-            autologinEx?.let { signInPage.notify("Error logging in", it) }
+            autologinEx?.let { authWizard.notify("Error logging in", it) }
             // We might have navigated here due to a polling error.
-            pollError?.let { signInPage.notify("Error fetching workspaces", it) }
+            pollError?.let { authWizard.notify("Error fetching workspaces", it) }
 
-            return signInPage
+            return authWizard
         }
         return null
     }
 
-    private fun shouldDoAutoLogin(): Boolean = firstRun && context.secrets.rememberMe == "true"
+    private fun shouldDoAutoLogin(): Boolean = firstRun && context.secrets.rememberMe == true
 
-    /**
-     * Create a connect page that starts polling and resets the UI on success.
-     */
-    private fun createConnectPage(deploymentURL: URL, token: String?): ConnectPage = ConnectPage(
-        context,
-        deploymentURL,
-        token,
-        ::goToEnvironmentsPage,
-    ) { client, cli ->
+    private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
         context.secrets.lastDeploymentURL = client.url.toString()
         context.secrets.lastToken = client.token ?: ""
         // Currently we always remember, but this could be made an option.
-        context.secrets.rememberMe = "true"
+        context.secrets.rememberMe = true
         this.client = client
         pollError = null
         pollJob?.cancel()
         pollJob = poll(client, cli)
         goToEnvironmentsPage()
-    }
-
-    /**
-     * Try to find a token.
-     *
-     * Order of preference:
-     *
-     * 1. Last used token, if it was for this deployment.
-     * 2. Token on disk for this deployment.
-     * 3. Global token for Coder, if it matches the deployment.
-     */
-    private fun getToken(deploymentURL: URL): Pair<String, SettingSource>? = context.secrets.lastToken.let {
-        if (it.isNotBlank() && context.secrets.lastDeploymentURL == deploymentURL.toString()) {
-            it to SettingSource.LAST_USED
-        } else {
-            settings.token(deploymentURL)
-        }
-    }
-
-    /**
-     * Try to find a URL.
-     *
-     * In order of preference:
-     *
-     * 1. Last used URL.
-     * 2. URL in settings.
-     * 3. CODER_URL.
-     * 4. URL in global cli config.
-     */
-    private fun getDeploymentURL(): Pair<String, SettingSource>? = context.secrets.lastDeploymentURL.let {
-        if (it.isNotBlank()) {
-            it to SettingSource.LAST_USED
-        } else {
-            context.settingsStore.defaultURL()
-        }
     }
 }

@@ -5,10 +5,7 @@ import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
-import com.jetbrains.toolbox.api.ui.components.UiField
 import com.jetbrains.toolbox.api.ui.components.UiPage
-import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
-import java.util.function.Consumer
 
 /**
  * Base page that handles the icon, displaying error notifications, and
@@ -25,18 +22,9 @@ abstract class CoderPage(
     title: LocalizableString,
     showIcon: Boolean = true,
 ) : UiPage(title) {
-    /**
-     * An error to display on the page.
-     *
-     * The current assumption is you only have one field per page.
-     */
-    protected var errorField: ValidationErrorField? = null
 
     /** Toolbox uses this to show notifications on the page. */
     private var notifier: ((Throwable) -> Unit)? = null
-
-    /** Let Toolbox know the fields should be updated. */
-    protected var listener: Consumer<UiField?>? = null
 
     /** Stores errors until the notifier is attached. */
     private var errorBuffer: MutableList<Throwable> = mutableListOf()
@@ -75,14 +63,6 @@ abstract class CoderPage(
             }
             errorBuffer.clear()
         }
-    }
-
-    /**
-     * Set/unset the field error and update the form.
-     */
-    protected fun updateError(error: String?) {
-        errorField = error?.let { ValidationErrorField(context.i18n.pnotr(error)) }
-        listener?.accept(null) // Make Toolbox get the fields again.
     }
 }
 
