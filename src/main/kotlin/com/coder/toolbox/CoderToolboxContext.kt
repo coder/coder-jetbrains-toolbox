@@ -33,13 +33,14 @@ data class CoderToolboxContext(
      * 3. CODER_URL.
      * 4. URL in global cli config.
      */
-    val deploymentUrl: Pair<String, SettingSource>? = this.secrets.lastDeploymentURL.let {
-        if (it.isNotBlank()) {
-            it to SettingSource.LAST_USED
-        } else {
-            this.settingsStore.defaultURL()
+    val deploymentUrl: Pair<String, SettingSource>?
+        get() = this.secrets.lastDeploymentURL.let {
+            if (it.isNotBlank()) {
+                it to SettingSource.LAST_USED
+            } else {
+                this.settingsStore.defaultURL()
+            }
         }
-    }
 
     /**
      * Try to find a token.
