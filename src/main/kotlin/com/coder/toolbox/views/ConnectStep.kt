@@ -41,7 +41,6 @@ class ConnectStep(
     )
 
     override val nextButtonTitle: LocalizableString? = null
-    override val closesWizard: Boolean = false
 
     override fun onVisible() {
         val url = context.deploymentUrl?.first?.toURL()

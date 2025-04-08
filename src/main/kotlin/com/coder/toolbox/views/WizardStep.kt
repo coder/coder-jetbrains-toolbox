@@ -6,7 +6,6 @@ import com.jetbrains.toolbox.api.ui.components.RowGroup
 interface WizardStep {
     val panel: RowGroup
     val nextButtonTitle: LocalizableString?
-    val closesWizard: Boolean
 
     /**
      * Callback when step is visible

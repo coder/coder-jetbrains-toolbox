@@ -29,8 +29,6 @@ class SignInStep(private val context: CoderToolboxContext) : WizardStep {
 
     override val nextButtonTitle: LocalizableString? = context.i18n.ptrl("Sign In")
 
-    override val closesWizard: Boolean = false
-
     override fun onVisible() {
         urlField.textState.update {
             context.deploymentUrl?.first ?: ""

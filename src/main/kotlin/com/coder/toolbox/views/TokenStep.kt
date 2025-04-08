@@ -1,7 +1,6 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.settings.SettingSource
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.state.AuthWizardState
@@ -34,15 +33,14 @@ class TokenStep(private val context: CoderToolboxContext) : WizardStep {
         RowGroup.RowField(errorField)
     )
     override val nextButtonTitle: LocalizableString? = context.i18n.ptrl("Connect")
-    override val closesWizard: Boolean = false
 
     override fun onVisible() {
         tokenField.textState.update {
-            getToken(context.deploymentUrl?.first)?.first ?: ""
+            context.getToken(context.deploymentUrl?.first)?.first ?: ""
         }
         descriptionField.textState.update {
             context.i18n.pnotr(
-                getToken(context.deploymentUrl?.first)?.second?.description("token")
+                context.getToken(context.deploymentUrl?.first)?.second?.description("token")
                     ?: "No existing token for ${context.deploymentUrl} found."
             )
         }
@@ -65,24 +63,5 @@ class TokenStep(private val context: CoderToolboxContext) : WizardStep {
 
     override fun onBack() {
         AuthWizardState.goToPreviousStep()
-    }
-
-    /**
-     * Try to find a token.
-     *
-     * Order of preference:
-     *
-     * 1. Last used token, if it was for this deployment.
-     * 2. Token on disk for this deployment.
-     * 3. Global token for Coder, if it matches the deployment.
-     */
-    private fun getToken(deploymentURL: String?): Pair<String, SettingSource>? = context.secrets.lastToken.let {
-        if (it.isNotBlank() && context.secrets.lastDeploymentURL == deploymentURL) {
-            it to SettingSource.LAST_USED
-        } else {
-            if (deploymentURL != null) {
-                context.settingsStore.token(deploymentURL.toURL())
-            } else null
-        }
     }
 }
