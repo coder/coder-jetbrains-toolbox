@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.update
  * enter their own.
  */
 class TokenStep(private val context: CoderToolboxContext) : WizardStep {
-    private val tokenField = TextField(context.i18n.ptrl("Token"), "", TextType.General)
+    private val tokenField = TextField(context.i18n.ptrl("Token"), "", TextType.Password)
     private val descriptionField = LabelField(context.i18n.pnotr(""))
     private val linkField = LinkField(context.i18n.ptrl("Get a token"), "")
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
