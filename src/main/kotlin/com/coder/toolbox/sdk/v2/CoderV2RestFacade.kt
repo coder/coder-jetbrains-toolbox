@@ -8,7 +8,7 @@ import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspacesResponse
-import retrofit2.Call
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -21,43 +21,43 @@ interface CoderV2RestFacade {
      * Retrieves details about the authenticated user.
      */
     @GET("api/v2/users/me")
-    fun me(): Call<User>
+    suspend fun me(): Response<User>
 
     /**
      * Retrieves all workspaces the authenticated user has access to.
      */
     @GET("api/v2/workspaces")
-    fun workspaces(
+    suspend fun workspaces(
         @Query("q") searchParams: String,
-    ): Call<WorkspacesResponse>
+    ): Response<WorkspacesResponse>
 
     /**
      * Retrieves a workspace with the provided id.
      */
     @GET("api/v2/workspaces/{workspaceID}")
-    fun workspace(
+    suspend fun workspace(
         @Path("workspaceID") workspaceID: UUID
-    ): Call<Workspace>
+    ): Response<Workspace>
 
     @GET("api/v2/buildinfo")
-    fun buildInfo(): Call<BuildInfo>
+    suspend fun buildInfo(): Response<BuildInfo>
 
     /**
      * Queues a new build to occur for a workspace.
      */
     @POST("api/v2/workspaces/{workspaceID}/builds")
-    fun createWorkspaceBuild(
+    suspend fun createWorkspaceBuild(
         @Path("workspaceID") workspaceID: UUID,
         @Body createWorkspaceBuildRequest: CreateWorkspaceBuildRequest,
-    ): Call<WorkspaceBuild>
+    ): Response<WorkspaceBuild>
 
     @GET("api/v2/templates/{templateID}")
-    fun template(
+    suspend fun template(
         @Path("templateID") templateID: UUID,
-    ): Call<Template>
+    ): Response<Template>
 
     @GET("api/v2/templateversions/{templateID}/resources")
-    fun templateVersionResources(
+    suspend fun templateVersionResources(
         @Path("templateID") templateID: UUID,
-    ): Call<List<WorkspaceResource>>
+    ): Response<List<WorkspaceResource>>
 }

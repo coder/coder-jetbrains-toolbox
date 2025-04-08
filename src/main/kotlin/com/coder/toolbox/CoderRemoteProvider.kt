@@ -175,7 +175,7 @@ class CoderRemoteProvider(
     private fun logout() {
         // Keep the URL and token to make it easy to log back in, but set
         // rememberMe to false so we do not try to automatically log in.
-        context.secrets.rememberMe = "false"
+        context.secrets.rememberMe = false
         close()
     }
 
@@ -292,7 +292,7 @@ class CoderRemoteProvider(
     /**
      * Return the sign-in page if we do not have a valid client.
 
-     * Otherwise return null, which causes Toolbox to display the environment
+     * Otherwise, return null, which causes Toolbox to display the environment
      * list.
      */
     override fun getOverrideUiPage(): UiPage? {
@@ -327,14 +327,14 @@ class CoderRemoteProvider(
         return null
     }
 
-    private fun shouldDoAutoLogin(): Boolean = firstRun && context.secrets.rememberMe == "true"
+    private fun shouldDoAutoLogin(): Boolean = firstRun && context.secrets.rememberMe == true
 
     private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
         context.secrets.lastDeploymentURL = client.url.toString()
         context.secrets.lastToken = client.token ?: ""
         // Currently we always remember, but this could be made an option.
-        context.secrets.rememberMe = "true"
+        context.secrets.rememberMe = true
         this.client = client
         pollError = null
         pollJob?.cancel()

@@ -74,26 +74,35 @@ class CoderRemoteEnvironment(
         if (wsRawStatus.canStart()) {
             if (workspace.outdated) {
                 actions.add(Action(context.i18n.ptrl("Update and start")) {
-                    val build = client.updateWorkspace(workspace)
-                    update(workspace.copy(latestBuild = build), agent)
+                    context.cs.launch {
+                        val build = client.updateWorkspace(workspace)
+                        update(workspace.copy(latestBuild = build), agent)
+                    }
                 })
             } else {
                 actions.add(Action(context.i18n.ptrl("Start")) {
-                    val build = client.startWorkspace(workspace)
-                    update(workspace.copy(latestBuild = build), agent)
+                    context.cs.launch {
+                        val build = client.startWorkspace(workspace)
+                        update(workspace.copy(latestBuild = build), agent)
+
+                    }
                 })
             }
         }
         if (wsRawStatus.canStop()) {
             if (workspace.outdated) {
                 actions.add(Action(context.i18n.ptrl("Update and restart")) {
-                    val build = client.updateWorkspace(workspace)
-                    update(workspace.copy(latestBuild = build), agent)
+                    context.cs.launch {
+                        val build = client.updateWorkspace(workspace)
+                        update(workspace.copy(latestBuild = build), agent)
+                    }
                 })
             } else {
                 actions.add(Action(context.i18n.ptrl("Stop")) {
-                    val build = client.stopWorkspace(workspace)
-                    update(workspace.copy(latestBuild = build), agent)
+                    context.cs.launch {
+                        val build = client.stopWorkspace(workspace)
+                        update(workspace.copy(latestBuild = build), agent)
+                    }
                 })
             }
         }

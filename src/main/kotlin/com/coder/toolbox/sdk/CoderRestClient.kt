@@ -139,7 +139,7 @@ open class CoderRestClient(
      *
      * @throws [APIResponseException].
      */
-    fun authenticate(): User {
+    suspend fun authenticate(): User {
         me = me()
         buildVersion = buildInfo().version
         return me
@@ -149,8 +149,8 @@ open class CoderRestClient(
      * Retrieve the current user.
      * @throws [APIResponseException].
      */
-    fun me(): User {
-        val userResponse = retroRestClient.me().execute()
+    suspend fun me(): User {
+        val userResponse = retroRestClient.me()
         if (!userResponse.isSuccessful) {
             throw APIResponseException("authenticate", url, userResponse)
         }
@@ -162,8 +162,8 @@ open class CoderRestClient(
      * Retrieves the available workspaces created by the user.
      * @throws [APIResponseException].
      */
-    fun workspaces(): List<Workspace> {
-        val workspacesResponse = retroRestClient.workspaces("owner:me").execute()
+    suspend fun workspaces(): List<Workspace> {
+        val workspacesResponse = retroRestClient.workspaces("owner:me")
         if (!workspacesResponse.isSuccessful) {
             throw APIResponseException("retrieve workspaces", url, workspacesResponse)
         }
@@ -175,8 +175,8 @@ open class CoderRestClient(
      * Retrieves a workspace with the provided id.
      * @throws [APIResponseException].
      */
-    fun workspace(workspaceID: UUID): Workspace {
-        val workspacesResponse = retroRestClient.workspace(workspaceID).execute()
+    suspend fun workspace(workspaceID: UUID): Workspace {
+        val workspacesResponse = retroRestClient.workspace(workspaceID)
         if (!workspacesResponse.isSuccessful) {
             throw APIResponseException("retrieve workspace", url, workspacesResponse)
         }
@@ -188,7 +188,7 @@ open class CoderRestClient(
      * Retrieves all the agent names for all workspaces, including those that
      * are off.  Meant to be used when configuring SSH.
      */
-    fun agentNames(workspaces: List<Workspace>): Set<String> {
+    suspend fun agentNames(workspaces: List<Workspace>): Set<String> {
         // It is possible for there to be resources with duplicate names so we
         // need to use a set.
         return workspaces.flatMap { ws ->
@@ -205,17 +205,17 @@ open class CoderRestClient(
      * removing hosts from the SSH config when they are off).
      * @throws [APIResponseException].
      */
-    fun resources(workspace: Workspace): List<WorkspaceResource> {
+    suspend fun resources(workspace: Workspace): List<WorkspaceResource> {
         val resourcesResponse =
-            retroRestClient.templateVersionResources(workspace.latestBuild.templateVersionID).execute()
+            retroRestClient.templateVersionResources(workspace.latestBuild.templateVersionID)
         if (!resourcesResponse.isSuccessful) {
             throw APIResponseException("retrieve resources for ${workspace.name}", url, resourcesResponse)
         }
         return resourcesResponse.body()!!
     }
 
-    fun buildInfo(): BuildInfo {
-        val buildInfoResponse = retroRestClient.buildInfo().execute()
+    suspend fun buildInfo(): BuildInfo {
+        val buildInfoResponse = retroRestClient.buildInfo()
         if (!buildInfoResponse.isSuccessful) {
             throw APIResponseException("retrieve build information", url, buildInfoResponse)
         }
@@ -225,8 +225,8 @@ open class CoderRestClient(
     /**
      * @throws [APIResponseException].
      */
-    private fun template(templateID: UUID): Template {
-        val templateResponse = retroRestClient.template(templateID).execute()
+    private suspend fun template(templateID: UUID): Template {
+        val templateResponse = retroRestClient.template(templateID)
         if (!templateResponse.isSuccessful) {
             throw APIResponseException("retrieve template with ID $templateID", url, templateResponse)
         }
@@ -236,9 +236,9 @@ open class CoderRestClient(
     /**
      * @throws [APIResponseException].
      */
-    fun startWorkspace(workspace: Workspace): WorkspaceBuild {
+    suspend fun startWorkspace(workspace: Workspace): WorkspaceBuild {
         val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.START)
-        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest).execute()
+        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
             throw APIResponseException("start workspace ${workspace.name}", url, buildResponse)
         }
@@ -247,9 +247,9 @@ open class CoderRestClient(
 
     /**
      */
-    fun stopWorkspace(workspace: Workspace): WorkspaceBuild {
+    suspend fun stopWorkspace(workspace: Workspace): WorkspaceBuild {
         val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.STOP)
-        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest).execute()
+        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
             throw APIResponseException("stop workspace ${workspace.name}", url, buildResponse)
         }
@@ -259,9 +259,9 @@ open class CoderRestClient(
     /**
      * @throws [APIResponseException] if issues are encountered during deletion
      */
-    fun removeWorkspace(workspace: Workspace) {
+    suspend fun removeWorkspace(workspace: Workspace) {
         val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.DELETE, false)
-        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest).execute()
+        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
             throw APIResponseException("delete workspace ${workspace.name}", url, buildResponse)
         }
@@ -277,11 +277,11 @@ open class CoderRestClient(
      *    with this information when we do two START builds in a row.
      *  @throws [APIResponseException].
      */
-    fun updateWorkspace(workspace: Workspace): WorkspaceBuild {
+    suspend fun updateWorkspace(workspace: Workspace): WorkspaceBuild {
         val template = template(workspace.templateID)
         val buildRequest =
             CreateWorkspaceBuildRequest(template.activeVersionID, WorkspaceTransition.START)
-        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest).execute()
+        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
             throw APIResponseException("update workspace ${workspace.name}", url, buildResponse)
         }
