@@ -43,6 +43,10 @@ class ConnectStep(
     override val nextButtonTitle: LocalizableString? = null
 
     override fun onVisible() {
+        errorField.textState.update {
+            context.i18n.pnotr("")
+        }
+
         val url = context.deploymentUrl?.first?.toURL()
         statusField.textState.update { context.i18n.pnotr("Connecting to ${url?.host}...") }
         connect()

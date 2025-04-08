@@ -30,6 +30,9 @@ class SignInStep(private val context: CoderToolboxContext) : WizardStep {
     override val nextButtonTitle: LocalizableString? = context.i18n.ptrl("Sign In")
 
     override fun onVisible() {
+        errorField.textState.update {
+            context.i18n.pnotr("")
+        }
         urlField.textState.update {
             context.deploymentUrl?.first ?: ""
         }

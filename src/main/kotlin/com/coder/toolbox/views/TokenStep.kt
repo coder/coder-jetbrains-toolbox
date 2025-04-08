@@ -35,6 +35,9 @@ class TokenStep(private val context: CoderToolboxContext) : WizardStep {
     override val nextButtonTitle: LocalizableString? = context.i18n.ptrl("Connect")
 
     override fun onVisible() {
+        errorField.textState.update {
+            context.i18n.pnotr("")
+        }
         tokenField.textState.update {
             context.getToken(context.deploymentUrl?.first)?.first ?: ""
         }
