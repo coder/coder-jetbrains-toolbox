@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- action buttons on the token input step were swapped to achieve better keyboard navigation 
+
 ## 0.1.3 - 2025-04-09
 
 ### Fixed
