@@ -59,14 +59,14 @@ class AuthWizardPage(
                 }
                 actionButtons.update {
                     listOf(
-                        Action(context.i18n.ptrl("Back"), closesPage = false, actionBlock = {
-                            tokenStep.onBack()
-                            displaySteps()
-                        }),
                         Action(context.i18n.ptrl("Connect"), closesPage = false, actionBlock = {
                             if (tokenStep.onNext()) {
                                 displaySteps()
                             }
+                        }),
+                        Action(context.i18n.ptrl("Back"), closesPage = false, actionBlock = {
+                            tokenStep.onBack()
+                            displaySteps()
                         })
                     )
                 }
