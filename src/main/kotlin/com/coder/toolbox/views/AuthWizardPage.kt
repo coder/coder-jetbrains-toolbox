@@ -22,7 +22,7 @@ class AuthWizardPage(
 
     private val signInStep = SignInStep(context)
     private val tokenStep = TokenStep(context)
-    private val connectStep = ConnectStep(context, shouldAutoLogin, this::notify, onConnect)
+    private val connectStep = ConnectStep(context, shouldAutoLogin, this::notify, this::displaySteps, onConnect)
 
 
     /**
