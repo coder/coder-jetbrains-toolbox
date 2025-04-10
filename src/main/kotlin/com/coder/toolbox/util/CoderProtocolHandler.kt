@@ -43,6 +43,10 @@ open class CoderProtocolHandler(
         reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
         val params = uri.toQueryParameters()
+        if (params.isEmpty()) {
+            // probably a plugin installation scenario
+            return
+        }
 
         val deploymentURL = params.url() ?: askUrl()
         if (deploymentURL.isNullOrBlank()) {
