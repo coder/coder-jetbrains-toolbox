@@ -15,8 +15,6 @@ fun Map<String, String>.token() = this[TOKEN]
 
 fun Map<String, String>.workspace() = this[WORKSPACE]
 
-fun Map<String, String?>.agentName() = this[AGENT_NAME]
-
 fun Map<String, String?>.agentID() = this[AGENT_ID]
 
 fun Map<String, String>.ideProductCode() = this[IDE_PRODUCT_CODE]

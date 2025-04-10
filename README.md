@@ -76,7 +76,7 @@ jetbrains://gateway/com.coder.toolbox
   ?url=http(s)://<your-coder-deployment>
   &token=<auth-token>
   &workspace=<workspace-name>
-  &agent/agent_id=<agent-name-or-agent-id>
+  &agent_id=<agent--id>
   &ide_product_code=<IDE-code>
   &ide_build_number=<IDE-build>
   &folder=<absolute-path-to-a-project-folder>
@@ -87,14 +87,13 @@ jetbrains://gateway/com.coder.toolbox
 | url              | 	Your Coder deployment URL (encoded)                                         | Yes       |
 | token            | 	Coder authentication token                                                  | Yes       |
 | workspace        | 	Name of the Coder workspace to connect to.                                  | Yes       |
-| agent            | 	Name of the agent associated with the workspace                             | No        |
 | agent_id         | 	ID of the agent associated with the workspace                               | No        |
 | ide_product_code | 	JetBrains IDE product code (e.g., GO for GoLand, RR for Rider)              | No        |
 | ide_build_number | 	Specific build number of the JetBrains IDE to install on the workspace      | No        |
 | folder           | 	Absolute path to the project folder to open in the remote IDE (URL-encoded) | No        |
 
-If only a single agent is available, specifying an agent name or ID is optional. However, if multiple agents exist,
-you must provide either the name or ID to target a specific one. Note that this version of the Coder Toolbox plugin
+If only a single agent is available, specifying an agent ID is optional. However, if multiple agents exist,
+you must provide either the ID to target a specific one. Note that this version of the Coder Toolbox plugin
 does not automatically start agents if they are offline, so please ensure the selected agent is running before
 proceeding.
 
