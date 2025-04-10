@@ -123,7 +123,19 @@ open class CoderProtocolHandler(
         }
 
         // TODO: Show a dropdown and ask for an agent if missing.
-        val agent = getMatchingAgent(params, workspace)
+        val agent: WorkspaceAgent
+        try {
+            agent = getMatchingAgent(params, workspace)
+        } catch (e: IllegalArgumentException) {
+            context.logger.error(e, "Can't resolve an agent for workspace $workspaceName from $deploymentURL")
+            context.showErrorPopup(
+                MissingArgumentException(
+                    "Can't handle URI because we can't resolve an agent for workspace $workspaceName from $deploymentURL",
+                    e
+                )
+            )
+            return
+        }
         val status = WorkspaceAndAgentStatus.from(workspace, agent)
 
         if (!status.ready()) {
@@ -265,7 +277,7 @@ internal fun resolveRedirects(url: URL): URL {
  * The name is ignored if the ID is set.  If neither was supplied and the
  * workspace has only one agent, return that.  Otherwise throw an error.
  *
- * @throws [MissingArgumentException, IllegalArgumentException]
+ * @throws [IllegalArgumentException]
  */
 internal fun getMatchingAgent(
     parameters: Map<String, String?>,
