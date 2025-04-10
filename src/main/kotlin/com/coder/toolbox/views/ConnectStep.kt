@@ -27,6 +27,7 @@ class ConnectStep(
     private val context: CoderToolboxContext,
     private val shouldAutoLogin: StateFlow<Boolean>,
     private val notify: (String, Throwable) -> Unit,
+    private val refreshWizard: () -> Unit,
     private val onConnect: (
         client: CoderRestClient,
         cli: CoderCLIManager,
@@ -102,9 +103,13 @@ class ConnectStep(
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
                     notify("Connection to ${url.host} was configured", ex)
+                    onBack()
+                    refreshWizard()
                 }
             } catch (ex: Exception) {
                 notify("Failed to configure ${url.host}", ex)
+                onBack()
+                refreshWizard()
             }
         }
     }
