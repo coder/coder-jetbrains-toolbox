@@ -42,6 +42,7 @@ open class CoderProtocolHandler(
         shouldWaitForAutoLogin: Boolean,
         reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
+        context.popupPluginMainPage()
         val params = uri.toQueryParameters()
         if (params.isEmpty()) {
             // probably a plugin installation scenario
