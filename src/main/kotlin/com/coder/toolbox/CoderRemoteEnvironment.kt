@@ -9,6 +9,8 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.EnvironmentView
+import com.jetbrains.toolbox.api.remoteDev.AfterDisconnectHook
+import com.jetbrains.toolbox.api.remoteDev.BeforeConnectionHook
 import com.jetbrains.toolbox.api.remoteDev.DeleteEnvironmentConfirmationParams
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
@@ -35,7 +37,7 @@ class CoderRemoteEnvironment(
     private val client: CoderRestClient,
     private var workspace: Workspace,
     private var agent: WorkspaceAgent,
-) : RemoteProviderEnvironment("${workspace.name}.${agent.name}") {
+) : RemoteProviderEnvironment("${workspace.name}.${agent.name}"), BeforeConnectionHook, AfterDisconnectHook {
     private var wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
 
     override var name: String = "${workspace.name}.${agent.name}"
@@ -109,6 +111,21 @@ class CoderRemoteEnvironment(
         return actions
     }
 
+    override fun getBeforeConnectionHooks(): List<BeforeConnectionHook> = listOf(this)
+
+    override fun getAfterDisconnectHooks(): List<AfterDisconnectHook> = listOf(this)
+
+    override fun beforeConnection() {
+        context.logger.info("Connecting to $id...")
+        this.isConnected = true
+    }
+
+    override fun afterDisconnect() {
+        this.connectionRequest.update { false }
+        this.isConnected = false
+        context.logger.info("Disconnected from $id")
+    }
+
     /**
      * Update the workspace/agent status to the listeners, if it has changed.
      */
@@ -140,7 +157,8 @@ class CoderRemoteEnvironment(
         agent
     )
 
-    override val connectionRequest: MutableStateFlow<Boolean>? = MutableStateFlow(false)
+    private var isConnected = false
+    override val connectionRequest: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
     /**
      * Does nothing.  In theory, we could do something like start the workspace
@@ -149,10 +167,9 @@ class CoderRemoteEnvironment(
      * to be much value.
      */
     override fun setVisible(visibilityState: EnvironmentVisibilityState) {
-        if (wsRawStatus.ready() && visibilityState.contentsVisible == true && visibilityState.isBackendConnected == false) {
-            context.logger.info("Connecting to $id...")
+        if (wsRawStatus.ready() && visibilityState.contentsVisible == true && isConnected == false) {
             context.cs.launch {
-                connectionRequest?.update {
+                connectionRequest.update {
                     true
                 }
             }

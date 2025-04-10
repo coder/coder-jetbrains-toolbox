@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- SSH connection to a Workspace is no longer established only once 
+
 ### Changed
 
 - action buttons on the token input step were swapped to achieve better keyboard navigation 
