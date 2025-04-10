@@ -32,7 +32,7 @@ or from [Coder's Github Release page](https://github.com/coder/coder-jetbrains-t
 
 The next step is to copy the zip content to one of the following locations, depending on your OS:
 
-* Windows: `%LocalAppData%/JetBrains/Toolbox/cache/plugins/com.coder.toolbox`
+* Windows: `%LocalAppData%/JetBrains/Toolbox/plugins/com.coder.toolbox`
 * macOS: `~/Library/Caches/JetBrains/Toolbox/plugins/com.coder.toolbox`
 * Linux: `~/.local/share/JetBrains/Toolbox/plugins/com.coder.toolbox`
 
