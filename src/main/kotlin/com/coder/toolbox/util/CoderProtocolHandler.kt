@@ -169,7 +169,7 @@ open class CoderProtocolHandler(
         context.envPageManager.showEnvironmentPage(environmentId, false)
         val productCode = params.ideProductCode()
         val buildNumber = params.ideBuildNumber()
-        val projectPath = params.projectPath()
+        val projectFolder = params.projectFolder()
         if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
             context.cs.launch {
                 val ideVersion = "$productCode-$buildNumber"
@@ -179,7 +179,7 @@ open class CoderProtocolHandler(
                 }
                 job.join()
                 context.logger.info("launching $ideVersion on $environmentId")
-                context.ideOrchestrator.connectToIde(environmentId, ideVersion, projectPath)
+                context.ideOrchestrator.connectToIde(environmentId, ideVersion, projectFolder)
             }
         }
     }
@@ -275,7 +275,7 @@ internal fun resolveRedirects(url: URL): URL {
 /**
  * Return the agent matching the provided agent ID or name in the parameters.
  * The name is ignored if the ID is set.  If neither was supplied and the
- * workspace has only one agent, return that.  Otherwise throw an error.
+ * workspace has only one agent, return that.  Otherwise, throw an error.
  *
  * @throws [IllegalArgumentException]
  */

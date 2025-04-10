@@ -10,6 +10,7 @@
 ### Changed
 
 - action buttons on the token input step were swapped to achieve better keyboard navigation 
+- URI `project_path` query parameter was renamed to `folder`
 
 ## 0.1.3 - 2025-04-09
 
