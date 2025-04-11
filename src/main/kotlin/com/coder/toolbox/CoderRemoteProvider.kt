@@ -2,6 +2,7 @@ package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
@@ -145,10 +146,17 @@ class CoderRemoteProvider(
                     logout()
                     break
                 }
+            } catch (ex: APIResponseException) {
+                context.logger.error(ex, "error in contacting ${client.url} while polling the available workspaces")
+                pollError = ex
+                logout()
+                goToEnvironmentsPage()
+                break
             } catch (ex: Exception) {
                 context.logger.error(ex, "workspace polling error encountered")
                 pollError = ex
                 logout()
+                goToEnvironmentsPage()
                 break
             }
 
