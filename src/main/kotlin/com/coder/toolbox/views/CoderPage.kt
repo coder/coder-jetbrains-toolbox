@@ -6,6 +6,8 @@ import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * Base page that handles the icon, displaying error notifications, and
@@ -22,12 +24,6 @@ abstract class CoderPage(
     title: LocalizableString,
     showIcon: Boolean = true,
 ) : UiPage(title) {
-
-    /** Toolbox uses this to show notifications on the page. */
-    private var notifier: ((Throwable) -> Unit)? = null
-
-    /** Stores errors until the notifier is attached. */
-    private var errorBuffer: MutableList<Throwable> = mutableListOf()
 
     /**
      * Return the icon, if showing one.
@@ -48,20 +44,13 @@ abstract class CoderPage(
      */
     fun notify(logPrefix: String, ex: Throwable) {
         context.logger.error(ex, logPrefix)
-        // It is possible the error listener is not attached yet.
-        notifier?.let { it(ex) } ?: errorBuffer.add(ex)
-    }
-
-    /**
-     * Immediately notify any pending errors and store for later errors.
-     */
-    override fun setActionErrorNotifier(notifier: ((Throwable) -> Unit)?) {
-        this.notifier = notifier
-        notifier?.let {
-            errorBuffer.forEach {
-                notifier(it)
-            }
-            errorBuffer.clear()
+        context.cs.launch {
+            context.ui.showSnackbar(
+                UUID.randomUUID().toString(),
+                context.i18n.pnotr(logPrefix),
+                context.i18n.pnotr(ex.message ?: ""),
+                context.i18n.ptrl("Dismiss")
+            )
         }
     }
 }
