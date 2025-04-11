@@ -20,7 +20,7 @@ class AuthWizardPage(
 ) : CoderPage(context, context.i18n.ptrl("Authenticate to Coder")) {
     private val shouldAutoLogin = MutableStateFlow(initialAutoLogin)
 
-    private val signInStep = SignInStep(context)
+    private val signInStep = SignInStep(context, this::notify)
     private val tokenStep = TokenStep(context)
     private val connectStep = ConnectStep(context, shouldAutoLogin, this::notify, this::displaySteps, onConnect)
 
