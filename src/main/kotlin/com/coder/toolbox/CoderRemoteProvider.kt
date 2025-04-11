@@ -68,7 +68,7 @@ class CoderRemoteProvider(
     private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(context.deploymentUrl?.first ?: ""))
     private val linkHandler = CoderProtocolHandler(context, dialogUi, isInitialized)
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
-        LoadableState.Value(emptyList())
+        LoadableState.Loading
     )
 
     /**
