@@ -191,8 +191,10 @@ private fun getPluginInstallDir(): Path {
     } / "JetBrains" / "Toolbox"
 
     val pluginsDir = when {
-        SystemInfoRt.isWindows -> toolboxCachesDir / "cache"
-        SystemInfoRt.isLinux || SystemInfoRt.isMac -> toolboxCachesDir
+        SystemInfoRt.isWindows ||
+                SystemInfoRt.isLinux ||
+                SystemInfoRt.isMac -> toolboxCachesDir
+
         else -> error("Unknown os")
     } / "plugins"
 

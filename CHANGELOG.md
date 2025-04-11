@@ -5,14 +5,12 @@
 ### Fixed
 
 - SSH connection to a Workspace is no longer established only once 
+- authorization wizard automatically goes to a previous screen when an error is encountered during connection to Coder deployment
 
 ### Changed
 
 - action buttons on the token input step were swapped to achieve better keyboard navigation 
-
-### Fixed
-
-- authorization wizard automatically goes to a previous screen when an error is encountered during connection to Coder deployment 
+- URI `project_path` query parameter was renamed to `folder`
 
 ## 0.1.3 - 2025-04-09
 

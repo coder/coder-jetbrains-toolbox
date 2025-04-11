@@ -42,7 +42,12 @@ open class CoderProtocolHandler(
         shouldWaitForAutoLogin: Boolean,
         reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
+        context.popupPluginMainPage()
         val params = uri.toQueryParameters()
+        if (params.isEmpty()) {
+            // probably a plugin installation scenario
+            return
+        }
 
         val deploymentURL = params.url() ?: askUrl()
         if (deploymentURL.isNullOrBlank()) {
@@ -123,7 +128,19 @@ open class CoderProtocolHandler(
         }
 
         // TODO: Show a dropdown and ask for an agent if missing.
-        val agent = getMatchingAgent(params, workspace)
+        val agent: WorkspaceAgent
+        try {
+            agent = getMatchingAgent(params, workspace)
+        } catch (e: IllegalArgumentException) {
+            context.logger.error(e, "Can't resolve an agent for workspace $workspaceName from $deploymentURL")
+            context.showErrorPopup(
+                MissingArgumentException(
+                    "Can't handle URI because we can't resolve an agent for workspace $workspaceName from $deploymentURL",
+                    e
+                )
+            )
+            return
+        }
         val status = WorkspaceAndAgentStatus.from(workspace, agent)
 
         if (!status.ready()) {
@@ -157,7 +174,7 @@ open class CoderProtocolHandler(
         context.envPageManager.showEnvironmentPage(environmentId, false)
         val productCode = params.ideProductCode()
         val buildNumber = params.ideBuildNumber()
-        val projectPath = params.projectPath()
+        val projectFolder = params.projectFolder()
         if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
             context.cs.launch {
                 val ideVersion = "$productCode-$buildNumber"
@@ -167,7 +184,7 @@ open class CoderProtocolHandler(
                 }
                 job.join()
                 context.logger.info("launching $ideVersion on $environmentId")
-                context.ideOrchestrator.connectToIde(environmentId, ideVersion, projectPath)
+                context.ideOrchestrator.connectToIde(environmentId, ideVersion, projectFolder)
             }
         }
     }
@@ -262,10 +279,8 @@ internal fun resolveRedirects(url: URL): URL {
 
 /**
  * Return the agent matching the provided agent ID or name in the parameters.
- * The name is ignored if the ID is set.  If neither was supplied and the
- * workspace has only one agent, return that.  Otherwise throw an error.
  *
- * @throws [MissingArgumentException, IllegalArgumentException]
+ * @throws [IllegalArgumentException]
  */
 internal fun getMatchingAgent(
     parameters: Map<String, String?>,
@@ -281,8 +296,6 @@ internal fun getMatchingAgent(
     val agent =
         if (!parameters.agentID().isNullOrBlank()) {
             agents.firstOrNull { it.id.toString() == parameters.agentID() }
-        } else if (!parameters.agentName().isNullOrBlank()) {
-            agents.firstOrNull { it.name == parameters.agentName() }
         } else if (agents.size == 1) {
             agents.first()
         } else {
@@ -292,13 +305,9 @@ internal fun getMatchingAgent(
     if (agent == null) {
         if (!parameters.agentID().isNullOrBlank()) {
             throw IllegalArgumentException("The workspace \"${workspace.name}\" does not have an agent with ID \"${parameters.agentID()}\"")
-        } else if (!parameters.agentName().isNullOrBlank()) {
-            throw IllegalArgumentException(
-                "The workspace \"${workspace.name}\"does not have an agent named \"${parameters.agentName()}\"",
-            )
         } else {
             throw MissingArgumentException(
-                "Unable to determine which agent to connect to; one of \"$AGENT_NAME\" or \"$AGENT_ID\" must be set because the workspace \"${workspace.name}\" has more than one agent",
+                "Unable to determine which agent to connect to; \"$AGENT_ID\" must be set because the workspace \"${workspace.name}\" has more than one agent",
             )
         }
     }
