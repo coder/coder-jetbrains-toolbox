@@ -16,9 +16,9 @@ To install this plugin using JetBrains Toolbox, follow the steps below.
 
 ### Install Coder plugin via URI
 
-You can quickly install the plugin using this JetBrains hyperlink.
+You can quickly install the plugin using this JetBrains hyperlink:
 
-👉 [Install plugin](jetbrains://gateway/com.coder.toolbox )
+👉 <jetbrains://gateway/com.coder.toolbox>
 
 This will open JetBrains Toolbox and prompt you to install the Coder Toolbox plugin automatically.
 
