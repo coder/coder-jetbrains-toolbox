@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.4 - 2025-04-11
+
 ### Fixed
 
 - SSH connection to a Workspace is no longer established only once 
