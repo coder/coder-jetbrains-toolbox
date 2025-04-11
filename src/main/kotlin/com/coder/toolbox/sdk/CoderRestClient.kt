@@ -7,6 +7,7 @@ import com.coder.toolbox.sdk.convertors.OSConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.CoderV2RestFacade
+import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
 import com.coder.toolbox.sdk.v2.models.BuildInfo
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
 import com.coder.toolbox.sdk.v2.models.Template
@@ -24,6 +25,7 @@ import com.coder.toolbox.util.getOS
 import com.squareup.moshi.Moshi
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
+import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.HttpURLConnection
@@ -55,6 +57,7 @@ open class CoderRestClient(
     private val pluginVersion: String = "development",
 ) {
     private val settings = context.settingsStore.readOnly()
+    private lateinit var moshi: Moshi
     private lateinit var httpClient: OkHttpClient
     private lateinit var retroRestClient: CoderV2RestFacade
 
@@ -66,7 +69,7 @@ open class CoderRestClient(
     }
 
     fun setupSession() {
-        val moshi =
+        moshi =
             Moshi.Builder()
                 .add(ArchConverter())
                 .add(InstantConverter())
@@ -152,7 +155,7 @@ open class CoderRestClient(
     suspend fun me(): User {
         val userResponse = retroRestClient.me()
         if (!userResponse.isSuccessful) {
-            throw APIResponseException("authenticate", url, userResponse)
+            throw APIResponseException("authenticate", url, userResponse.code(), userResponse.parseErrorBody(moshi))
         }
 
         return userResponse.body()!!
@@ -165,7 +168,12 @@ open class CoderRestClient(
     suspend fun workspaces(): List<Workspace> {
         val workspacesResponse = retroRestClient.workspaces("owner:me")
         if (!workspacesResponse.isSuccessful) {
-            throw APIResponseException("retrieve workspaces", url, workspacesResponse)
+            throw APIResponseException(
+                "retrieve workspaces",
+                url,
+                workspacesResponse.code(),
+                workspacesResponse.parseErrorBody(moshi)
+            )
         }
 
         return workspacesResponse.body()!!.workspaces
@@ -178,7 +186,12 @@ open class CoderRestClient(
     suspend fun workspace(workspaceID: UUID): Workspace {
         val workspacesResponse = retroRestClient.workspace(workspaceID)
         if (!workspacesResponse.isSuccessful) {
-            throw APIResponseException("retrieve workspace", url, workspacesResponse)
+            throw APIResponseException(
+                "retrieve workspace",
+                url,
+                workspacesResponse.code(),
+                workspacesResponse.parseErrorBody(moshi)
+            )
         }
 
         return workspacesResponse.body()!!
@@ -209,7 +222,12 @@ open class CoderRestClient(
         val resourcesResponse =
             retroRestClient.templateVersionResources(workspace.latestBuild.templateVersionID)
         if (!resourcesResponse.isSuccessful) {
-            throw APIResponseException("retrieve resources for ${workspace.name}", url, resourcesResponse)
+            throw APIResponseException(
+                "retrieve resources for ${workspace.name}",
+                url,
+                resourcesResponse.code(),
+                resourcesResponse.parseErrorBody(moshi)
+            )
         }
         return resourcesResponse.body()!!
     }
@@ -217,7 +235,12 @@ open class CoderRestClient(
     suspend fun buildInfo(): BuildInfo {
         val buildInfoResponse = retroRestClient.buildInfo()
         if (!buildInfoResponse.isSuccessful) {
-            throw APIResponseException("retrieve build information", url, buildInfoResponse)
+            throw APIResponseException(
+                "retrieve build information",
+                url,
+                buildInfoResponse.code(),
+                buildInfoResponse.parseErrorBody(moshi)
+            )
         }
         return buildInfoResponse.body()!!
     }
@@ -228,7 +251,12 @@ open class CoderRestClient(
     private suspend fun template(templateID: UUID): Template {
         val templateResponse = retroRestClient.template(templateID)
         if (!templateResponse.isSuccessful) {
-            throw APIResponseException("retrieve template with ID $templateID", url, templateResponse)
+            throw APIResponseException(
+                "retrieve template with ID $templateID",
+                url,
+                templateResponse.code(),
+                templateResponse.parseErrorBody(moshi)
+            )
         }
         return templateResponse.body()!!
     }
@@ -240,7 +268,12 @@ open class CoderRestClient(
         val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.START)
         val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
-            throw APIResponseException("start workspace ${workspace.name}", url, buildResponse)
+            throw APIResponseException(
+                "start workspace ${workspace.name}",
+                url,
+                buildResponse.code(),
+                buildResponse.parseErrorBody(moshi)
+            )
         }
         return buildResponse.body()!!
     }
@@ -251,7 +284,12 @@ open class CoderRestClient(
         val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.STOP)
         val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
-            throw APIResponseException("stop workspace ${workspace.name}", url, buildResponse)
+            throw APIResponseException(
+                "stop workspace ${workspace.name}",
+                url,
+                buildResponse.code(),
+                buildResponse.parseErrorBody(moshi)
+            )
         }
         return buildResponse.body()!!
     }
@@ -263,7 +301,12 @@ open class CoderRestClient(
         val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.DELETE, false)
         val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
-            throw APIResponseException("delete workspace ${workspace.name}", url, buildResponse)
+            throw APIResponseException(
+                "delete workspace ${workspace.name}",
+                url,
+                buildResponse.code(),
+                buildResponse.parseErrorBody(moshi)
+            )
         }
     }
 
@@ -283,7 +326,12 @@ open class CoderRestClient(
             CreateWorkspaceBuildRequest(template.activeVersionID, WorkspaceTransition.START)
         val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
-            throw APIResponseException("update workspace ${workspace.name}", url, buildResponse)
+            throw APIResponseException(
+                "update workspace ${workspace.name}",
+                url,
+                buildResponse.code(),
+                buildResponse.parseErrorBody(moshi)
+            )
         }
         return buildResponse.body()!!
     }
@@ -294,5 +342,15 @@ open class CoderRestClient(
             connectionPool.evictAll()
             cache?.close()
         }
+    }
+}
+
+private fun Response<*>.parseErrorBody(moshi: Moshi): ApiErrorResponse? {
+    val errorBody = this.errorBody() ?: return null
+    return try {
+        val adapter = moshi.adapter(ApiErrorResponse::class.java)
+        adapter.fromJson(errorBody.string())
+    } catch (e: Exception) {
+        null
     }
 }

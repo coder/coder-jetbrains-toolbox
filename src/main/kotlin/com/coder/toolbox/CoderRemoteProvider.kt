@@ -2,6 +2,7 @@ package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
@@ -60,7 +61,7 @@ class CoderRemoteProvider(
     // If we have an error in the polling we store it here before going back to
     // sign-in page, so we can display it there.  This is mainly because there
     // does not seem to be a mechanism to show errors on the environment list.
-    private var pollError: Exception? = null
+    private var errorBuffer = mutableListOf<Throwable>()
 
     // On the first load, automatically log in if we can.
     private var firstRun = true
@@ -141,14 +142,21 @@ class CoderRemoteProvider(
                     client.setupSession()
                 } else {
                     context.logger.error(ex, "workspace polling error encountered")
-                    pollError = ex
+                    errorBuffer.add(ex)
                     logout()
                     break
                 }
+            } catch (ex: APIResponseException) {
+                context.logger.error(ex, "error in contacting ${client.url} while polling the available workspaces")
+                errorBuffer.add(ex)
+                logout()
+                goToEnvironmentsPage()
+                break
             } catch (ex: Exception) {
                 context.logger.error(ex, "workspace polling error encountered")
-                pollError = ex
+                errorBuffer.add(ex)
                 logout()
+                goToEnvironmentsPage()
                 break
             }
 
@@ -300,7 +308,6 @@ class CoderRemoteProvider(
         if (client == null) {
             // When coming back to the application, authenticate immediately.
             val autologin = shouldDoAutoLogin()
-            var autologinEx: Exception? = null
             context.secrets.lastToken.let { lastToken ->
                 context.secrets.lastDeploymentURL.let { lastDeploymentURL ->
                     if (autologin && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !settings.requireTokenAuth)) {
@@ -308,7 +315,7 @@ class CoderRemoteProvider(
                             AuthWizardState.goToStep(WizardStep.LOGIN)
                             return AuthWizardPage(context, true, ::onConnect)
                         } catch (ex: Exception) {
-                            autologinEx = ex
+                            errorBuffer.add(ex)
                         }
                     }
                 }
@@ -317,11 +324,12 @@ class CoderRemoteProvider(
 
             // Login flow.
             val authWizard = AuthWizardPage(context, false, ::onConnect)
-            // We might have tried and failed to automatically log in.
-            autologinEx?.let { authWizard.notify("Error logging in", it) }
             // We might have navigated here due to a polling error.
-            pollError?.let { authWizard.notify("Error fetching workspaces", it) }
-
+            errorBuffer.forEach {
+                authWizard.notify("Error encountered", it)
+            }
+            // and now reset the errors, otherwise we show it every time on the screen
+            errorBuffer.clear()
             return authWizard
         }
         return null
@@ -336,7 +344,7 @@ class CoderRemoteProvider(
         // Currently we always remember, but this could be made an option.
         context.secrets.rememberMe = true
         this.client = client
-        pollError = null
+        errorBuffer.clear()
         pollJob?.cancel()
         pollJob = poll(client, cli)
         goToEnvironmentsPage()
