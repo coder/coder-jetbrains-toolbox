@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.5 - 2025-04-14
+
 ### Fixed
 
 - login screen is shown instead of an empty list of workspaces when token expired
