@@ -2,7 +2,6 @@ package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
@@ -30,7 +29,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
-import java.net.SocketTimeoutException
 import java.net.URI
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
@@ -57,11 +55,6 @@ class CoderRemoteProvider(
 
     // The REST client, if we are signed in
     private var client: CoderRestClient? = null
-
-    // If we have an error in the polling we store it here before going back to
-    // sign-in page, so we can display it there.  This is mainly because there
-    // does not seem to be a mechanism to show errors on the environment list.
-    private var errorBuffer = mutableListOf<Throwable>()
 
     // On the first load, automatically log in if we can.
     private var firstRun = true
@@ -135,29 +128,17 @@ class CoderRemoteProvider(
             } catch (_: CancellationException) {
                 context.logger.debug("${client.url} polling loop canceled")
                 break
-            } catch (ex: SocketTimeoutException) {
+            } catch (ex: Exception) {
                 val elapsed = lastPollTime.elapsedNow()
                 if (elapsed > POLL_INTERVAL * 2) {
                     context.logger.info("wake-up from an OS sleep was detected, going to re-initialize the http client...")
                     client.setupSession()
                 } else {
-                    context.logger.error(ex, "workspace polling error encountered")
-                    errorBuffer.add(ex)
-                    logout()
+                    context.logger.error(ex, "workspace polling error encountered, trying to auto-login")
+                    close()
+                    goToEnvironmentsPage()
                     break
                 }
-            } catch (ex: APIResponseException) {
-                context.logger.error(ex, "error in contacting ${client.url} while polling the available workspaces")
-                errorBuffer.add(ex)
-                logout()
-                goToEnvironmentsPage()
-                break
-            } catch (ex: Exception) {
-                context.logger.error(ex, "workspace polling error encountered")
-                errorBuffer.add(ex)
-                logout()
-                goToEnvironmentsPage()
-                break
             }
 
             // TODO: Listening on a web socket might be better?
@@ -306,6 +287,7 @@ class CoderRemoteProvider(
     override fun getOverrideUiPage(): UiPage? {
         // Show sign in page if we have not configured the client yet.
         if (client == null) {
+            val errorBuffer = mutableListOf<Throwable>()
             // When coming back to the application, authenticate immediately.
             val autologin = shouldDoAutoLogin()
             context.secrets.lastToken.let { lastToken ->
@@ -329,7 +311,6 @@ class CoderRemoteProvider(
                 authWizard.notify("Error encountered", it)
             }
             // and now reset the errors, otherwise we show it every time on the screen
-            errorBuffer.clear()
             return authWizard
         }
         return null
@@ -344,7 +325,6 @@ class CoderRemoteProvider(
         // Currently we always remember, but this could be made an option.
         context.secrets.rememberMe = true
         this.client = client
-        errorBuffer.clear()
         pollJob?.cancel()
         pollJob = poll(client, cli)
         goToEnvironmentsPage()

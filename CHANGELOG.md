@@ -6,6 +6,10 @@
 
 - login screen is shown instead of an empty list of workspaces when token expired
 
+### Changed
+
+- improved error handling during workspace polling
+
 ## 0.1.4 - 2025-04-11
 
 ### Fixed
