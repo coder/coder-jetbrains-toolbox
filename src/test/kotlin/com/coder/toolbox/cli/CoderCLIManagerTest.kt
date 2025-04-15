@@ -30,6 +30,7 @@ import com.coder.toolbox.util.toURL
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
+import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
@@ -68,7 +69,8 @@ internal class CoderCLIManagerTest {
             Environment(),
             mockk<Logger>(relaxed = true)
         ),
-        mockk<CoderSecretsStore>()
+        mockk<CoderSecretsStore>(),
+        mockk<ToolboxProxySettings>()
     )
 
     /**

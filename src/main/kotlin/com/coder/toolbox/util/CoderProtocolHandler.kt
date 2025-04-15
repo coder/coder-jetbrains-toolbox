@@ -238,13 +238,10 @@ open class CoderProtocolHandler(
         if (settings.requireTokenAuth && token == null) { // User aborted.
             throw MissingArgumentException("Token is required")
         }
-        // The http client Toolbox gives us is already set up with the
-        // proxy config, so we do net need to explicitly add it.
         val client = CoderRestClient(
             context,
             deploymentURL.toURL(),
             token,
-            proxyValues = null, // TODO - not sure the above comment applies as we are creating our own http client
             PluginManager.pluginInfo.version
         )
         client.authenticate()
