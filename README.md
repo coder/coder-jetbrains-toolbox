@@ -119,7 +119,7 @@ interception.
 mitmweb --ssl-insecure --set stream_large_bodies="10m"
  ```
 
-### Configure Proxy
+### Configure Mitmproxy
 
 mitmproxy can do HTTP and SOCKS5 proxying. To configure one or the other:
 
@@ -132,7 +132,7 @@ mitmproxy can do HTTP and SOCKS5 proxying. To configure one or the other:
 
 1. Start Toolbox
 2. From Toolbox hexagonal menu icon go to `Settings -> Proxy`
-3. There are two options, to use system proxy settings or to manually configure the proxy details
+3. There are two options, to use system proxy settings or to manually configure the proxy details.
 4. If we go manually, add `127.0.0.1` to the host and port `8080` for HTTP/HTTPS or `1080` for SOCKS5.
 5. Before authenticating to the Coder deployment we need to tell the plugin where can we find mitmproxy
    certificates. In Coder's Settings page, set the `TLS CA path` to `~/.mitmproxy/mitmproxy-ca-cert.pem`
