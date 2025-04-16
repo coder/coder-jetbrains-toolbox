@@ -101,6 +101,42 @@ If `ide_product_code` and `ide_build_number` is missing, Toolbox will only open 
 page. Coder Toolbox will attempt to start the workspace if it’s not already running; however, for the most reliable
 experience, it’s recommended to ensure the workspace is running prior to initiating the connection.
 
+## Configuring and Testing workspace polling with HTTP & SOCKS5 Proxy
+
+This section explains how to set up a local proxy (without authentication which is not yet supported) and verify that
+the plugin’s REST client works correctly when routed through it.
+
+We’ll use [mitmproxy](https://mitmproxy.org/) for this — it can act as both an HTTP and SOCKS5 proxy with SSL
+interception.
+
+### Install mitmproxy
+
+1. Follow the [mitmproxy Install Guide](https://docs.mitmproxy.org/stable/overview-installation/) steps for your OS.
+2. Start the proxy:
+
+```bash
+
+mitmweb --ssl-insecure --set stream_large_bodies="10m"
+ ```
+
+### Configure Proxy
+
+mitmproxy can do HTTP and SOCKS5 proxying. To configure one or the other:
+
+1. Open http://127.0.0.1:8081 in browser;
+2. Navigate to `Options -> Edit Options`
+3. Update the `Mode` field to `regular` in order to activate HTTP/HTTPS or to `socks5`
+4. Proxy authentication can be enabled by updating the `proxyauth` to `username:password`
+
+### Configure Proxy in Toolbox
+
+1. Start Toolbox
+2. From Toolbox hexagonal menu icon go to `Settings -> Proxy`
+3. There are two options, to use system proxy settings or to manually configure the proxy details
+4. If we go manually, add `127.0.0.1` to the host and port `8080` for HTTP/HTTPS or `1080` for SOCKS5.
+5. Before authenticating to the Coder deployment we need to tell the plugin where can we find mitmproxy
+   certificates. In Coder's Settings page, set the `TLS CA path` to `~/.mitmproxy/mitmproxy-ca-cert.pem`
+
 ## Releasing
 
 1. Check that the changelog lists all the important changes.
