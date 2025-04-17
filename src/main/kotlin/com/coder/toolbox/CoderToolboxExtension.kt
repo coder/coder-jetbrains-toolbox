@@ -7,10 +7,12 @@ import com.jetbrains.toolbox.api.core.PluginSecretStore
 import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.ServiceLocator
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.core.getService
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.RemoteDevExtension
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
+import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
@@ -25,15 +27,16 @@ class CoderToolboxExtension : RemoteDevExtension {
         val logger = serviceLocator.getService(Logger::class.java)
         return CoderRemoteProvider(
             CoderToolboxContext(
-                serviceLocator.getService(ToolboxUi::class.java),
-                serviceLocator.getService(EnvironmentUiPageManager::class.java),
-                serviceLocator.getService(EnvironmentStateColorPalette::class.java),
-                serviceLocator.getService(ClientHelper::class.java),
-                serviceLocator.getService(CoroutineScope::class.java),
-                serviceLocator.getService(Logger::class.java),
-                serviceLocator.getService(LocalizableStringFactory::class.java),
-                CoderSettingsStore(serviceLocator.getService(PluginSettingsStore::class.java), Environment(), logger),
-                CoderSecretsStore(serviceLocator.getService(PluginSecretStore::class.java)),
+                serviceLocator.getService<ToolboxUi>(),
+                serviceLocator.getService<EnvironmentUiPageManager>(),
+                serviceLocator.getService<EnvironmentStateColorPalette>(),
+                serviceLocator.getService<ClientHelper>(),
+                serviceLocator.getService<CoroutineScope>(),
+                serviceLocator.getService<Logger>(),
+                serviceLocator.getService<LocalizableStringFactory>(),
+                CoderSettingsStore(serviceLocator.getService<PluginSettingsStore>(), Environment(), logger),
+                CoderSecretsStore(serviceLocator.getService<PluginSecretStore>()),
+                serviceLocator.getService<ToolboxProxySettings>()
             )
         )
     }

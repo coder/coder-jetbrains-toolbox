@@ -74,13 +74,10 @@ class ConnectStep(
         signInJob = context.cs.launch {
             try {
                 statusField.textState.update { (context.i18n.ptrl("Authenticating to ${url.host}...")) }
-                // The http client Toolbox gives us is already set up with the
-                // proxy config, so we do net need to explicitly add it.
                 val client = CoderRestClient(
                     context,
                     url,
                     token,
-                    proxyValues = null,
                     PluginManager.pluginInfo.version,
                 )
                 // allows interleaving with the back/cancel action

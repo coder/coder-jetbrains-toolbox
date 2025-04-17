@@ -7,6 +7,7 @@ import com.coder.toolbox.util.toURL
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
+import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
@@ -21,7 +22,8 @@ data class CoderToolboxContext(
     val logger: Logger,
     val i18n: LocalizableStringFactory,
     val settingsStore: CoderSettingsStore,
-    val secrets: CoderSecretsStore
+    val secrets: CoderSecretsStore,
+    val proxySettings: ToolboxProxySettings,
 ) {
     /**
      * Try to find a URL.

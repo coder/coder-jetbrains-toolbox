@@ -23,26 +23,14 @@ import com.coder.toolbox.util.getArch
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
 import com.squareup.moshi.Moshi
-import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.HttpURLConnection
-import java.net.ProxySelector
 import java.net.URL
 import java.util.UUID
 import javax.net.ssl.X509TrustManager
-
-/**
- * Holds proxy information.
- */
-data class ProxyValues(
-    val username: String?,
-    val password: String?,
-    val useAuth: Boolean,
-    val selector: ProxySelector,
-)
 
 /**
  * An HTTP client that can make requests to the Coder API.
@@ -50,10 +38,9 @@ data class ProxyValues(
  * The token can be omitted if some other authentication mechanism is in use.
  */
 open class CoderRestClient(
-    context: CoderToolboxContext,
+    private val context: CoderToolboxContext,
     val url: URL,
     val token: String?,
-    private val proxyValues: ProxyValues? = null,
     private val pluginVersion: String = "development",
 ) {
     private val settings = context.settingsStore.readOnly()
@@ -81,21 +68,26 @@ open class CoderRestClient(
         val trustManagers = coderTrustManagers(settings.tls.caPath)
         var builder = OkHttpClient.Builder()
 
-        if (proxyValues != null) {
-            builder =
-                builder
-                    .proxySelector(proxyValues.selector)
-                    .proxyAuthenticator { _, response ->
-                        if (proxyValues.useAuth && proxyValues.username != null && proxyValues.password != null) {
-                            val credentials = Credentials.basic(proxyValues.username, proxyValues.password)
-                            response.request.newBuilder()
-                                .header("Proxy-Authorization", credentials)
-                                .build()
-                        } else {
-                            null
-                        }
-                    }
+        if (context.proxySettings.getProxy() != null) {
+            context.logger.debug("proxy: ${context.proxySettings.getProxy()}")
+            builder.proxy(context.proxySettings.getProxy())
+        } else if (context.proxySettings.getProxySelector() != null) {
+            context.logger.debug("proxy selector: ${context.proxySettings.getProxySelector()}")
+            builder.proxySelector(context.proxySettings.getProxySelector()!!)
         }
+
+        //TODO - add support for proxy auth. when Toolbox exposes them
+//                    builder.proxyAuthenticator { _, response ->
+//                        if (proxyValues.useAuth && proxyValues.username != null && proxyValues.password != null) {
+//                            val credentials = Credentials.basic(proxyValues.username, proxyValues.password)
+//                            response.request.newBuilder()
+//                                .header("Proxy-Authorization", credentials)
+//                                .build()
+//                        } else {
+//                            null
+//                        }
+//                    }
+//        }
 
         if (token != null) {
             builder = builder.addInterceptor {
