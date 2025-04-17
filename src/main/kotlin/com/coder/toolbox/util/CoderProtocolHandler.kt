@@ -144,8 +144,8 @@ open class CoderProtocolHandler(
         val status = WorkspaceAndAgentStatus.from(workspace, agent)
 
         if (!status.ready()) {
-            context.logger.error("Agent ${agent.name} for workspace $workspaceName from $deploymentURL is not started")
-            context.showErrorPopup(MissingArgumentException("Can't handle URI because agent ${agent.name} for workspace $workspaceName from $deploymentURL is not started"))
+            context.logger.error("Agent ${agent.name} for workspace $workspaceName from $deploymentURL is not ready")
+            context.showErrorPopup(MissingArgumentException("Can't handle URI because agent ${agent.name} for workspace $workspaceName from $deploymentURL is not ready"))
             return
         }
 

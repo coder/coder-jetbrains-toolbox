@@ -6,6 +6,10 @@
 
 - support for using proxies. Proxy authentication is not yet supported.
 
+### Changed
+
+- connections to the workspace are no longer established automatically after agent started with error.
+
 ## 0.1.5 - 2025-04-14
 
 ### Fixed

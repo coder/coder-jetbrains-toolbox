@@ -61,15 +61,16 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
     fun toRemoteEnvironmentState(context: CoderToolboxContext): CustomRemoteEnvironmentState {
         return CustomRemoteEnvironmentState(
             label,
-            getStateColor(context),
-            ready(), // reachable
+            color = getStateColor(context),
+            reachable = ready() || unhealthy(),
             // TODO@JB: How does this work?  Would like a spinner for pending states.
-            getStateIcon()
+            icon = getStateIcon()
         )
     }
 
     private fun getStateColor(context: CoderToolboxContext): StateColor {
         return if (ready()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Active)
+        else if (unhealthy()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Unhealthy)
         else if (canStart()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Failed)
         else if (pending()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Activating)
         else if (this == DELETING) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
@@ -78,7 +79,7 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
     }
 
     private fun getStateIcon(): EnvironmentStateIcons {
-        return if (ready()) EnvironmentStateIcons.Active
+        return if (ready() || unhealthy()) EnvironmentStateIcons.Active
         else if (canStart()) EnvironmentStateIcons.Hibernated
         else if (pending()) EnvironmentStateIcons.Connecting
         else if (this == DELETING || this == DELETED) EnvironmentStateIcons.Offline
@@ -88,13 +89,10 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
     /**
      * Return true if the agent is in a connectable state.
      */
-    fun ready(): Boolean {
-        // It seems that the agent can get stuck in a `created` state if the
-        // workspace is updated and the agent is restarted (presumably because
-        // lifecycle scripts are not running again).  This feels like either a
-        // Coder or template bug, but `coder ssh` and the VS Code plugin will
-        // still connect so do the same here to not be the odd one out.
-        return listOf(READY, START_ERROR, AGENT_STARTING_READY, START_TIMEOUT_READY, CREATED)
+    fun ready(): Boolean = this == READY
+
+    fun unhealthy(): Boolean {
+        return listOf(START_ERROR, START_TIMEOUT_READY)
             .contains(this)
     }
 
@@ -103,7 +101,7 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
      */
     fun pending(): Boolean {
         // See ready() for why `CREATED` is not in this list.
-        return listOf(CONNECTING, TIMEOUT, AGENT_STARTING, START_TIMEOUT, QUEUED, STARTING)
+        return listOf(CREATED, CONNECTING, TIMEOUT, AGENT_STARTING, START_TIMEOUT, QUEUED, STARTING)
             .contains(this)
     }
 
@@ -116,7 +114,7 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
     /**
      * Return true if the workspace can be stopped.
      */
-    fun canStop(): Boolean = ready() || pending()
+    fun canStop(): Boolean = ready() || pending() || unhealthy()
 
     // We want to check that the workspace is `running`, the agent is
     // `connected`, and the agent lifecycle state is `ready` to ensure the best
