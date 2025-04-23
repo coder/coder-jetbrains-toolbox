@@ -36,7 +36,7 @@ class EnvironmentView(
         /**
          * The username is ignored by the Coder proxy command.
          */
-        override val userName: String? = "coder"
+        override val userName: String? = null
 
     }
 
