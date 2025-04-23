@@ -162,7 +162,7 @@ open class CoderProtocolHandler(
         }
 
         context.logger.info("Configuring Coder CLI...")
-        cli.configSsh(restClient.withAgents(workspaces))
+        cli.configSsh(restClient.groupByAgents(workspaces))
 
         if (shouldWaitForAutoLogin) {
             isInitialized.waitForTrue()

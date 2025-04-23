@@ -192,10 +192,9 @@ open class CoderRestClient(
     }
 
     /**
-     * Retrieves all the agent names for all workspaces, including those that
-     * are off.  Meant to be used when configuring SSH.
+     * Maps the list of workspaces to the associated agents.
      */
-    suspend fun withAgents(workspaces: List<Workspace>): Set<Pair<Workspace, WorkspaceAgent>> {
+    suspend fun groupByAgents(workspaces: List<Workspace>): Set<Pair<Workspace, WorkspaceAgent>> {
         // It is possible for there to be resources with duplicate names so we
         // need to use a set.
         return workspaces.flatMap { ws ->
