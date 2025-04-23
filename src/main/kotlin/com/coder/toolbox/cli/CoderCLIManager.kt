@@ -514,9 +514,9 @@ class CoderCLIManager(
     companion object {
         private val tokenRegex = "--token [^ ]+".toRegex()
 
-        fun getHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}"
+        private fun getHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}"
 
-        fun getBackgroundHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}-bg"
+        private fun getBackgroundHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}-bg"
 
         fun getWildcardHostname(url: URL, ws: Workspace, agent: WorkspaceAgent): String =
             "${getHostnamePrefix(url)}--${ws.ownerName}--${ws.name}.${agent.name}"
@@ -529,10 +529,10 @@ class CoderCLIManager(
             return "${getHostname(url, ws, agent)}--bg"
         }
 
-        fun getWsByOwner(ws: Workspace, agent: WorkspaceAgent): String = "${ws.ownerName}/${ws.name}.${agent.name}"
+        private fun getWsByOwner(ws: Workspace, agent: WorkspaceAgent): String = "${ws.ownerName}/${ws.name}.${agent.name}"
 
-        fun Pair<Workspace, WorkspaceAgent>.workspace() = this.first
+        private fun Pair<Workspace, WorkspaceAgent>.workspace() = this.first
 
-        fun Pair<Workspace, WorkspaceAgent>.agent() = this.second
+        private fun Pair<Workspace, WorkspaceAgent>.agent() = this.second
     }
 }
