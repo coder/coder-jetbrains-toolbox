@@ -48,6 +48,8 @@ class CoderRemoteEnvironment(
 
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
 
+    fun asPairOfWorkspaceAndAgent(): Pair<Workspace, WorkspaceAgent> = Pair(workspace, agent)
+
     private fun getAvailableActions(): List<ActionDescription> {
         val actions = mutableListOf(
             Action(context.i18n.ptrl("Open web terminal")) {

@@ -13,8 +13,10 @@ import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
+import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
+import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.coderSocketFactory
@@ -193,12 +195,15 @@ open class CoderRestClient(
      * Retrieves all the agent names for all workspaces, including those that
      * are off.  Meant to be used when configuring SSH.
      */
-    suspend fun agentNames(workspaces: List<Workspace>): Set<String> {
+    suspend fun withAgents(workspaces: List<Workspace>): Set<Pair<Workspace, WorkspaceAgent>> {
         // It is possible for there to be resources with duplicate names so we
         // need to use a set.
         return workspaces.flatMap { ws ->
-            resources(ws).filter { it.agents != null }.flatMap { it.agents!! }.map {
-                "${ws.name}.${it.name}"
+            when (ws.latestBuild.status) {
+                WorkspaceStatus.RUNNING -> ws.latestBuild.resources
+                else -> resources(ws)
+            }.filter { it.agents != null }.flatMap { it.agents!! }.map {
+                ws to it
             }
         }.toSet()
     }

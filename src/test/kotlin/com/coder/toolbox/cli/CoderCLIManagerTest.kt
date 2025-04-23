@@ -4,6 +4,8 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
+import com.coder.toolbox.sdk.DataGen.Companion.workspace
+import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.BINARY_DIRECTORY
 import com.coder.toolbox.store.BINARY_NAME
@@ -44,9 +46,11 @@ import org.zeroturnaround.exec.InvalidExitValueException
 import org.zeroturnaround.exec.ProcessInitException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
+import java.net.URI
 import java.net.URL
 import java.nio.file.AccessDeniedException
 import java.nio.file.Path
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -350,7 +354,7 @@ internal class CoderCLIManagerTest {
     }
 
     data class SSHTest(
-        val workspaces: List<String>,
+        val workspaces: List<Workspace>,
         val input: String?,
         val output: String,
         val remove: String,
@@ -364,10 +368,19 @@ internal class CoderCLIManagerTest {
         val extraConfig: String = "",
         val env: Environment = Environment(),
         val sshLogDirectory: Path? = null,
+        val url: URL? = null,
     )
 
     @Test
     fun testConfigureSSH() {
+        val workspace = workspace("foo", agents = mapOf("agent1" to UUID.randomUUID().toString()))
+        val workspace2 = workspace("bar", agents = mapOf("agent1" to UUID.randomUUID().toString()))
+        val betterWorkspace = workspace("foo", agents = mapOf("agent1" to UUID.randomUUID().toString()))
+        val workspaceWithMultipleAgents = workspace(
+            "foo",
+            agents = mapOf("agent1" to UUID.randomUUID().toString(), "agent2" to UUID.randomUUID().toString())
+        )
+
         val extraConfig =
             listOf(
                 "ServerAliveInterval 5",
@@ -375,27 +388,27 @@ internal class CoderCLIManagerTest {
             ).joinToString(System.lineSeparator())
         val tests =
             listOf(
-                SSHTest(listOf("foo", "bar"), null, "multiple-workspaces", "blank"),
-                SSHTest(listOf("foo", "bar"), null, "multiple-workspaces", "blank"),
-                SSHTest(listOf("foo-bar"), "blank", "append-blank", "blank"),
-                SSHTest(listOf("foo-bar"), "blank-newlines", "append-blank-newlines", "blank"),
-                SSHTest(listOf("foo-bar"), "existing-end", "replace-end", "no-blocks"),
-                SSHTest(listOf("foo-bar"), "existing-end-no-newline", "replace-end-no-newline", "no-blocks"),
-                SSHTest(listOf("foo-bar"), "existing-middle", "replace-middle", "no-blocks"),
+                SSHTest(listOf(workspace, workspace2), null, "multiple-workspaces", "blank"),
+                SSHTest(listOf(workspace, workspace2), null, "multiple-workspaces", "blank"),
+                SSHTest(listOf(workspace), "blank", "append-blank", "blank"),
+                SSHTest(listOf(workspace), "blank-newlines", "append-blank-newlines", "blank"),
+                SSHTest(listOf(workspace), "existing-end", "replace-end", "no-blocks"),
+                SSHTest(listOf(workspace), "existing-end-no-newline", "replace-end-no-newline", "no-blocks"),
+                SSHTest(listOf(workspace), "existing-middle", "replace-middle", "no-blocks"),
                 SSHTest(
-                    listOf("foo-bar"),
+                    listOf(workspace),
                     "existing-middle-and-unrelated",
                     "replace-middle-ignore-unrelated",
                     "no-related-blocks"
                 ),
-                SSHTest(listOf("foo-bar"), "existing-only", "replace-only", "blank"),
-                SSHTest(listOf("foo-bar"), "existing-start", "replace-start", "no-blocks"),
-                SSHTest(listOf("foo-bar"), "no-blocks", "append-no-blocks", "no-blocks"),
-                SSHTest(listOf("foo-bar"), "no-related-blocks", "append-no-related-blocks", "no-related-blocks"),
-                SSHTest(listOf("foo-bar"), "no-newline", "append-no-newline", "no-blocks"),
+                SSHTest(listOf(workspace), "existing-only", "replace-only", "blank"),
+                SSHTest(listOf(workspace), "existing-start", "replace-start", "no-blocks"),
+                SSHTest(listOf(workspace), "no-blocks", "append-no-blocks", "no-blocks"),
+                SSHTest(listOf(workspace), "no-related-blocks", "append-no-related-blocks", "no-related-blocks"),
+                SSHTest(listOf(workspace), "no-newline", "append-no-newline", "no-blocks"),
                 if (getOS() == OS.WINDOWS) {
                     SSHTest(
-                        listOf("header"),
+                        listOf(workspace),
                         null,
                         "header-command-windows",
                         "blank",
@@ -403,7 +416,7 @@ internal class CoderCLIManagerTest {
                     )
                 } else {
                     SSHTest(
-                        listOf("header"),
+                        listOf(workspace),
                         null,
                         "header-command",
                         "blank",
@@ -411,7 +424,7 @@ internal class CoderCLIManagerTest {
                     )
                 },
                 SSHTest(
-                    listOf("foo"),
+                    listOf(workspace),
                     null,
                     "disable-autostart",
                     "blank",
@@ -422,9 +435,9 @@ internal class CoderCLIManagerTest {
                         reportWorkspaceUsage = true,
                     ),
                 ),
-                SSHTest(listOf("foo"), null, "no-disable-autostart", "blank", ""),
+                SSHTest(listOf(workspace), null, "no-disable-autostart", "blank", ""),
                 SSHTest(
-                    listOf("foo"),
+                    listOf(workspace),
                     null,
                     "no-report-usage",
                     "blank",
@@ -436,25 +449,53 @@ internal class CoderCLIManagerTest {
                     ),
                 ),
                 SSHTest(
-                    listOf("extra"),
+                    listOf(workspace),
                     null,
                     "extra-config",
                     "blank",
                     extraConfig = extraConfig,
                 ),
                 SSHTest(
-                    listOf("extra"),
+                    listOf(workspace),
                     null,
                     "extra-config",
                     "blank",
                     env = Environment(mapOf(CODER_SSH_CONFIG_OPTIONS to extraConfig)),
                 ),
                 SSHTest(
-                    listOf("foo"),
+                    listOf(workspace),
                     null,
                     "log-dir",
                     "blank",
                     sshLogDirectory = tmpdir.resolve("ssh-logs"),
+                ),
+                SSHTest(
+                    listOf(workspace),
+                    input = null,
+                    output = "url",
+                    remove = "blank",
+                    url = URI.create("https://test.coder.invalid?foo=bar&baz=qux").toURL(),
+                ),
+                SSHTest(
+                    listOf(workspace, betterWorkspace),
+                    input = null,
+                    output = "multiple-users",
+                    remove = "blank",
+                ),
+                SSHTest(
+                    listOf(workspaceWithMultipleAgents),
+                    input = null,
+                    output = "multiple-agents",
+                    remove = "blank",
+                ),
+                SSHTest(
+                    listOf(workspace),
+                    input = null,
+                    output = "wildcard",
+                    remove = "blank",
+                    features = Features(
+                        wildcardSsh = true,
+                    ),
                 ),
             )
 
@@ -475,7 +516,8 @@ internal class CoderCLIManagerTest {
                     context.logger,
                 ).readOnly()
 
-            val ccm = CoderCLIManager(URL("https://test.coder.invalid"), context.logger, settings)
+            val ccm =
+                CoderCLIManager(it.url ?: URI.create("https://test.coder.invalid").toURL(), context.logger, settings)
 
             val sshConfigPath = Path.of(settings.sshConfigPath)
             // Input is the configuration that we start with, if any.
@@ -506,7 +548,14 @@ internal class CoderCLIManagerTest {
                     }
 
             // Add workspaces.
-            ccm.configSsh(it.workspaces.toSet(), it.features)
+            ccm.configSsh(
+                it.workspaces.flatMap { ws ->
+                    ws.latestBuild.resources.filter { r -> r.agents != null }.flatMap { r -> r.agents!! }.map { a ->
+                        ws to a
+                    }
+                }.toSet(),
+                it.features,
+            )
 
             assertEquals(expectedConf, sshConfigPath.toFile().readText())
 
@@ -568,9 +617,18 @@ internal class CoderCLIManagerTest {
                 "new\nline",
             )
 
+
+        val workspace = workspace(
+            "foo",
+            agents = mapOf("agentid1" to UUID.randomUUID().toString(), "agentid2" to UUID.randomUUID().toString())
+        )
+        val withAgents = workspace.latestBuild.resources.filter { it.agents != null }.flatMap { it.agents!! }.map {
+            workspace to it
+        }
+
         tests.forEach {
             val ccm = CoderCLIManager(
-                URL("https://test.coder.invalid"),
+                URI.create("https://test.coder.invalid").toURL(),
                 context.logger,
                 CoderSettingsStore(
                     pluginTestSettingsStore(
@@ -583,7 +641,7 @@ internal class CoderCLIManagerTest {
 
             assertFailsWith(
                 exceptionClass = Exception::class,
-                block = { ccm.configSsh(setOf("foo", "bar")) },
+                block = { ccm.configSsh(withAgents.toSet()) },
             )
         }
     }
