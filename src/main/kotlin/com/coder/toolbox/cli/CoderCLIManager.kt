@@ -223,11 +223,11 @@ class CoderCLIManager(
      * This can take supported features for testing purposes only.
      */
     fun configSsh(
-        workspaceNames: Set<String>,
+        wsWithAgents: Set<Pair<Workspace, WorkspaceAgent>>,
         feats: Features = features,
     ) {
         logger.info("Configuring SSH config at ${settings.sshConfigPath}")
-        writeSSHConfig(modifySSHConfig(readSSHConfig(), workspaceNames, feats))
+        writeSSHConfig(modifySSHConfig(readSSHConfig(), wsWithAgents, feats))
     }
 
     /**
@@ -249,13 +249,13 @@ class CoderCLIManager(
      */
     private fun modifySSHConfig(
         contents: String?,
-        workspaceNames: Set<String>,
+        wsWithAgents: Set<Pair<Workspace, WorkspaceAgent>>,
         feats: Features,
     ): String? {
         val host = deploymentURL.safeHost()
         val startBlock = "# --- START CODER JETBRAINS TOOLBOX $host"
         val endBlock = "# --- END CODER JETBRAINS TOOLBOX $host"
-        val isRemoving = workspaceNames.isEmpty()
+        val isRemoving = wsWithAgents.isEmpty()
         val baseArgs =
             listOfNotNull(
                 escape(localBinaryPath.toString()),
@@ -304,34 +304,39 @@ class CoderCLIManager(
                         .plus("\n\n")
                         .plus(
                             """
-                            Host ${getHostnamePrefix(deploymentURL)}-bg--*
+                            Host ${getBackgroundHostnamePrefix(deploymentURL)}--*
                               ProxyCommand ${backgroundProxyArgs.joinToString(" ")} --ssh-host-prefix ${
-                                getHostnamePrefix(
+                                getBackgroundHostnamePrefix(
                                     deploymentURL
                                 )
-                            }-bg-- %h
+                            }-- %h
                             """.trimIndent()
                                 .plus("\n" + options.prependIndent("  "))
                                 .plus(extraConfig),
                         ).replace("\n", System.lineSeparator()) +
                     System.lineSeparator() + endBlock
         } else {
-            workspaceNames.joinToString(
+            wsWithAgents.joinToString(
                 System.lineSeparator(),
                 startBlock + System.lineSeparator(),
                 System.lineSeparator() + endBlock,
                 transform = {
                     """
-                    Host ${getHostName(deploymentURL, it)}
-                      ProxyCommand ${proxyArgs.joinToString(" ")} $it
+                    Host ${getHostname(deploymentURL, it.workspace(), it.agent())}
+                      ProxyCommand ${proxyArgs.joinToString(" ")} ${getWsByOwner(it.workspace(), it.agent())}
                     """.trimIndent()
                         .plus("\n" + options.prependIndent("  "))
                         .plus(extraConfig)
                         .plus("\n")
                         .plus(
                             """
-                            Host ${getBackgroundHostName(deploymentURL, it)}
-                              ProxyCommand ${backgroundProxyArgs.joinToString(" ")} $it
+                            Host ${getBackgroundHostname(deploymentURL, it.workspace(), it.agent())}
+                              ProxyCommand ${backgroundProxyArgs.joinToString(" ")} ${
+                                getWsByOwner(
+                                    it.workspace(),
+                                    it.agent()
+                                )
+                            }
                             """.trimIndent()
                                 .plus("\n" + options.prependIndent("  "))
                                 .plus(extraConfig),
@@ -506,25 +511,30 @@ class CoderCLIManager(
             }
         }
 
+    fun getHostname(url: URL, ws: Workspace, agent: WorkspaceAgent): String {
+        return if (settings.isSshWildcardConfigEnabled && features.wildcardSsh) {
+            "${getHostnamePrefix(url)}--${ws.ownerName}--${ws.name}.${agent.name}"
+        } else {
+            "coder-jetbrains-toolbox--${ws.ownerName}--${ws.name}.${agent.name}--${url.safeHost()}"
+        }
+    }
+
+    fun getBackgroundHostname(url: URL, ws: Workspace, agent: WorkspaceAgent): String {
+        return "${getHostname(url, ws, agent)}--bg"
+    }
+
     companion object {
         private val tokenRegex = "--token [^ ]+".toRegex()
 
-        fun getHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}"
+        private fun getHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}"
 
-        fun getWildcardHostname(url: URL, workspace: Workspace, agent: WorkspaceAgent): String =
-            "${getHostnamePrefix(url)}-bg--${workspace.name}.${agent.name}"
+        private fun getBackgroundHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}-bg"
 
-        fun getHostname(url: URL, workspace: Workspace, agent: WorkspaceAgent) =
-            getHostName(url, "${workspace.name}.${agent.name}")
+        private fun getWsByOwner(ws: Workspace, agent: WorkspaceAgent): String =
+            "${ws.ownerName}/${ws.name}.${agent.name}"
 
-        fun getHostName(
-            url: URL,
-            workspaceName: String,
-        ): String = "coder-jetbrains-toolbox-$workspaceName--${url.safeHost()}"
+        private fun Pair<Workspace, WorkspaceAgent>.workspace() = this.first
 
-        fun getBackgroundHostName(
-            url: URL,
-            workspaceName: String,
-        ): String = getHostName(url, workspaceName) + "--bg"
+        private fun Pair<Workspace, WorkspaceAgent>.agent() = this.second
     }
 }

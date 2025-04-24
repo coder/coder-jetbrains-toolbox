@@ -10,6 +10,10 @@
 
 - connections to the workspace are no longer established automatically after agent started with error.
 
+### Fixed
+
+- SSH connection will no longer fail with newer Coder deployments due to misconfiguration of hostname and proxy command.
+
 ## 0.1.5 - 2025-04-14
 
 ### Fixed

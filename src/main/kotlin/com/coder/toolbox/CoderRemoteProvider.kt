@@ -91,7 +91,7 @@ class CoderRemoteProvider(
                             it.name
                         }?.map { agent ->
                             // If we have an environment already, update that.
-                            val env = CoderRemoteEnvironment(context, client, ws, agent)
+                            val env = CoderRemoteEnvironment(context, client, cli, ws, agent)
                             lastEnvironments.firstOrNull { it == env }?.let {
                                 it.update(ws, agent)
                                 it
@@ -109,7 +109,7 @@ class CoderRemoteProvider(
                 // Reconfigure if environments changed.
                 if (lastEnvironments.size != resolvedEnvironments.size || lastEnvironments != resolvedEnvironments) {
                     context.logger.info("Workspaces have changed, reconfiguring CLI: $resolvedEnvironments")
-                    cli.configSsh(resolvedEnvironments.map { it.name }.toSet())
+                    cli.configSsh(resolvedEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
                 }
 
                 environments.update {
@@ -149,7 +149,7 @@ class CoderRemoteProvider(
                 triggerSshConfig.onReceive { shouldTrigger ->
                     if (shouldTrigger) {
                         context.logger.trace("workspace poller waked up because it should reconfigure the ssh configurations")
-                        cli.configSsh(lastEnvironments.map { it.name }.toSet())
+                        cli.configSsh(lastEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
                     }
                 }
             }

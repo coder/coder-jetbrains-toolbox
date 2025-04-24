@@ -1,6 +1,7 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.browser.BrowserUtil
+import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
@@ -35,6 +36,7 @@ import kotlin.time.Duration.Companion.seconds
 class CoderRemoteEnvironment(
     private val context: CoderToolboxContext,
     private val client: CoderRestClient,
+    private val cli: CoderCLIManager,
     private var workspace: Workspace,
     private var agent: WorkspaceAgent,
 ) : RemoteProviderEnvironment("${workspace.name}.${agent.name}"), BeforeConnectionHook, AfterDisconnectHook {
@@ -47,6 +49,8 @@ class CoderRemoteEnvironment(
         MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
 
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
+
+    fun asPairOfWorkspaceAndAgent(): Pair<Workspace, WorkspaceAgent> = Pair(workspace, agent)
 
     private fun getAvailableActions(): List<ActionDescription> {
         val actions = mutableListOf(
@@ -151,8 +155,8 @@ class CoderRemoteEnvironment(
      */
     override suspend
     fun getContentsView(): EnvironmentContentsView = EnvironmentView(
-        context.settingsStore.readOnly(),
         client.url,
+        cli,
         workspace,
         agent
     )
