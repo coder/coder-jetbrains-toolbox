@@ -91,7 +91,7 @@ class CoderRemoteProvider(
                             it.name
                         }?.map { agent ->
                             // If we have an environment already, update that.
-                            val env = CoderRemoteEnvironment(context, client, ws, agent)
+                            val env = CoderRemoteEnvironment(context, client, cli, ws, agent)
                             lastEnvironments.firstOrNull { it == env }?.let {
                                 it.update(ws, agent)
                                 it

@@ -511,6 +511,18 @@ class CoderCLIManager(
             }
         }
 
+    fun getHostname(url: URL, ws: Workspace, agent: WorkspaceAgent): String {
+        return if (settings.isSshWildcardConfigEnabled && features.wildcardSsh) {
+            "${getHostnamePrefix(url)}--${ws.ownerName}--${ws.name}.${agent.name}"
+        } else {
+            "coder-jetbrains-toolbox--${ws.ownerName}--${ws.name}.${agent.name}--${url.safeHost()}"
+        }
+    }
+
+    fun getBackgroundHostname(url: URL, ws: Workspace, agent: WorkspaceAgent): String {
+        return "${getHostname(url, ws, agent)}--bg"
+    }
+
     companion object {
         private val tokenRegex = "--token [^ ]+".toRegex()
 
@@ -518,18 +530,8 @@ class CoderCLIManager(
 
         private fun getBackgroundHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}-bg"
 
-        fun getWildcardHostname(url: URL, ws: Workspace, agent: WorkspaceAgent): String =
-            "${getHostnamePrefix(url)}--${ws.ownerName}--${ws.name}.${agent.name}"
-
-        fun getHostname(url: URL, ws: Workspace, agent: WorkspaceAgent): String {
-            return "coder-jetbrains-toolbox--${ws.ownerName}--${ws.name}.${agent.name}--${url.safeHost()}"
-        }
-
-        fun getBackgroundHostname(url: URL, ws: Workspace, agent: WorkspaceAgent): String {
-            return "${getHostname(url, ws, agent)}--bg"
-        }
-
-        private fun getWsByOwner(ws: Workspace, agent: WorkspaceAgent): String = "${ws.ownerName}/${ws.name}.${agent.name}"
+        private fun getWsByOwner(ws: Workspace, agent: WorkspaceAgent): String =
+            "${ws.ownerName}/${ws.name}.${agent.name}"
 
         private fun Pair<Workspace, WorkspaceAgent>.workspace() = this.first
 
