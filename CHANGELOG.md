@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 - 2025-04-24
+
 ### Added
 
 - support for using proxies. Proxy authentication is not yet supported.
