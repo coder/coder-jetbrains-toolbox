@@ -155,7 +155,6 @@ class CoderRemoteEnvironment(
      */
     override suspend
     fun getContentsView(): EnvironmentContentsView = EnvironmentView(
-        context.settingsStore.readOnly(),
         client.url,
         cli,
         workspace,
