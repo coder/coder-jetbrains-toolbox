@@ -301,19 +301,8 @@ class CoderCLIManager(
                     """.trimIndent()
                         .plus("\n" + options.prependIndent("  "))
                         .plus(extraConfig)
-                        .plus("\n\n")
-                        .plus(
-                            """
-                            Host ${getBackgroundHostnamePrefix(deploymentURL)}--*
-                              ProxyCommand ${backgroundProxyArgs.joinToString(" ")} --ssh-host-prefix ${
-                                getBackgroundHostnamePrefix(
-                                    deploymentURL
-                                )
-                            }-- %h
-                            """.trimIndent()
-                                .plus("\n" + options.prependIndent("  "))
-                                .plus(extraConfig),
-                        ).replace("\n", System.lineSeparator()) +
+                        .plus("\n")
+                        .replace("\n", System.lineSeparator()) +
                     System.lineSeparator() + endBlock
         } else {
             wsWithAgents.joinToString(
@@ -328,19 +317,7 @@ class CoderCLIManager(
                         .plus("\n" + options.prependIndent("  "))
                         .plus(extraConfig)
                         .plus("\n")
-                        .plus(
-                            """
-                            Host ${getBackgroundHostname(deploymentURL, it.workspace(), it.agent())}
-                              ProxyCommand ${backgroundProxyArgs.joinToString(" ")} ${
-                                getWsByOwner(
-                                    it.workspace(),
-                                    it.agent()
-                                )
-                            }
-                            """.trimIndent()
-                                .plus("\n" + options.prependIndent("  "))
-                                .plus(extraConfig),
-                        ).replace("\n", System.lineSeparator())
+                        .replace("\n", System.lineSeparator())
                 },
             )
         }
@@ -519,16 +496,10 @@ class CoderCLIManager(
         }
     }
 
-    fun getBackgroundHostname(url: URL, ws: Workspace, agent: WorkspaceAgent): String {
-        return "${getHostname(url, ws, agent)}--bg"
-    }
-
     companion object {
         private val tokenRegex = "--token [^ ]+".toRegex()
 
         private fun getHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}"
-
-        private fun getBackgroundHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}-bg"
 
         private fun getWsByOwner(ws: Workspace, agent: WorkspaceAgent): String =
             "${ws.ownerName}/${ws.name}.${agent.name}"
