@@ -262,6 +262,9 @@ class CoderRemoteProvider(
             // start initialization with the new settings
             this@CoderRemoteProvider.client = restClient
             coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(restClient.url.toString()))
+            environments.update {
+                LoadableState.Loading
+            }
             pollJob = poll(restClient, cli)
         }
     }
@@ -326,6 +329,10 @@ class CoderRemoteProvider(
         context.secrets.rememberMe = true
         this.client = client
         pollJob?.cancel()
+
+        environments.update {
+            LoadableState.Loading
+        }
         pollJob = poll(client, cli)
         goToEnvironmentsPage()
     }

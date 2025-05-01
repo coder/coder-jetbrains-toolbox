@@ -6,6 +6,10 @@
 
 - ssh configuration is simplified, background hostnames have been discarded.
 
+### Fixed
+
+- misleading message saying that there are no workspaces rendered during manual authentication 
+
 ## 0.2.0 - 2025-04-24
 
 ### Added
