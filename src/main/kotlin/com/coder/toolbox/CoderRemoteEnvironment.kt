@@ -111,15 +111,7 @@ class CoderRemoteEnvironment(
             } else {
                 actions.add(Action(context.i18n.ptrl("Stop")) {
                     context.cs.launch {
-                        if (isConnected.value) {
-                            connectionRequest.update {
-                                false
-                            }
-
-                            if (isConnected.waitForFalseWithTimeout(10.seconds) == null) {
-                                context.logger.warn("The SSH connection to workspace $name could not be dropped in time, going to stop the workspace while the SSH connection is live")
-                            }
-                        }
+                        tryStopSshConnection()
 
                         val build = client.stopWorkspace(workspace)
                         update(workspace.copy(latestBuild = build), agent)
@@ -128,6 +120,18 @@ class CoderRemoteEnvironment(
             }
         }
         return actions
+    }
+
+    private suspend fun tryStopSshConnection() {
+        if (isConnected.value) {
+            connectionRequest.update {
+                false
+            }
+
+            if (isConnected.waitForFalseWithTimeout(10.seconds) == null) {
+                context.logger.warn("The SSH connection to workspace $name could not be dropped in time, going to stop the workspace while the SSH connection is live")
+            }
+        }
     }
 
     override fun getBeforeConnectionHooks(): List<BeforeConnectionHook> = listOf(this)
