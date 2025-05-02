@@ -6,6 +6,10 @@
 
 - ssh configuration is simplified, background hostnames have been discarded.
 
+### Fixed
+
+- rendering glitches when a Workspace is stopped while SSH connection is alive
+
 ## 0.2.0 - 2025-04-24
 
 ### Added

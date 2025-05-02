@@ -13,7 +13,6 @@ import com.jetbrains.toolbox.api.localization.LocalizableString
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.withTimeout
 import java.net.HttpURLConnection
@@ -330,10 +329,5 @@ private fun CoderToolboxContext.popupPluginMainPage() {
     this.ui.showWindow()
     this.envPageManager.showPluginEnvironmentsPage(true)
 }
-
-/**
- * Suspends the coroutine until first true value is received.
- */
-suspend fun StateFlow<Boolean>.waitForTrue() = this.first { it }
 
 class MissingArgumentException(message: String, ex: Throwable? = null) : IllegalArgumentException(message, ex)

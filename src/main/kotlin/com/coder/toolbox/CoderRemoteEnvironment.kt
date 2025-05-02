@@ -7,6 +7,7 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.util.waitForFalseWithTimeout
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.EnvironmentView
@@ -43,6 +44,10 @@ class CoderRemoteEnvironment(
     private var wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
 
     override var name: String = "${workspace.name}.${agent.name}"
+
+    private var isConnected: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    override val connectionRequest: MutableStateFlow<Boolean> = MutableStateFlow(false)
+
     override val state: MutableStateFlow<RemoteEnvironmentState> =
         MutableStateFlow(wsRawStatus.toRemoteEnvironmentState(context))
     override val description: MutableStateFlow<EnvironmentDescription> =
@@ -106,6 +111,8 @@ class CoderRemoteEnvironment(
             } else {
                 actions.add(Action(context.i18n.ptrl("Stop")) {
                     context.cs.launch {
+                        tryStopSshConnection()
+
                         val build = client.stopWorkspace(workspace)
                         update(workspace.copy(latestBuild = build), agent)
                     }
@@ -115,18 +122,30 @@ class CoderRemoteEnvironment(
         return actions
     }
 
+    private suspend fun tryStopSshConnection() {
+        if (isConnected.value) {
+            connectionRequest.update {
+                false
+            }
+
+            if (isConnected.waitForFalseWithTimeout(10.seconds) == null) {
+                context.logger.warn("The SSH connection to workspace $name could not be dropped in time, going to stop the workspace while the SSH connection is live")
+            }
+        }
+    }
+
     override fun getBeforeConnectionHooks(): List<BeforeConnectionHook> = listOf(this)
 
     override fun getAfterDisconnectHooks(): List<AfterDisconnectHook> = listOf(this)
 
     override fun beforeConnection() {
         context.logger.info("Connecting to $id...")
-        this.isConnected = true
+        isConnected.update { true }
     }
 
     override fun afterDisconnect() {
         this.connectionRequest.update { false }
-        this.isConnected = false
+        isConnected.update { false }
         context.logger.info("Disconnected from $id")
     }
 
@@ -161,9 +180,6 @@ class CoderRemoteEnvironment(
         agent
     )
 
-    private var isConnected = false
-    override val connectionRequest: MutableStateFlow<Boolean> = MutableStateFlow(false)
-
     /**
      * Does nothing.  In theory, we could do something like start the workspace
      * when you click into the workspace, but you would still need to press
@@ -171,7 +187,7 @@ class CoderRemoteEnvironment(
      * to be much value.
      */
     override fun setVisible(visibilityState: EnvironmentVisibilityState) {
-        if (wsRawStatus.ready() && visibilityState.contentsVisible == true && isConnected == false) {
+        if (wsRawStatus.ready() && visibilityState.contentsVisible == true && isConnected.value == false) {
             context.cs.launch {
                 connectionRequest.update {
                     true
