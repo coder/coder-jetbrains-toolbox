@@ -262,6 +262,7 @@ class CoderRemoteProvider(
             // start initialization with the new settings
             this@CoderRemoteProvider.client = restClient
             coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(restClient.url.toString()))
+            environments.showLoadingMessage()
             pollJob = poll(restClient, cli)
         }
     }
@@ -326,7 +327,14 @@ class CoderRemoteProvider(
         context.secrets.rememberMe = true
         this.client = client
         pollJob?.cancel()
+        environments.showLoadingMessage()
         pollJob = poll(client, cli)
         goToEnvironmentsPage()
+    }
+
+    private fun MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>>.showLoadingMessage() {
+        this.update {
+            LoadableState.Loading
+        }
     }
 }
