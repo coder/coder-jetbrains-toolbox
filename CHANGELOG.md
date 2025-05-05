@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.1 - 2025-05-05
+
 ### Changed
 
 - ssh configuration is simplified, background hostnames have been discarded.
