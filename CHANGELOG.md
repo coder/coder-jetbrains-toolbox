@@ -10,6 +10,7 @@
 
 - rendering glitches when a Workspace is stopped while SSH connection is alive
 - misleading message saying that there are no workspaces rendered during manual authentication
+- Coder Settings can now be accessed from the authentication wizard
 
 ## 0.2.0 - 2025-04-24
 

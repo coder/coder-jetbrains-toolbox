@@ -12,14 +12,17 @@ import kotlinx.coroutines.flow.update
 
 class AuthWizardPage(
     private val context: CoderToolboxContext,
+    private val settingsPage: CoderSettingsPage,
     initialAutoLogin: Boolean = false,
     onConnect: (
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,
-) : CoderPage(context, context.i18n.ptrl("Authenticate to Coder")) {
+) : CoderPage(context, context.i18n.ptrl("Authenticate to Coder"), false) {
     private val shouldAutoLogin = MutableStateFlow(initialAutoLogin)
-
+    private val settingsAction = Action(context.i18n.ptrl("Settings"), actionBlock = {
+        context.ui.showUiPage(settingsPage)
+    })
     private val signInStep = SignInStep(context, this::notify)
     private val tokenStep = TokenStep(context)
     private val connectStep = ConnectStep(context, shouldAutoLogin, this::notify, this::displaySteps, onConnect)
@@ -47,7 +50,8 @@ class AuthWizardPage(
                             if (signInStep.onNext()) {
                                 displaySteps()
                             }
-                        })
+                        }),
+                        settingsAction
                     )
                 }
                 signInStep.onVisible()
@@ -64,6 +68,7 @@ class AuthWizardPage(
                                 displaySteps()
                             }
                         }),
+                        settingsAction,
                         Action(context.i18n.ptrl("Back"), closesPage = false, actionBlock = {
                             tokenStep.onBack()
                             displaySteps()
@@ -79,6 +84,7 @@ class AuthWizardPage(
                 }
                 actionButtons.update {
                     listOf(
+                        settingsAction,
                         Action(context.i18n.ptrl("Back"), closesPage = false, actionBlock = {
                             connectStep.onBack()
                             shouldAutoLogin.update {

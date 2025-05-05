@@ -296,7 +296,7 @@ class CoderRemoteProvider(
                     if (autologin && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !settings.requireTokenAuth)) {
                         try {
                             AuthWizardState.goToStep(WizardStep.LOGIN)
-                            return AuthWizardPage(context, true, ::onConnect)
+                            return AuthWizardPage(context, settingsPage, true, ::onConnect)
                         } catch (ex: Exception) {
                             errorBuffer.add(ex)
                         }
@@ -306,7 +306,7 @@ class CoderRemoteProvider(
             firstRun = false
 
             // Login flow.
-            val authWizard = AuthWizardPage(context, false, ::onConnect)
+            val authWizard = AuthWizardPage(context, settingsPage, false, ::onConnect)
             // We might have navigated here due to a polling error.
             errorBuffer.forEach {
                 authWizard.notify("Error encountered", it)
