@@ -237,6 +237,10 @@ class CoderSettingsStore(
         store[SSH_LOG_DIR] = path
     }
 
+    fun updateNetworkInfoDir(path: String) {
+        store[NETWORK_INFO_DIR] = path
+    }
+
     fun updateSshConfigOptions(options: String) {
         store[SSH_CONFIG_OPTIONS] = options
     }

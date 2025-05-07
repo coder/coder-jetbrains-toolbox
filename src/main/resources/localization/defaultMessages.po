@@ -129,3 +129,6 @@ msgstr ""
 
 msgid "SSH proxy log directory"
 msgstr ""
+
+msgid "SSH network metrics directory"
+msgstr ""
