@@ -277,8 +277,6 @@ class CoderCLIManager(
             if (!settings.sshLogDirectory.isNullOrBlank()) escape(settings.sshLogDirectory!!) else null,
             if (feats.reportWorkspaceUsage) "--usage-app=jetbrains" else null,
         )
-        val backgroundProxyArgs =
-            baseArgs + listOfNotNull(if (feats.reportWorkspaceUsage) "--usage-app=disable" else null)
         val extraConfig =
             if (!settings.sshConfigOptions.isNullOrBlank()) {
                 "\n" + settings.sshConfigOptions!!.prependIndent("  ")
