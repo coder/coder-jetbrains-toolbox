@@ -271,6 +271,7 @@ class CoderCLIManager(
                 "ssh",
                 "--stdio",
                 if (settings.disableAutostart && feats.disableAutostart) "--disable-autostart" else null,
+                "--network-info-dir ${escape(settings.networkInfoDir)}"
             )
         val proxyArgs = baseArgs + listOfNotNull(
             if (!settings.sshLogDirectory.isNullOrBlank()) "--log-dir" else null,
