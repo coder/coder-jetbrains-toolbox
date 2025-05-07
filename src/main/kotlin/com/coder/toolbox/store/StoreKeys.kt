@@ -38,3 +38,5 @@ internal const val SSH_LOG_DIR = "sshLogDir"
 
 internal const val SSH_CONFIG_OPTIONS = "sshConfigOptions"
 
+internal const val NETWORK_INFO_DIR = "networkInfoDir"
+

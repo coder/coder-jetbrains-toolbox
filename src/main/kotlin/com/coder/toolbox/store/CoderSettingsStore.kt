@@ -65,6 +65,11 @@ class CoderSettingsStore(
     override val sshLogDirectory: String? get() = store[SSH_LOG_DIR]
     override val sshConfigOptions: String?
         get() = store[SSH_CONFIG_OPTIONS].takeUnless { it.isNullOrEmpty() } ?: env.get(CODER_SSH_CONFIG_OPTIONS)
+    override val networkInfoDir: String
+        get() = store[NETWORK_INFO_DIR].takeUnless { it.isNullOrEmpty() } ?: getDefaultGlobalDataDir()
+            .resolve("network-info")
+            .normalize()
+            .toString()
 
     /**
      * The default URL to show in the connection window.
