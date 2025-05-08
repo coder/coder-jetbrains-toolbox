@@ -67,7 +67,7 @@ class CoderSettingsStore(
         get() = store[SSH_CONFIG_OPTIONS].takeUnless { it.isNullOrEmpty() } ?: env.get(CODER_SSH_CONFIG_OPTIONS)
     override val networkInfoDir: String
         get() = store[NETWORK_INFO_DIR].takeUnless { it.isNullOrEmpty() } ?: getDefaultGlobalDataDir()
-            .resolve("network-info")
+            .resolve("ssh-network-metrics")
             .normalize()
             .toString()
 
