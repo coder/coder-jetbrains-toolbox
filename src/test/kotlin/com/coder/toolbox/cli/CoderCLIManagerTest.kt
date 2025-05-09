@@ -18,6 +18,7 @@ import com.coder.toolbox.store.DISABLE_AUTOSTART
 import com.coder.toolbox.store.ENABLE_BINARY_DIR_FALLBACK
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
 import com.coder.toolbox.store.HEADER_COMMAND
+import com.coder.toolbox.store.NETWORK_INFO_DIR
 import com.coder.toolbox.store.SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.SSH_CONFIG_PATH
 import com.coder.toolbox.store.SSH_LOG_DIR
@@ -510,7 +511,10 @@ internal class CoderCLIManagerTest {
                         HEADER_COMMAND to it.headerCommand,
                         SSH_CONFIG_PATH to tmpdir.resolve(it.input + "_to_" + it.output + ".conf").toString(),
                         SSH_CONFIG_OPTIONS to it.extraConfig,
-                        SSH_LOG_DIR to (it.sshLogDirectory?.toString() ?: "")
+                        SSH_LOG_DIR to (it.sshLogDirectory?.toString() ?: ""),
+                        NETWORK_INFO_DIR to tmpdir.parent.resolve("coder-toolbox")
+                            .resolve("ssh-network-metrics")
+                            .normalize().toString()
                     ),
                     env = it.env,
                     context.logger,
@@ -531,6 +535,7 @@ internal class CoderCLIManagerTest {
 
             // Output is the configuration we expect to have after configuring.
             val coderConfigPath = ccm.localBinaryPath.parent.resolve("config")
+            val networkMetricsPath = tmpdir.parent.resolve("coder-toolbox").resolve("ssh-network-metrics")
             val expectedConf =
                 Path.of("src/test/resources/fixtures/outputs/").resolve(it.output + ".conf").toFile().readText()
                     .replace(newlineRe, System.lineSeparator())
@@ -538,6 +543,10 @@ internal class CoderCLIManagerTest {
                     .replace(
                         "/tmp/coder-toolbox/test.coder.invalid/coder-linux-amd64",
                         escape(ccm.localBinaryPath.toString())
+                    )
+                    .replace(
+                        "/tmp/coder-toolbox/ssh-network-metrics",
+                        escape(networkMetricsPath.toString())
                     )
                     .let { conf ->
                         if (it.sshLogDirectory != null) {
