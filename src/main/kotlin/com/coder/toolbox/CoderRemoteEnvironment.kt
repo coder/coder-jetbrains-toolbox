@@ -2,6 +2,7 @@ package com.coder.toolbox
 
 import com.coder.toolbox.browser.BrowserUtil
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.cli.SshCommandProcessHandle
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
@@ -20,14 +21,19 @@ import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
 import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import java.io.File
+import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+
+private val POLL_INTERVAL = 5.seconds
 
 /**
  * Represents an agent and workspace combination.
@@ -54,6 +60,9 @@ class CoderRemoteEnvironment(
         MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
 
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
+
+    private val proxyCommandHandle = SshCommandProcessHandle(context)
+    private var pollJob: Job? = null
 
     fun asPairOfWorkspaceAndAgent(): Pair<Workspace, WorkspaceAgent> = Pair(workspace, agent)
 
@@ -141,9 +150,37 @@ class CoderRemoteEnvironment(
     override fun beforeConnection() {
         context.logger.info("Connecting to $id...")
         isConnected.update { true }
+
+        pollJob = pollNetworkMetrics()
     }
 
+    private fun pollNetworkMetrics(): Job = context.cs.launch {
+        context.logger.info("Starting the network metrics poll job for $id")
+        while (isActive) {
+            context.logger.debug("Searching SSH command's PID for workspace $id...")
+            val pid = proxyCommandHandle.findByWorkspaceAndAgent(workspace, agent)
+            if (pid == null) {
+                context.logger.debug("No SSH command PID was found for workspace $id")
+                delay(POLL_INTERVAL)
+                continue
+            }
+
+            val metricsFile = Path.of(context.settingsStore.networkInfoDir, "$pid.json").toFile()
+            if (metricsFile.doesNotExists()) {
+                context.logger.debug("No metrics file found at ${metricsFile.absolutePath} for $id")
+                delay(POLL_INTERVAL)
+                continue
+            }
+            context.logger.debug("Loading metrics from ${metricsFile.absolutePath} for $id")
+            delay(POLL_INTERVAL)
+        }
+    }
+
+    private fun File.doesNotExists(): Boolean = !this.exists()
+
     override fun afterDisconnect() {
+        context.logger.info("Stopping the network metrics poll job for $id")
+        pollJob?.cancel()
         this.connectionRequest.update { false }
         isConnected.update { false }
         context.logger.info("Disconnected from $id")
