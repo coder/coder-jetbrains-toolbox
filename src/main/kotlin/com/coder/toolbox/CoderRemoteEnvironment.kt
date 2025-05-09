@@ -6,6 +6,7 @@ import com.coder.toolbox.cli.SshCommandProcessHandle
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.sdk.v2.models.NetworkMetrics
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.util.waitForFalseWithTimeout
@@ -21,6 +22,7 @@ import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
 import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,6 +63,7 @@ class CoderRemoteEnvironment(
 
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
 
+    private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
     private val proxyCommandHandle = SshCommandProcessHandle(context)
     private var pollJob: Job? = null
 
@@ -150,7 +153,6 @@ class CoderRemoteEnvironment(
     override fun beforeConnection() {
         context.logger.info("Connecting to $id...")
         isConnected.update { true }
-
         pollJob = pollNetworkMetrics()
     }
 
@@ -172,6 +174,14 @@ class CoderRemoteEnvironment(
                 continue
             }
             context.logger.debug("Loading metrics from ${metricsFile.absolutePath} for $id")
+            try {
+                context.logger.debug("$id metrics: ${networkMetricsMarshaller.fromJson(metricsFile.readText())}")
+            } catch (e: Exception) {
+                context.logger.error(
+                    e,
+                    "Error encountered while trying to load network metrics from ${metricsFile.absolutePath} for $id"
+                )
+            }
             delay(POLL_INTERVAL)
         }
     }
