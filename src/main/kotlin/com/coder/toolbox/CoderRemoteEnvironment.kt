@@ -13,6 +13,7 @@ import com.coder.toolbox.util.waitForFalseWithTimeout
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.EnvironmentView
+import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.remoteDev.AfterDisconnectHook
 import com.jetbrains.toolbox.api.remoteDev.BeforeConnectionHook
 import com.jetbrains.toolbox.api.remoteDev.DeleteEnvironmentConfirmationParams
@@ -52,7 +53,6 @@ class CoderRemoteEnvironment(
     private var wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
 
     override var name: String = "${workspace.name}.${agent.name}"
-
     private var isConnected: MutableStateFlow<Boolean> = MutableStateFlow(false)
     override val connectionRequest: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
@@ -60,7 +60,7 @@ class CoderRemoteEnvironment(
         MutableStateFlow(wsRawStatus.toRemoteEnvironmentState(context))
     override val description: MutableStateFlow<EnvironmentDescription> =
         MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
-
+    override val additionalEnvironmentInformation: MutableMap<LocalizableString, String> = mutableMapOf()
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
 
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
@@ -175,7 +175,12 @@ class CoderRemoteEnvironment(
             }
             context.logger.debug("Loading metrics from ${metricsFile.absolutePath} for $id")
             try {
-                context.logger.debug("$id metrics: ${networkMetricsMarshaller.fromJson(metricsFile.readText())}")
+                val metrics = networkMetricsMarshaller.fromJson(metricsFile.readText())
+                if (metrics == null) {
+                    return@launch
+                }
+                context.logger.debug("$id metrics: $metrics")
+                additionalEnvironmentInformation.put(context.i18n.ptrl("Network Metrics"), metrics.toPretty())
             } catch (e: Exception) {
                 context.logger.error(
                     e,

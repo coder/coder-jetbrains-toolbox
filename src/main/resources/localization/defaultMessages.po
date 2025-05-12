@@ -132,3 +132,6 @@ msgstr ""
 
 msgid "SSH network metrics directory"
 msgstr ""
+
+msgid "Network Metrics"
+msgstr ""

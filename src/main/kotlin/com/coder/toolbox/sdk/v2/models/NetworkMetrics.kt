@@ -30,4 +30,12 @@ data class NetworkMetrics(
 
     @Json(name = "using_coder_connect")
     val usingCoderConnect: Boolean?
-)
+) {
+    fun toPretty(): String {
+        return if (p2p == true) {
+            "Direct (${latency}ms) \u00B7 Download \u2193 $downloadBytesSec b/s \u00B7 Upload \u2191 $uploadBytesSec b/s"
+        } else {
+            "$preferredDerp (${latency}ms) \u00B7 Download \u2193 $downloadBytesSec b/s \u00B7 Upload \u2191 $uploadBytesSec b/s"
+        }
+    }
+}
