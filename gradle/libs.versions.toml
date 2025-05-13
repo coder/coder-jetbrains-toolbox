@@ -14,7 +14,7 @@ retrofit = "2.11.0"
 changelog = "2.2.1"
 gettext = "0.7.0"
 plugin-structure = "3.305"
-mockk = "1.14.0"
+mockk = "1.14.2"
 
 [libraries]
 toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "toolbox-plugin-api" }
