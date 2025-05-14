@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- render network status in the Settings tab, under `Additional environment information` section.
+
 ## 0.2.1 - 2025-05-05
 
 ### Changed

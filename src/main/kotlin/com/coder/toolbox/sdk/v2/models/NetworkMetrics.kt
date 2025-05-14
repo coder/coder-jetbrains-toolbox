@@ -2,6 +2,9 @@ package com.coder.toolbox.sdk.v2.models
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import java.text.DecimalFormat
+
+private val formatter = DecimalFormat("#.00")
 
 /**
  * Coder ssh network metrics. All properties are optional
@@ -32,10 +35,15 @@ data class NetworkMetrics(
     val usingCoderConnect: Boolean?
 ) {
     fun toPretty(): String {
+        if (usingCoderConnect == true) {
+            return "You're connected using Coder Connect"
+        }
         return if (p2p == true) {
-            "Direct (${latency}ms) \u00B7 Download \u2193 $downloadBytesSec b/s \u00B7 Upload \u2191 $uploadBytesSec b/s"
+            "Direct (${formatter.format(latency)}ms). You're connected peer-to-peer"
         } else {
-            "$preferredDerp (${latency}ms) \u00B7 Download \u2193 $downloadBytesSec b/s \u00B7 Upload \u2191 $uploadBytesSec b/s"
+            val derpLatency = derpLatency!![preferredDerp]
+            val workspaceLatency = latency!!.minus(derpLatency!!)
+            "You ↔ $preferredDerp (${formatter.format(derpLatency)}ms) ↔ Workspace (${formatter.format(workspaceLatency)}ms). You are connected through a relay"
         }
     }
 }

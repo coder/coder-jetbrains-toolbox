@@ -180,7 +180,7 @@ class CoderRemoteEnvironment(
                     return@launch
                 }
                 context.logger.debug("$id metrics: $metrics")
-                additionalEnvironmentInformation.put(context.i18n.ptrl("Network Metrics"), metrics.toPretty())
+                additionalEnvironmentInformation.put(context.i18n.ptrl("Network Status"), metrics.toPretty())
             } catch (e: Exception) {
                 context.logger.error(
                     e,
