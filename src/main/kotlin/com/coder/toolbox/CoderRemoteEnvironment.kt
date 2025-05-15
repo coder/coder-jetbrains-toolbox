@@ -2,15 +2,18 @@ package com.coder.toolbox
 
 import com.coder.toolbox.browser.BrowserUtil
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.cli.SshCommandProcessHandle
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.sdk.v2.models.NetworkMetrics
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.util.waitForFalseWithTimeout
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.EnvironmentView
+import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.remoteDev.AfterDisconnectHook
 import com.jetbrains.toolbox.api.remoteDev.BeforeConnectionHook
 import com.jetbrains.toolbox.api.remoteDev.DeleteEnvironmentConfirmationParams
@@ -20,14 +23,20 @@ import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
 import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
+import com.squareup.moshi.Moshi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import java.io.File
+import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+
+private val POLL_INTERVAL = 5.seconds
 
 /**
  * Represents an agent and workspace combination.
@@ -44,7 +53,6 @@ class CoderRemoteEnvironment(
     private var wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
 
     override var name: String = "${workspace.name}.${agent.name}"
-
     private var isConnected: MutableStateFlow<Boolean> = MutableStateFlow(false)
     override val connectionRequest: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
@@ -52,8 +60,12 @@ class CoderRemoteEnvironment(
         MutableStateFlow(wsRawStatus.toRemoteEnvironmentState(context))
     override val description: MutableStateFlow<EnvironmentDescription> =
         MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
-
+    override val additionalEnvironmentInformation: MutableMap<LocalizableString, String> = mutableMapOf()
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
+
+    private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
+    private val proxyCommandHandle = SshCommandProcessHandle(context)
+    private var pollJob: Job? = null
 
     fun asPairOfWorkspaceAndAgent(): Pair<Workspace, WorkspaceAgent> = Pair(workspace, agent)
 
@@ -141,9 +153,49 @@ class CoderRemoteEnvironment(
     override fun beforeConnection() {
         context.logger.info("Connecting to $id...")
         isConnected.update { true }
+        pollJob = pollNetworkMetrics()
     }
 
+    private fun pollNetworkMetrics(): Job = context.cs.launch {
+        context.logger.info("Starting the network metrics poll job for $id")
+        while (isActive) {
+            context.logger.debug("Searching SSH command's PID for workspace $id...")
+            val pid = proxyCommandHandle.findByWorkspaceAndAgent(workspace, agent)
+            if (pid == null) {
+                context.logger.debug("No SSH command PID was found for workspace $id")
+                delay(POLL_INTERVAL)
+                continue
+            }
+
+            val metricsFile = Path.of(context.settingsStore.networkInfoDir, "$pid.json").toFile()
+            if (metricsFile.doesNotExists()) {
+                context.logger.debug("No metrics file found at ${metricsFile.absolutePath} for $id")
+                delay(POLL_INTERVAL)
+                continue
+            }
+            context.logger.debug("Loading metrics from ${metricsFile.absolutePath} for $id")
+            try {
+                val metrics = networkMetricsMarshaller.fromJson(metricsFile.readText())
+                if (metrics == null) {
+                    return@launch
+                }
+                context.logger.debug("$id metrics: $metrics")
+                additionalEnvironmentInformation.put(context.i18n.ptrl("Network Status"), metrics.toPretty())
+            } catch (e: Exception) {
+                context.logger.error(
+                    e,
+                    "Error encountered while trying to load network metrics from ${metricsFile.absolutePath} for $id"
+                )
+            }
+            delay(POLL_INTERVAL)
+        }
+    }
+
+    private fun File.doesNotExists(): Boolean = !this.exists()
+
     override fun afterDisconnect() {
+        context.logger.info("Stopping the network metrics poll job for $id")
+        pollJob?.cancel()
         this.connectionRequest.update { false }
         isConnected.update { false }
         context.logger.info("Disconnected from $id")

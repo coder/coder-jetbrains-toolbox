@@ -56,6 +56,8 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
         TextField(context.i18n.ptrl("Extra SSH options"), settings.sshConfigOptions ?: "", TextType.General)
     private val sshLogDirField =
         TextField(context.i18n.ptrl("SSH proxy log directory"), settings.sshLogDirectory ?: "", TextType.General)
+    private val networkInfoDirField =
+        TextField(context.i18n.ptrl("SSH network metrics directory"), settings.networkInfoDir, TextType.General)
 
 
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
@@ -73,6 +75,7 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
             disableAutostartField,
             enableSshWildCardConfig,
             sshLogDirField,
+            networkInfoDirField,
             sshExtraArgs,
         )
     )
@@ -104,6 +107,7 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
                     }
                 }
                 context.settingsStore.updateSshLogDir(sshLogDirField.textState.value)
+                context.settingsStore.updateNetworkInfoDir(networkInfoDirField.textState.value)
                 context.settingsStore.updateSshConfigOptions(sshExtraArgs.textState.value)
             }
         )

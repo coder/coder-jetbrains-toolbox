@@ -110,6 +110,12 @@ interface ReadOnlyCoderSettings {
      */
     val sshConfigOptions: String?
 
+
+    /**
+     * The path where network information for SSH hosts are stored
+     */
+    val networkInfoDir: String
+
     /**
      * The default URL to show in the connection window.
      */
