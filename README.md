@@ -137,6 +137,42 @@ mitmproxy can do HTTP and SOCKS5 proxying. To configure one or the other:
 5. Before authenticating to the Coder deployment we need to tell the plugin where can we find mitmproxy
    certificates. In Coder's Settings page, set the `TLS CA path` to `~/.mitmproxy/mitmproxy-ca-cert.pem`
 
+## Debugging and Reporting issues
+
+Enabling debug logging is essential for diagnosing issues with the Toolbox plugin, especially when SSH 
+connections to the remote environment fail — it provides detailed output that includes SSH negotiation 
+and command execution, which is not visible at the default log level.
+
+If you encounter a problem with Coder's JetBrains Toolbox plugin, follow the steps below to gather more 
+information and help us diagnose and resolve it quickly.
+
+### Enable Debug Logging 🔍
+
+To help with troubleshooting or to gain more insight into the behavior of the plugin and the SSH connection to
+the workspace, you can increase the log level to _DEBUG_.
+
+Steps to Enable Debug Logging:
+
+1. Open Toolbox
+
+2. Navigate to the Toolbox App Menu (hexagonal menu icon) > Settings > Advanced.
+
+3. In the screen that appears, select _DEBUG_ for the `Log level:` section.
+
+4. Hit the back button at the top. 
+
+There is no need to restart Toolbox, as it will begin logging at the DEBUG level right away.
+
+⚠️ Toolbox does not persist log level configuration between restarts.
+
+#### Viewing the Logs
+
+Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly 
+via Toolbox App Menu > About > Show log files.
+
+Alternatively, you can generate a ZIP file using the Workspace Action Menu, available either on the main 
+Workspaces page in Coder or within the individual workspace view, under the option labeled _Collect logs_.
+
 ## Releasing
 
 1. Check that the changelog lists all the important changes.
