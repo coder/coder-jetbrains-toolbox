@@ -170,8 +170,73 @@ There is no need to restart Toolbox, as it will begin logging at the DEBUG level
 Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly 
 via Toolbox App Menu > About > Show log files.
 
-Alternatively, you can generate a ZIP file using the Workspace Action Menu, available either on the main 
+Alternatively, you can generate a ZIP file using the Workspace action menu, available either on the main 
 Workspaces page in Coder or within the individual workspace view, under the option labeled _Collect logs_.
+
+## Coder Settings
+
+The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data
+storage paths. The options can be configured from the plugin's main Workspaces page > deployment action menu > Settings.
+
+### CLI related settings 
+
+```Binary source``` specifies the source URL or relative path from which the Coder CLI should be downloaded.
+If a relative path is provided, it is resolved against the deployment domain.
+
+```Enable downloads``` allows automatic downloading of the CLI if the current version is missing or outdated.
+
+```Binary directory``` specifies the directory where CLI binaries are stored. If omitted, it defaults to the data directory.
+
+```Enable binary directory fallback``` if enabled, falls back to the data directory when the specified binary
+directory is not writable.
+
+```Data directory``` directory where plugin-specific data such as session tokens and binaries are stored if not 
+overridden by the binary directory setting.
+
+```Header command``` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
+The environment variable CODER_URL will be available to the command process.
+
+### TLS settings
+
+The following options control the secure communication behavior of the plugin with Coder deployment and its available API.
+
+```TLS cert path``` path to a client certificate file for TLS authentication with Coder deployment.
+The certificate should be in X.509 PEM format.
+
+```TLS key path``` path to the private key corresponding to the TLS certificate from above.
+The certificate should be in X.509 PEM format.
+
+```TLS CA path``` the path of a file containing certificates for an alternate certificate authority used to verify TLS
+certs returned by the Coder deployment. The file should be in X.509 PEM format. This option can also be used to verify
+proxy certificates.
+
+```TLS alternate hostname``` overrides the hostname used in TLS verification. This is useful when the hostname 
+used to connect to the Coder deployment does not match the hostname in the TLS certificate.
+
+### SSH settings
+
+The following options control the SSH behavior of the Coder CLI.
+
+```Disable autostart``` adds the --disable-autostart flag to the SSH proxy command, preventing the CLI from keeping
+workspaces constantly active.
+
+```Enable SSH wildcard config``` enables or disables wildcard entries in the SSH configuration, which allow generic
+rules for matching multiple workspaces.
+
+```SSH proxy log directory``` directory where SSH proxy logs are written. Useful for debugging SSH connection issues.
+
+```SSH network metrics directory``` directory where network information used by the SSH proxy is stored.
+
+```Extra SSH options``` additional options appended to the SSH configuration. Can be used to customize the behavior of SSH connections.
+
+### Saving Changes
+
+Changes made in the settings page are saved by clicking the Save button. Some changes, like toggling SSH wildcard support,
+may trigger regeneration of SSH configurations.
+
+### Security considerations
+
+> ⚠️ **Attention:** Token authentication is required when TLS certificates are not configured.
 
 ## Releasing
 
