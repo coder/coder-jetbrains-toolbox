@@ -146,12 +146,12 @@ and command execution, which is not visible at the default log level.
 If you encounter a problem with Coder's JetBrains Toolbox plugin, follow the steps below to gather more 
 information and help us diagnose and resolve it quickly.
 
-### Enable Debug Logging 🔍
+### Enable Debug Logging
 
 To help with troubleshooting or to gain more insight into the behavior of the plugin and the SSH connection to
 the workspace, you can increase the log level to _DEBUG_.
 
-Steps to Enable Debug Logging:
+Steps to enable debug logging:
 
 1. Open Toolbox
 
@@ -161,7 +161,7 @@ Steps to Enable Debug Logging:
 
 4. Hit the back button at the top. 
 
-There is no need to restart Toolbox, as it will begin logging at the DEBUG level right away.
+There is no need to restart Toolbox, as it will begin logging at the __DEBUG__ level right away.
 
 > ⚠️ **Attention:** Toolbox does not persist log level configuration between restarts.
 
