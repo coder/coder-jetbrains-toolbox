@@ -1,10 +1,12 @@
 package com.coder.toolbox
 
+import com.coder.toolbox.browser.BrowserUtil
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
+import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.AuthWizardPage
 import com.coder.toolbox.views.CoderSettingsPage
@@ -14,9 +16,11 @@ import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.core.util.LoadableState
+import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
 import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
+import com.jetbrains.toolbox.api.ui.actions.ActionDelimiter
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -184,6 +188,14 @@ class CoderRemoteProvider(
 
     override val additionalPluginActions: StateFlow<List<ActionDescription>> = MutableStateFlow(
         listOf(
+            Action(context.i18n.ptrl("Create workspace")) {
+                context.cs.launch {
+                    BrowserUtil.browse(client?.url?.withPath("/templates").toString()) {
+                        context.ui.showErrorInfoPopup(it)
+                    }
+                }
+            },
+            CoderDelimiter(context.i18n.pnotr("")),
             Action(context.i18n.ptrl("Settings")) {
                 context.ui.showUiPage(settingsPage)
             },
@@ -338,3 +350,5 @@ class CoderRemoteProvider(
         }
     }
 }
+
+private class CoderDelimiter(override val label: LocalizableString) : ActionDelimiter
