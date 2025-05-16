@@ -163,7 +163,7 @@ Steps to Enable Debug Logging:
 
 There is no need to restart Toolbox, as it will begin logging at the DEBUG level right away.
 
-⚠️ Toolbox does not persist log level configuration between restarts.
+> ⚠️ **Attention:** Toolbox does not persist log level configuration between restarts.
 
 #### Viewing the Logs
 
