@@ -10,7 +10,7 @@ Connects your JetBrains IDE to Coder workspaces
 
 To install this plugin using JetBrains Toolbox, follow the steps below.
 
-1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/). Make sure it's the `2.6.0.40284` release or
+1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/). Make sure it's the `2.6.0.40632` release or
    above.
 2. Launch the Toolbox app and sign in with your JetBrains account (if needed).
 
