@@ -70,29 +70,32 @@ class CoderRemoteEnvironment(
     fun asPairOfWorkspaceAndAgent(): Pair<Workspace, WorkspaceAgent> = Pair(workspace, agent)
 
     private fun getAvailableActions(): List<ActionDescription> {
-        val actions = mutableListOf(
-            Action(context.i18n.ptrl("Open web terminal")) {
+        val actions = mutableListOf<Action>()
+        if (wsRawStatus.canStop()) {
+            actions.add(Action(context.i18n.ptrl("Open web terminal")) {
                 context.cs.launch {
                     BrowserUtil.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
                         context.ui.showErrorInfoPopup(it)
                     }
                 }
-            },
+            })
+        }
+        actions.add(
             Action(context.i18n.ptrl("Open in dashboard")) {
                 context.cs.launch {
                     BrowserUtil.browse(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()) {
                         context.ui.showErrorInfoPopup(it)
                     }
                 }
-            },
-
-            Action(context.i18n.ptrl("View template")) {
-                context.cs.launch {
-                    BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
-                        context.ui.showErrorInfoPopup(it)
-                    }
-                }
             })
+
+        actions.add(Action(context.i18n.ptrl("View template")) {
+            context.cs.launch {
+                BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
+                    context.ui.showErrorInfoPopup(it)
+                }
+            }
+        })
 
         if (wsRawStatus.canStart()) {
             if (workspace.outdated) {
