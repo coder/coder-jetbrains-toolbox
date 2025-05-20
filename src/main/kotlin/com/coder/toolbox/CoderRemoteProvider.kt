@@ -1,6 +1,6 @@
 package com.coder.toolbox
 
-import com.coder.toolbox.browser.BrowserUtil
+import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
@@ -190,7 +190,7 @@ class CoderRemoteProvider(
         listOf(
             Action(context.i18n.ptrl("Create workspace")) {
                 context.cs.launch {
-                    BrowserUtil.browse(client?.url?.withPath("/templates").toString()) {
+                    context.desktop.browse(client?.url?.withPath("/templates").toString()) {
                         context.ui.showErrorInfoPopup(it)
                     }
                 }

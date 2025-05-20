@@ -1,7 +1,7 @@
 package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.browser.BrowserUtil
+import com.coder.toolbox.browser.browse
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.TextType
 import java.net.URL
@@ -23,12 +23,7 @@ class DialogUi(private val context: CoderToolboxContext) {
         placeholder: LocalizableString? = null,
     ): String? {
         return context.ui.showTextInputPopup(
-            title,
-            description,
-            placeholder,
-            TextType.General,
-            context.i18n.ptrl("OK"),
-            context.i18n.ptrl("Cancel")
+            title, description, placeholder, TextType.General, context.i18n.ptrl("OK"), context.i18n.ptrl("Cancel")
         )
     }
 
@@ -38,17 +33,12 @@ class DialogUi(private val context: CoderToolboxContext) {
         placeholder: LocalizableString? = null,
     ): String? {
         return context.ui.showTextInputPopup(
-            title,
-            description,
-            placeholder,
-            TextType.Password,
-            context.i18n.ptrl("OK"),
-            context.i18n.ptrl("Cancel")
+            title, description, placeholder, TextType.Password, context.i18n.ptrl("OK"), context.i18n.ptrl("Cancel")
         )
     }
 
     private suspend fun openUrl(url: URL) {
-        BrowserUtil.browse(url.toString()) {
+        context.desktop.browse(url.toString()) {
             context.ui.showErrorInfoPopup(it)
         }
     }

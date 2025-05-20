@@ -1,66 +1,19 @@
 package com.coder.toolbox.browser
 
-import com.coder.toolbox.util.OS
-import com.coder.toolbox.util.getOS
-import org.zeroturnaround.exec.ProcessExecutor
+import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
+import java.net.URI
 
-class BrowserUtil {
-    companion object {
-        suspend fun browse(url: String, errorHandler: suspend (BrowserException) -> Unit) {
-            val os = getOS()
-            if (os == null) {
-                errorHandler(BrowserException("Failed to open the URL because we can't detect the OS"))
-                return
-            }
-            when (os) {
-                OS.LINUX -> linuxBrowse(url, errorHandler)
-                OS.MAC -> macBrowse(url, errorHandler)
-                OS.WINDOWS -> windowsBrowse(url, errorHandler)
-            }
-        }
 
-        private suspend fun linuxBrowse(url: String, errorHandler: suspend (BrowserException) -> Unit) {
-            try {
-                if (OS.LINUX.getDesktopEnvironment()?.uppercase()?.contains("GNOME") == true) {
-                    exec("gnome-open", url)
-                } else {
-                    exec("xdg-open", url)
-                }
-            } catch (e: Exception) {
-                errorHandler(
-                    BrowserException(
-                        "Failed to open URL because an error was encountered. Please make sure xdg-open from package xdg-utils is available!",
-                        e
-                    )
-                )
-            }
-        }
-
-        private suspend fun macBrowse(url: String, errorHandler: suspend (BrowserException) -> Unit) {
-            try {
-                exec("open", url)
-            } catch (e: Exception) {
-                errorHandler(BrowserException("Failed to open URL because an error was encountered.", e))
-            }
-        }
-
-        private suspend fun windowsBrowse(url: String, errorHandler: suspend (BrowserException) -> Unit) {
-            try {
-                exec("cmd", "start \"$url\"")
-            } catch (e: Exception) {
-                errorHandler(BrowserException("Failed to open URL because an error was encountered.", e))
-            }
-        }
-
-        private fun exec(vararg args: String): String {
-            val stdout =
-                ProcessExecutor()
-                    .command(*args)
-                    .exitValues(0)
-                    .readOutput(true)
-                    .execute()
-                    .outputUTF8()
-            return stdout
-        }
+suspend fun LocalDesktopManager.browse(rawUrl: String, errorHandler: suspend (BrowserException) -> Unit) {
+    try {
+        val url = URI.create(rawUrl).toURL()
+        this.openUrl(url)
+    } catch (e: Exception) {
+        errorHandler(
+            BrowserException(
+                "Failed to open $rawUrl because an error was encountered",
+                e
+            )
+        )
     }
 }
