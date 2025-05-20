@@ -1,6 +1,6 @@
 package com.coder.toolbox
 
-import com.coder.toolbox.browser.BrowserUtil
+import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.SshCommandProcessHandle
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
@@ -74,7 +74,7 @@ class CoderRemoteEnvironment(
         if (wsRawStatus.canStop()) {
             actions.add(Action(context.i18n.ptrl("Open web terminal")) {
                 context.cs.launch {
-                    BrowserUtil.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
+                    context.desktop.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
                         context.ui.showErrorInfoPopup(it)
                     }
                 }
@@ -83,7 +83,9 @@ class CoderRemoteEnvironment(
         actions.add(
             Action(context.i18n.ptrl("Open in dashboard")) {
                 context.cs.launch {
-                    BrowserUtil.browse(client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()) {
+                    context.desktop.browse(
+                        client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()
+                    ) {
                         context.ui.showErrorInfoPopup(it)
                     }
                 }
@@ -91,7 +93,7 @@ class CoderRemoteEnvironment(
 
         actions.add(Action(context.i18n.ptrl("View template")) {
             context.cs.launch {
-                BrowserUtil.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
+                context.desktop.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
                     context.ui.showErrorInfoPopup(it)
                 }
             }

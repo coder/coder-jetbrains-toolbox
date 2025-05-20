@@ -10,6 +10,7 @@
 ### Fixed
 
 - `Open web terminal` action is no longer displayed when the workspace is stopped.
+- URL links can now be opened in Windows
 
 ## 0.2.1 - 2025-05-05
 
