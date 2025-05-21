@@ -11,6 +11,9 @@ import com.jetbrains.toolbox.api.remoteDev.states.CustomRemoteEnvironmentState
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateIcons
 import com.jetbrains.toolbox.api.remoteDev.states.StandardRemoteEnvironmentState
 
+
+private val CircularSpinner: EnvironmentStateIcons = EnvironmentStateIcons.Connecting
+
 /**
  * WorkspaceAndAgentStatus represents the combined status of a single agent and
  * its workspace (or just the workspace if there are no agents).
@@ -71,7 +74,7 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
     private fun getStateColor(context: CoderToolboxContext): StateColor {
         return if (ready()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Active)
         else if (unhealthy()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Unhealthy)
-        else if (canStart()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Failed)
+        else if (canStart() || this == STOPPING) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Hibernating)
         else if (pending()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Activating)
         else if (this == DELETING) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
         else if (this == DELETED) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
@@ -80,10 +83,19 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
 
     private fun getStateIcon(): EnvironmentStateIcons {
         return if (ready() || unhealthy()) EnvironmentStateIcons.Active
-        else if (canStart()) EnvironmentStateIcons.Hibernated
-        else if (pending()) EnvironmentStateIcons.Connecting
-        else if (this == DELETING || this == DELETED) EnvironmentStateIcons.Offline
+        else if (canStart()) EnvironmentStateIcons.Offline
+        else if (pending() || this == DELETING || this == DELETED || this == STOPPING) CircularSpinner
         else EnvironmentStateIcons.NoIcon
+    }
+
+    fun toSshConnectingEnvState(context: CoderToolboxContext): CustomRemoteEnvironmentState {
+        val existingState = toRemoteEnvironmentState(context)
+        return CustomRemoteEnvironmentState(
+            "SSHing",
+            existingState.color,
+            existingState.isReachable,
+            EnvironmentStateIcons.Connecting
+        )
     }
 
     /**

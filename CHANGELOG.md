@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- improved workspace status reporting (icon and colors) when it is stopping, deleting, stopped or when we are
+  establishing the SSH connection.
+
 ## 0.2.2 - 2025-05-21
 
 ### Added
