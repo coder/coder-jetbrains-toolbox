@@ -53,6 +53,10 @@ abstract class CoderPage(
             )
         }
     }
+
+    companion object {
+        fun emptyPage(ctx: CoderToolboxContext): UiPage = UiPage(ctx.i18n.pnotr(""))
+    }
 }
 
 /**
