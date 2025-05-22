@@ -3,9 +3,9 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.withPath
+import com.coder.toolbox.views.state.AuthContext
 import com.coder.toolbox.views.state.AuthWizardState
 import com.jetbrains.toolbox.api.localization.LocalizableString
-import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.LinkField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
@@ -20,15 +20,16 @@ import kotlinx.coroutines.flow.update
  * Populate with the provided token, at which point the user can accept or
  * enter their own.
  */
-class TokenStep(private val context: CoderToolboxContext) : WizardStep {
+class TokenStep(
+    private val context: CoderToolboxContext,
+    private val authContext: AuthContext
+) : WizardStep {
     private val tokenField = TextField(context.i18n.ptrl("Token"), "", TextType.Password)
-    private val descriptionField = LabelField(context.i18n.pnotr(""))
     private val linkField = LinkField(context.i18n.ptrl("Get a token"), "")
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
 
     override val panel: RowGroup = RowGroup(
         RowGroup.RowField(tokenField),
-        RowGroup.RowField(descriptionField),
         RowGroup.RowField(linkField),
         RowGroup.RowField(errorField)
     )
@@ -39,13 +40,11 @@ class TokenStep(private val context: CoderToolboxContext) : WizardStep {
             context.i18n.pnotr("")
         }
         tokenField.textState.update {
-            context.getToken(context.deploymentUrl?.first)?.first ?: ""
-        }
-        descriptionField.textState.update {
-            context.i18n.pnotr(
-                context.getToken(context.deploymentUrl?.first)?.second?.description("token")
-                    ?: "No existing token for ${context.deploymentUrl} found."
-            )
+            if (authContext.hasUrl()) {
+                context.secrets.tokenFor(authContext.url!!) ?: ""
+            } else {
+                ""
+            }
         }
         (linkField.urlState as MutableStateFlow).update {
             context.deploymentUrl?.first?.toURL()?.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
@@ -59,7 +58,7 @@ class TokenStep(private val context: CoderToolboxContext) : WizardStep {
             return false
         }
 
-        context.secrets.lastToken = token
+        authContext.token = token
         AuthWizardState.goToNextStep()
         return true
     }

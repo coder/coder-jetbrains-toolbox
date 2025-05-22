@@ -5,7 +5,7 @@ import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.util.toURL
+import com.coder.toolbox.views.state.AuthContext
 import com.coder.toolbox.views.state.AuthWizardState
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.LabelField
@@ -25,6 +25,7 @@ private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
  */
 class ConnectStep(
     private val context: CoderToolboxContext,
+    private val authContext: AuthContext,
     private val shouldAutoLogin: StateFlow<Boolean>,
     private val notify: (String, Throwable) -> Unit,
     private val refreshWizard: () -> Unit,
@@ -49,9 +50,9 @@ class ConnectStep(
         errorField.textState.update {
             context.i18n.pnotr("")
         }
+        if (authContext.isNotReadyForAuth()) return
 
-        val url = context.deploymentUrl?.first?.toURL()
-        statusField.textState.update { context.i18n.pnotr("Connecting to ${url?.host}...") }
+        statusField.textState.update { context.i18n.pnotr("Connecting to ${authContext.url!!.host}...") }
         connect()
     }
 
@@ -59,8 +60,8 @@ class ConnectStep(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
-        val url = context.deploymentUrl?.first?.toURL()
-        val token = context.getToken(context.deploymentUrl?.first)?.first
+        val url = authContext.url
+        val token = authContext.token
         if (url == null) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return
@@ -96,6 +97,8 @@ class ConnectStep(
                 // allows interleaving with the back/cancel action
                 yield()
                 onConnect(client, cli)
+
+                authContext.reset()
                 AuthWizardState.resetSteps()
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {

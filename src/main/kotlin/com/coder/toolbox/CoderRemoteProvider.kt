@@ -335,6 +335,7 @@ class CoderRemoteProvider(
         // Store the URL and token for use next time.
         context.secrets.lastDeploymentURL = client.url.toString()
         context.secrets.lastToken = client.token ?: ""
+        context.secrets.storeTokenFor(client.url, context.secrets.lastToken)
         // Currently we always remember, but this could be made an option.
         context.secrets.rememberMe = true
         this.client = client

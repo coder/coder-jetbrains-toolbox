@@ -7,6 +7,10 @@
 - improved workspace status reporting (icon and colors) when it is failed, stopping, deleting, stopped or when we are
   establishing the SSH connection.
 
+### Fixed
+
+- tokens are now remembered after switching between multiple deployments
+
 ## 0.2.2 - 2025-05-21
 
 ### Added
