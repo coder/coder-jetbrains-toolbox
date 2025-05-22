@@ -72,19 +72,21 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
     }
 
     private fun getStateColor(context: CoderToolboxContext): StateColor {
-        return if (ready()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Active)
+        return if (this == FAILED) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.FailedToStart)
+        else if (this == DELETING) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
+        else if (this == DELETED) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
+        else if (ready()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Active)
         else if (unhealthy()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Unhealthy)
         else if (canStart() || this == STOPPING) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Hibernating)
         else if (pending()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Activating)
-        else if (this == DELETING) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
-        else if (this == DELETED) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
         else context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Unreachable)
     }
 
     private fun getStateIcon(): EnvironmentStateIcons {
-        return if (ready() || unhealthy()) EnvironmentStateIcons.Active
-        else if (canStart()) EnvironmentStateIcons.Offline
+        return if (this == FAILED) EnvironmentStateIcons.Error
         else if (pending() || this == DELETING || this == DELETED || this == STOPPING) CircularSpinner
+        else if (ready() || unhealthy()) EnvironmentStateIcons.Active
+        else if (canStart()) EnvironmentStateIcons.Offline
         else EnvironmentStateIcons.NoIcon
     }
 
