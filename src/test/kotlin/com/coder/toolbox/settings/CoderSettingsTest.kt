@@ -3,7 +3,6 @@ package com.coder.toolbox.settings
 import com.coder.toolbox.store.BINARY_NAME
 import com.coder.toolbox.store.CODER_SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.CoderSettingsStore
-import com.coder.toolbox.store.DEFAULT_URL
 import com.coder.toolbox.store.DISABLE_AUTOSTART
 import com.coder.toolbox.store.ENABLE_BINARY_DIR_FALLBACK
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
@@ -275,108 +274,6 @@ internal class CoderSettingsTest {
             Environment(), logger
         )
         assertEquals(false, settings.readOnly().requireTokenAuth)
-    }
-
-    @Test
-    fun testDefaultURL() {
-        val tmp = Path.of(System.getProperty("java.io.tmpdir"))
-        val dir = tmp.resolve("coder-toolbox-test/test-default-url")
-        var env = Environment(mapOf("CODER_CONFIG_DIR" to dir.toString()))
-        dir.toFile().deleteRecursively()
-
-        // No config.
-        var settings = CoderSettingsStore(pluginTestSettingsStore(), env, logger)
-        assertEquals(null, settings.defaultURL())
-
-        // Read from global config.
-        val globalConfigPath = Path.of(settings.readOnly().globalConfigDir)
-        globalConfigPath.toFile().mkdirs()
-        globalConfigPath.resolve("url").toFile().writeText("url-from-global-config")
-        settings = CoderSettingsStore(pluginTestSettingsStore(), env, logger)
-        assertEquals("url-from-global-config" to SettingSource.CONFIG, settings.defaultURL())
-
-        // Read from environment.
-        env =
-            Environment(
-                mapOf(
-                    "CODER_URL" to "url-from-env",
-                    "CODER_CONFIG_DIR" to dir.toString(),
-                ),
-            )
-        settings = CoderSettingsStore(pluginTestSettingsStore(), env, logger)
-        assertEquals("url-from-env" to SettingSource.ENVIRONMENT, settings.defaultURL())
-
-        // Read from settings.
-        settings =
-            CoderSettingsStore(
-                pluginTestSettingsStore(
-                    DEFAULT_URL to "url-from-settings",
-                ),
-                env,
-                logger
-            )
-        assertEquals("url-from-settings" to SettingSource.SETTINGS, settings.defaultURL())
-    }
-
-    @Test
-    fun testToken() {
-        val tmp = Path.of(System.getProperty("java.io.tmpdir"))
-        val url = URL("http://test.deployment.coder.com")
-        val dir = tmp.resolve("coder-toolbox-test/test-default-token")
-        val env =
-            Environment(
-                mapOf(
-                    "CODER_CONFIG_DIR" to dir.toString(),
-                    "LOCALAPPDATA" to dir.toString(),
-                    "XDG_DATA_HOME" to dir.toString(),
-                    "HOME" to dir.toString(),
-                ),
-            )
-        dir.toFile().deleteRecursively()
-
-        // No config.
-        var settings = CoderSettingsStore(pluginTestSettingsStore(), env, logger)
-        assertEquals(null, settings.readOnly().token(url))
-
-        val globalConfigPath = Path.of(settings.readOnly().globalConfigDir)
-        globalConfigPath.toFile().mkdirs()
-        globalConfigPath.resolve("url").toFile().writeText(url.toString())
-        globalConfigPath.resolve("session").toFile().writeText("token-from-global-config")
-
-        // Ignore global config if it does not match.
-        assertEquals(null, settings.readOnly().token(URL("http://some.random.url")))
-
-        // Read from global config.
-        assertEquals("token-from-global-config" to SettingSource.CONFIG, settings.readOnly().token(url))
-
-        // Compares exactly.
-        assertEquals(null, settings.readOnly().token(url.withPath("/test")))
-
-        val deploymentConfigPath = settings.readOnly().dataDir(url).resolve("config")
-        deploymentConfigPath.toFile().mkdirs()
-        deploymentConfigPath.resolve("url").toFile().writeText("url-from-deployment-config")
-        deploymentConfigPath.resolve("session").toFile().writeText("token-from-deployment-config")
-
-        // Read from deployment config.
-        assertEquals("token-from-deployment-config" to SettingSource.DEPLOYMENT_CONFIG, settings.readOnly().token(url))
-
-        // Only compares host .
-        assertEquals(
-            "token-from-deployment-config" to SettingSource.DEPLOYMENT_CONFIG,
-            settings.readOnly().token(url.withPath("/test"))
-        )
-
-        // Ignore if using mTLS.
-        settings =
-            CoderSettingsStore(
-                pluginTestSettingsStore(
-                    TLS_KEY_PATH to "key",
-                    TLS_CERT_PATH to "cert",
-                ),
-                env,
-                logger
-            )
-        assertEquals(null, settings.readOnly().token(url))
     }
 
     @Test

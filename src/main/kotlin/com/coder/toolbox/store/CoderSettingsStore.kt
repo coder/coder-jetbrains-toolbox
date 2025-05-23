@@ -3,7 +3,6 @@ package com.coder.toolbox.store
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.settings.ReadOnlyCoderSettings
 import com.coder.toolbox.settings.ReadOnlyTLSSettings
-import com.coder.toolbox.settings.SettingSource
 import com.coder.toolbox.util.Arch
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.expand
@@ -35,7 +34,7 @@ class CoderSettingsStore(
     ) : ReadOnlyTLSSettings
 
     // Properties implementation
-    override val defaultURL: String? get() = store[DEFAULT_URL]
+    override val defaultURL: String get() = store[DEFAULT_URL] ?: "https://dev.coder.com"
     override val binarySource: String? get() = store[BINARY_SOURCE]
     override val binaryDirectory: String? get() = store[BINARY_DIRECTORY]
     override val defaultCliBinaryNameByOsAndArch: String get() = getCoderCLIForOS(getOS(), getArch())
@@ -70,48 +69,6 @@ class CoderSettingsStore(
             .resolve("ssh-network-metrics")
             .normalize()
             .toString()
-
-    /**
-     * The default URL to show in the connection window.
-     */
-    override fun defaultURL(): Pair<String, SettingSource>? {
-        val envURL = env.get(CODER_URL)
-        if (!defaultURL.isNullOrEmpty()) {
-            return defaultURL!! to SettingSource.SETTINGS
-        } else if (envURL.isNotBlank()) {
-            return envURL to SettingSource.ENVIRONMENT
-        } else {
-            val (configUrl, _) = readConfig(Path.of(globalConfigDir))
-            if (!configUrl.isNullOrBlank()) {
-                return configUrl to SettingSource.CONFIG
-            }
-        }
-        return null
-    }
-
-    /**
-     * Given a deployment URL, try to find a token for it if required.
-     */
-    override fun token(deploymentURL: URL): Pair<String, SettingSource>? {
-        // No need to bother if we do not need token auth anyway.
-        if (!requireTokenAuth) {
-            return null
-        }
-        // Try the deployment's config directory.  This could exist if someone
-        // has entered a URL that they are not currently connected to, but have
-        // connected to in the past.
-        val (_, deploymentToken) = readConfig(dataDir(deploymentURL).resolve("config"))
-        if (!deploymentToken.isNullOrBlank()) {
-            return deploymentToken to SettingSource.DEPLOYMENT_CONFIG
-        }
-        // Try the global config directory, in case they previously set up the
-        // CLI with this URL.
-        val (configUrl, configToken) = readConfig(Path.of(globalConfigDir))
-        if (configUrl == deploymentURL.toString() && !configToken.isNullOrBlank()) {
-            return configToken to SettingSource.CONFIG
-        }
-        return null
-    }
 
     /**
      * Where the specified deployment should put its data.

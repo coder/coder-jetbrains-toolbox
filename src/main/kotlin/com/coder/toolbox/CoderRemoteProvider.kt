@@ -64,7 +64,7 @@ class CoderRemoteProvider(
     // On the first load, automatically log in if we can.
     private var firstRun = true
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
-    private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(context.deploymentUrl?.first ?: ""))
+    private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(context.deploymentUrl.toString()))
     private val linkHandler = CoderProtocolHandler(context, dialogUi, isInitialized)
     override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
         LoadableState.Loading
