@@ -9,6 +9,7 @@ import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.AuthWizardPage
+import com.coder.toolbox.views.CoderPage
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.NewEnvironmentPage
 import com.coder.toolbox.views.state.AuthWizardState
@@ -341,7 +342,9 @@ class CoderRemoteProvider(
         this.client = client
         pollJob?.cancel()
         environments.showLoadingMessage()
+        coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(client.url.toString()))
         pollJob = poll(client, cli)
+        context.ui.showUiPage(CoderPage.emptyPage(context))
         goToEnvironmentsPage()
     }
 
