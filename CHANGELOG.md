@@ -7,9 +7,11 @@
 - improved workspace status reporting (icon and colors) when it is failed, stopping, deleting, stopped or when we are
   establishing the SSH connection.
 
-## 0.2.2 - 2025-05-21
+### Fixed
 
-### Added
+- url on the main page is now refreshed when switching between multiple deployments (via logout/login or URI handling)
+
+## 0.2.2 - 2025-05-21
 
 - render network status in the Settings tab, under `Additional environment information` section.
 - quick action for creating new workspaces from the web dashboard.
