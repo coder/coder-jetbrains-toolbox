@@ -11,7 +11,7 @@ import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
 import kotlinx.coroutines.flow.update
 import java.net.MalformedURLException
-import java.net.URI
+import java.net.URL
 
 /**
  * A page with a field for providing the Coder deployment URL.
@@ -21,7 +21,6 @@ import java.net.URI
  */
 class SignInStep(
     private val context: CoderToolboxContext,
-    private val authContext: AuthContext,
     private val notify: (String, Throwable) -> Unit
 ) :
     WizardStep {
@@ -56,12 +55,11 @@ class SignInStep(
             url
         }
         try {
-            validateRawUrl(url)
+            AuthContext.url = validateRawUrl(url)
         } catch (e: MalformedURLException) {
             notify("URL is invalid", e)
             return false
         }
-        authContext.url = URI.create(url).toURL()
         AuthWizardState.goToNextStep()
         return true
     }
@@ -69,9 +67,9 @@ class SignInStep(
     /**
      * Throws [MalformedURLException] if the given string violates RFC-2396
      */
-    private fun validateRawUrl(url: String) {
+    private fun validateRawUrl(url: String): URL {
         try {
-            url.toURL()
+            return url.toURL()
         } catch (e: Exception) {
             throw MalformedURLException(e.message)
         }

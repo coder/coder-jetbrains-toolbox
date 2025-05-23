@@ -25,7 +25,6 @@ private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
  */
 class ConnectStep(
     private val context: CoderToolboxContext,
-    private val authContext: AuthContext,
     private val shouldAutoLogin: StateFlow<Boolean>,
     private val notify: (String, Throwable) -> Unit,
     private val refreshWizard: () -> Unit,
@@ -50,9 +49,15 @@ class ConnectStep(
         errorField.textState.update {
             context.i18n.pnotr("")
         }
-        if (authContext.isNotReadyForAuth()) return
 
-        statusField.textState.update { context.i18n.pnotr("Connecting to ${authContext.url!!.host}...") }
+        if (AuthContext.isNotReadyForAuth()) {
+            errorField.textState.update {
+                context.i18n.pnotr("URL and token were not properly configured. Please go back and provide a proper URL and token!")
+            }
+            return
+        }
+
+        statusField.textState.update { context.i18n.pnotr("Connecting to ${AuthContext.url!!.host}...") }
         connect()
     }
 
@@ -60,25 +65,23 @@ class ConnectStep(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
-        val url = authContext.url
-        val token = authContext.token
-        if (url == null) {
+        if (!AuthContext.hasUrl()) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return
         }
 
-        if (token.isNullOrBlank()) {
+        if (!AuthContext.hasToken()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
         signInJob?.cancel()
         signInJob = context.cs.launch {
             try {
-                statusField.textState.update { (context.i18n.ptrl("Authenticating to ${url.host}...")) }
+                statusField.textState.update { (context.i18n.ptrl("Authenticating to ${AuthContext.url!!.host}...")) }
                 val client = CoderRestClient(
                     context,
-                    url,
-                    token,
+                    AuthContext.url!!,
+                    AuthContext.token!!,
                     PluginManager.pluginInfo.version,
                 )
                 // allows interleaving with the back/cancel action
@@ -93,21 +96,20 @@ class ConnectStep(
                     yield()
                     cli.login(client.token)
                 }
-                statusField.textState.update { (context.i18n.ptrl("Successfully configured ${url.host}...")) }
+                statusField.textState.update { (context.i18n.ptrl("Successfully configured ${AuthContext.url!!.host}...")) }
                 // allows interleaving with the back/cancel action
                 yield()
-                onConnect(client, cli)
-
-                authContext.reset()
+                AuthContext.reset()
                 AuthWizardState.resetSteps()
+                onConnect(client, cli)
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
-                    notify("Connection to ${url.host} was configured", ex)
+                    notify("Connection to ${AuthContext.url!!.host} was configured", ex)
                     onBack()
                     refreshWizard()
                 }
             } catch (ex: Exception) {
-                notify("Failed to configure ${url.host}", ex)
+                notify("Failed to configure ${AuthContext.url!!.host}", ex)
                 onBack()
                 refreshWizard()
             }
@@ -123,6 +125,7 @@ class ConnectStep(
             signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
         } finally {
             if (shouldAutoLogin.value) {
+                AuthContext.reset()
                 AuthWizardState.resetSteps()
                 context.secrets.rememberMe = false
             } else {

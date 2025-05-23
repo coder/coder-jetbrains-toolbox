@@ -3,6 +3,7 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.util.toURL
 import com.coder.toolbox.views.state.AuthContext
 import com.coder.toolbox.views.state.AuthWizardState
 import com.coder.toolbox.views.state.WizardStep
@@ -25,23 +26,28 @@ class AuthWizardPage(
         context.ui.showUiPage(settingsPage)
     })
 
-    private val authContext: AuthContext = AuthContext()
-    private val signInStep = SignInStep(context, authContext, this::notify)
-    private val tokenStep = TokenStep(context, authContext)
+    private val signInStep = SignInStep(context, this::notify)
+    private val tokenStep = TokenStep(context)
     private val connectStep = ConnectStep(
         context,
-        authContext,
         shouldAutoLogin,
         this::notify,
-        this::displaySteps, onConnect
+        this::displaySteps,
+        onConnect
     )
-
 
     /**
      * Fields for this page, displayed in order.
      */
     override val fields: MutableStateFlow<List<UiField>> = MutableStateFlow(emptyList())
     override val actionButtons: MutableStateFlow<List<RunnableActionDescription>> = MutableStateFlow(emptyList())
+
+    init {
+        if (shouldAutoLogin.value) {
+            AuthContext.url = context.secrets.lastDeploymentURL.toURL()
+            AuthContext.token = context.secrets.lastToken
+        }
+    }
 
     override fun beforeShow() {
         displaySteps()

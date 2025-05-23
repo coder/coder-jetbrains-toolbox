@@ -1,7 +1,6 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.state.AuthContext
 import com.coder.toolbox.views.state.AuthWizardState
@@ -22,7 +21,6 @@ import kotlinx.coroutines.flow.update
  */
 class TokenStep(
     private val context: CoderToolboxContext,
-    private val authContext: AuthContext
 ) : WizardStep {
     private val tokenField = TextField(context.i18n.ptrl("Token"), "", TextType.Password)
     private val linkField = LinkField(context.i18n.ptrl("Get a token"), "")
@@ -39,15 +37,18 @@ class TokenStep(
         errorField.textState.update {
             context.i18n.pnotr("")
         }
-        tokenField.textState.update {
-            if (authContext.hasUrl()) {
-                context.secrets.tokenFor(authContext.url!!) ?: ""
-            } else {
-                ""
+        if (AuthContext.hasUrl()) {
+            tokenField.textState.update {
+                context.secrets.tokenFor(AuthContext.url!!) ?: ""
+            }
+        } else {
+            errorField.textState.update {
+                context.i18n.pnotr("URL not configure in the previous step. Please go back and provide a proper URL.")
+                return
             }
         }
         (linkField.urlState as MutableStateFlow).update {
-            context.deploymentUrl?.first?.toURL()?.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
+            AuthContext.url!!.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
         }
     }
 
@@ -58,7 +59,7 @@ class TokenStep(
             return false
         }
 
-        authContext.token = token
+        AuthContext.token = token
         AuthWizardState.goToNextStep()
         return true
     }
