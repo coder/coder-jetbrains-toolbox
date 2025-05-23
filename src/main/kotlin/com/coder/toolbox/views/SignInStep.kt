@@ -2,15 +2,16 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.toURL
+import com.coder.toolbox.views.state.AuthContext
 import com.coder.toolbox.views.state.AuthWizardState
 import com.jetbrains.toolbox.api.localization.LocalizableString
-import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
 import kotlinx.coroutines.flow.update
 import java.net.MalformedURLException
+import java.net.URL
 
 /**
  * A page with a field for providing the Coder deployment URL.
@@ -18,15 +19,16 @@ import java.net.MalformedURLException
  * Populates with the provided URL, at which point the user can accept or
  * enter their own.
  */
-class SignInStep(private val context: CoderToolboxContext, private val notify: (String, Throwable) -> Unit) :
+class SignInStep(
+    private val context: CoderToolboxContext,
+    private val notify: (String, Throwable) -> Unit
+) :
     WizardStep {
     private val urlField = TextField(context.i18n.ptrl("Deployment URL"), "", TextType.General)
-    private val descriptionField = LabelField(context.i18n.pnotr(""))
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
 
     override val panel: RowGroup = RowGroup(
         RowGroup.RowField(urlField),
-        RowGroup.RowField(descriptionField),
         RowGroup.RowField(errorField)
     )
 
@@ -37,11 +39,7 @@ class SignInStep(private val context: CoderToolboxContext, private val notify: (
             context.i18n.pnotr("")
         }
         urlField.textState.update {
-            context.deploymentUrl?.first ?: ""
-        }
-
-        descriptionField.textState.update {
-            context.i18n.pnotr(context.deploymentUrl?.second?.description("URL") ?: "")
+            context.secrets.lastDeploymentURL
         }
     }
 
@@ -57,12 +55,11 @@ class SignInStep(private val context: CoderToolboxContext, private val notify: (
             url
         }
         try {
-            validateRawUrl(url)
+            AuthContext.url = validateRawUrl(url)
         } catch (e: MalformedURLException) {
             notify("URL is invalid", e)
             return false
         }
-        context.secrets.lastDeploymentURL = url
         AuthWizardState.goToNextStep()
         return true
     }
@@ -70,9 +67,9 @@ class SignInStep(private val context: CoderToolboxContext, private val notify: (
     /**
      * Throws [MalformedURLException] if the given string violates RFC-2396
      */
-    private fun validateRawUrl(url: String) {
+    private fun validateRawUrl(url: String): URL {
         try {
-            url.toURL()
+            return url.toURL()
         } catch (e: Exception) {
             throw MalformedURLException(e.message)
         }

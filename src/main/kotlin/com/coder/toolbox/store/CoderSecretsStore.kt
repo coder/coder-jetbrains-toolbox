@@ -1,6 +1,7 @@
 package com.coder.toolbox.store
 
 import com.jetbrains.toolbox.api.core.PluginSecretStore
+import java.net.URL
 
 
 /**
@@ -26,4 +27,10 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
     var rememberMe: Boolean
         get() = get("remember-me").toBoolean()
         set(value) = set("remember-me", value.toString())
+
+    fun tokenFor(url: URL): String? = store[url.host]
+
+    fun storeTokenFor(url: URL, token: String) {
+        store[url.host] = token
+    }
 }

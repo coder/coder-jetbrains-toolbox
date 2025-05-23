@@ -1,12 +1,12 @@
 package com.coder.toolbox.browser
 
+import com.coder.toolbox.util.toURL
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
-import java.net.URI
 
 
 suspend fun LocalDesktopManager.browse(rawUrl: String, errorHandler: suspend (BrowserException) -> Unit) {
     try {
-        val url = URI.create(rawUrl).toURL()
+        val url = rawUrl.toURL()
         this.openUrl(url)
     } catch (e: Exception) {
         errorHandler(

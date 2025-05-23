@@ -1,6 +1,13 @@
 package com.coder.toolbox.views.state
 
 
+/**
+ * A singleton that maintains the state of the authorization wizard across Toolbox window lifecycle events.
+ *
+ * This is used to persist the wizard's progress (i.e., current step) between visibility changes
+ * of the Toolbox window. Without this object, closing and reopening the window would reset the wizard
+ * to its initial state by creating a new instance.
+ */
 object AuthWizardState {
     private var currentStep = WizardStep.URL_REQUEST
 
