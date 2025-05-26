@@ -10,6 +10,7 @@
 ### Fixed
 
 - url on the main page is now refreshed when switching between multiple deployments (via logout/login or URI handling)
+- tokens are now remembered after switching between multiple deployments
 
 ## 0.2.2 - 2025-05-21
 

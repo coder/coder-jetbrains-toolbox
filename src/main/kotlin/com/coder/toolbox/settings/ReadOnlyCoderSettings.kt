@@ -10,7 +10,7 @@ interface ReadOnlyCoderSettings {
     /**
      * The default URL to show in the connection window.
      */
-    val defaultURL: String?
+    val defaultURL: String
 
     /**
      * Used to download the Coder CLI which is necessary to proxy SSH
@@ -115,16 +115,6 @@ interface ReadOnlyCoderSettings {
      * The path where network information for SSH hosts are stored
      */
     val networkInfoDir: String
-
-    /**
-     * The default URL to show in the connection window.
-     */
-    fun defaultURL(): Pair<String, SettingSource>?
-
-    /**
-     * Given a deployment URL, try to find a token for it if required.
-     */
-    fun token(deploymentURL: URL): Pair<String, SettingSource>?
 
     /**
      * Where the specified deployment should put its data.
