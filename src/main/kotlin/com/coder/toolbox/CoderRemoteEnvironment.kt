@@ -203,7 +203,7 @@ class CoderRemoteEnvironment(
 
     private fun File.doesNotExists(): Boolean = !this.exists()
 
-    override fun afterDisconnect() {
+    override fun afterDisconnect(isManual: Boolean) {
         context.logger.info("Stopping the network metrics poll job for $id")
         pollJob?.cancel()
         this.connectionRequest.update { false }
