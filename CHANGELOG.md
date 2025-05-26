@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.3 - 2025-05-26
+
 ### Changed
 
 - improved workspace status reporting (icon and colors) when it is failed, stopping, deleting, stopped or when we are
