@@ -10,6 +10,7 @@ import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.jetbrains.toolbox.api.localization.LocalizableString
+import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
@@ -18,10 +19,13 @@ import kotlinx.coroutines.time.withTimeout
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
+import java.util.UUID
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
 
+@Suppress("UnstableApiUsage")
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
     private val dialogUi: DialogUi,
@@ -175,15 +179,67 @@ open class CoderProtocolHandler(
         val buildNumber = params.ideBuildNumber()
         val projectFolder = params.projectFolder()
         if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
+            var selectedIde = "$productCode-$buildNumber"
             context.cs.launch {
-                val ideVersion = "$productCode-$buildNumber"
-                context.logger.info("installing $ideVersion on $environmentId")
+                val installedIdes = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
+                val alreadyInstalled = installedIdes.firstOrNull { it.contains(buildNumber) } != null
+                if (alreadyInstalled) {
+                    context.logger.info("$productCode-$buildNumber is already on $environmentId. Going to launch JBClient")
+                } else {
+                    val availableVersions =
+                        context.remoteIdeOrchestrator.getAvailableRemoteTools(environmentId, productCode)
+                    if (availableVersions.isEmpty()) {
+                        val error = IllegalArgumentException("$productCode is not available on $environmentId")
+                        context.logger.error(error, "Error encountered while handling Coder URI")
+                        context.ui.showSnackbar(
+                            UUID.randomUUID().toString(),
+                            context.i18n.ptrl("Error encountered while handling Coder URI"),
+                            context.i18n.pnotr("$productCode is not available on $environmentId"),
+                            context.i18n.ptrl("OK")
+                        )
+                        return@launch
+                    }
+
+                    val matchingBuildNumber = availableVersions.firstOrNull { it.contains(buildNumber) } != null
+                    if (!matchingBuildNumber) {
+                        selectedIde = availableVersions.maxOf { it }
+                        val msg =
+                            "$productCode-$buildNumber is not available, we've selected the latest $selectedIde"
+                        context.logger.info(msg)
+                        context.ui.showSnackbar(
+                            UUID.randomUUID().toString(),
+                            context.i18n.pnotr("$productCode-$buildNumber not available"),
+                            context.i18n.pnotr(msg),
+                            context.i18n.ptrl("OK")
+                        )
+                    }
+
+                    // needed otherwise TBX will install it again
+                    if (!installedIdes.contains(selectedIde)) {
+                        context.logger.info("Installing $selectedIde on $environmentId...")
+                        context.remoteIdeOrchestrator.installRemoteTool(environmentId, selectedIde)
+                        if (context.remoteIdeOrchestrator.waitForIdeToBeInstalled(environmentId, selectedIde)) {
+                            context.logger.info("Successfully installed $selectedIde on $environmentId...")
+                        } else {
+                            context.ui.showSnackbar(
+                                UUID.randomUUID().toString(),
+                                context.i18n.pnotr("$selectedIde could not be installed"),
+                                context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
+                                context.i18n.ptrl("OK")
+                            )
+                        }
+                    } else {
+                        context.logger.info("$selectedIde is already present on $environmentId...")
+                    }
+                }
+
                 val job = context.cs.launch {
-                    context.ideOrchestrator.prepareClient(environmentId, ideVersion)
+                    context.logger.info("Downloading and installing JBClient counterpart to $selectedIde locally")
+                    context.jbClientOrchestrator.prepareClient(environmentId, selectedIde)
                 }
                 job.join()
-                context.logger.info("launching $ideVersion on $environmentId")
-                context.ideOrchestrator.connectToIde(environmentId, ideVersion, projectFolder)
+                context.logger.info("Launching $selectedIde on $environmentId")
+                context.jbClientOrchestrator.connectToIde(environmentId, selectedIde, projectFolder)
             }
         }
     }
@@ -195,6 +251,25 @@ open class CoderProtocolHandler(
                 while (status != WorkspaceStatus.RUNNING) {
                     delay(1.seconds)
                     status = this@waitForReady.workspace(workspace.id).latestBuild.status
+                }
+            }
+            return true
+        } catch (_: TimeoutCancellationException) {
+            return false
+        }
+    }
+
+    private suspend fun RemoteToolsHelper.waitForIdeToBeInstalled(
+        environmentId: String,
+        ideHint: String,
+        waitTime: Duration = 2.minutes
+    ): Boolean {
+        var isInstalled = false
+        try {
+            withTimeout(waitTime.toJavaDuration()) {
+                while (!isInstalled) {
+                    delay(5.seconds)
+                    isInstalled = getInstalledRemoteTools(environmentId, ideHint).isNotEmpty()
                 }
             }
             return true
