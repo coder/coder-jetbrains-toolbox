@@ -11,6 +11,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
@@ -80,7 +81,7 @@ open class CoderProtocolHandler(
         val projectFolder = params.projectFolder()
 
         if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
-            launchIde(productCode, buildNumber, environmentId, projectFolder)
+            launchIde(environmentId, productCode, buildNumber, projectFolder)
         }
     }
 
@@ -303,73 +304,87 @@ open class CoderProtocolHandler(
     }
 
     private fun launchIde(
+        environmentId: String,
         productCode: String,
         buildNumber: String,
-        environmentId: String,
         projectFolder: String?
     ) {
-        var selectedIde = "$productCode-$buildNumber"
         context.cs.launch {
-            val installedIdes = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
-            val alreadyInstalled = installedIdes.firstOrNull { it.contains(buildNumber) } != null
-            if (alreadyInstalled) {
-                context.logger.info("$productCode-$buildNumber is already on $environmentId. Going to launch JBClient")
-            } else {
-                val availableVersions =
-                    context.remoteIdeOrchestrator.getAvailableRemoteTools(environmentId, productCode)
-                if (availableVersions.isEmpty()) {
-                    val error = IllegalArgumentException("$productCode is not available on $environmentId")
-                    context.logger.error(error, "Error encountered while handling Coder URI")
-                    context.ui.showSnackbar(
-                        UUID.randomUUID().toString(),
-                        context.i18n.ptrl("Error encountered while handling Coder URI"),
-                        context.i18n.pnotr("$productCode is not available on $environmentId"),
-                        context.i18n.ptrl("OK")
-                    )
-                    return@launch
-                }
-
-                val matchingBuildNumber = availableVersions.firstOrNull { it.contains(buildNumber) } != null
-                if (!matchingBuildNumber) {
-                    selectedIde = availableVersions.maxOf { it }
-                    val msg =
-                        "$productCode-$buildNumber is not available, we've selected the latest $selectedIde"
-                    context.logger.info(msg)
-                    context.ui.showSnackbar(
-                        UUID.randomUUID().toString(),
-                        context.i18n.pnotr("$productCode-$buildNumber not available"),
-                        context.i18n.pnotr(msg),
-                        context.i18n.ptrl("OK")
-                    )
-                }
-
-                // needed otherwise TBX will install it again
-                if (!installedIdes.contains(selectedIde)) {
-                    context.logger.info("Installing $selectedIde on $environmentId...")
-                    context.remoteIdeOrchestrator.installRemoteTool(environmentId, selectedIde)
-                    if (context.remoteIdeOrchestrator.waitForIdeToBeInstalled(environmentId, selectedIde)) {
-                        context.logger.info("Successfully installed $selectedIde on $environmentId...")
-                    } else {
-                        context.ui.showSnackbar(
-                            UUID.randomUUID().toString(),
-                            context.i18n.pnotr("$selectedIde could not be installed"),
-                            context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
-                            context.i18n.ptrl("OK")
-                        )
-                    }
-                } else {
-                    context.logger.info("$selectedIde is already present on $environmentId...")
-                }
-            }
-
-            val job = context.cs.launch {
-                context.logger.info("Downloading and installing JBClient counterpart to $selectedIde locally")
-                context.jbClientOrchestrator.prepareClient(environmentId, selectedIde)
-            }
-            job.join()
-            context.logger.info("Launching $selectedIde on $environmentId")
-            context.jbClientOrchestrator.connectToIde(environmentId, selectedIde, projectFolder)
+            val selectedIde = selectAndInstallRemoteIde(productCode, buildNumber, environmentId) ?: return@launch
+            context.logger.info("$productCode-$buildNumber is already on $environmentId. Going to launch JBClient")
+            installJBClient(selectedIde, environmentId).join()
+            launchJBClient(selectedIde, environmentId, projectFolder)
         }
+    }
+
+    private suspend fun selectAndInstallRemoteIde(
+        productCode: String,
+        buildNumber: String,
+        environmentId: String
+    ): String? {
+        val installedIdes = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
+
+        var selectedIde = "$productCode-$buildNumber"
+        if (installedIdes.firstOrNull { it.contains(buildNumber) } != null) {
+            context.logger.info("$selectedIde is already installed on $environmentId")
+            return selectedIde
+        }
+
+        selectedIde = resolveAvailableIde(environmentId, productCode, buildNumber) ?: return null
+
+        // needed otherwise TBX will install it again
+        if (!installedIdes.contains(selectedIde)) {
+            context.logger.info("Installing $selectedIde on $environmentId...")
+            context.remoteIdeOrchestrator.installRemoteTool(environmentId, selectedIde)
+
+            if (context.remoteIdeOrchestrator.waitForIdeToBeInstalled(environmentId, selectedIde)) {
+                context.logger.info("Successfully installed $selectedIde on $environmentId...")
+                return selectedIde
+            } else {
+                context.ui.showSnackbar(
+                    UUID.randomUUID().toString(),
+                    context.i18n.pnotr("$selectedIde could not be installed"),
+                    context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
+                    context.i18n.ptrl("OK")
+                )
+                return null
+            }
+        } else {
+            context.logger.info("$selectedIde is already present on $environmentId...")
+            return selectedIde
+        }
+    }
+
+    private suspend fun resolveAvailableIde(environmentId: String, productCode: String, buildNumber: String): String? {
+        val availableVersions = context
+            .remoteIdeOrchestrator
+            .getAvailableRemoteTools(environmentId, productCode)
+
+        if (availableVersions.isEmpty()) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "$productCode is not available on $environmentId")
+            return null
+        }
+
+        val matchingBuildNumber = availableVersions.firstOrNull { it.contains(buildNumber) } != null
+        if (!matchingBuildNumber) {
+            val selectedIde = availableVersions.maxOf { it }
+            context.logAndShowInfo(
+                "$productCode-$buildNumber not available",
+                "$productCode-$buildNumber is not available, we've selected the latest $selectedIde"
+            )
+            return selectedIde
+        }
+        return null
+    }
+
+    private fun installJBClient(selectedIde: String, environmentId: String): Job = context.cs.launch {
+        context.logger.info("Downloading and installing JBClient counterpart to $selectedIde locally")
+        context.jbClientOrchestrator.prepareClient(environmentId, selectedIde)
+    }
+
+    private fun launchJBClient(selectedIde: String, environmentId: String, projectFolder: String?) {
+        context.logger.info("Launching $selectedIde on $environmentId")
+        context.jbClientOrchestrator.connectToIde(environmentId, selectedIde, projectFolder)
     }
 
     private suspend fun CoderRestClient.waitForReady(workspace: Workspace): Boolean {

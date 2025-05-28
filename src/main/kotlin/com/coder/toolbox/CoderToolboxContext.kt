@@ -78,4 +78,14 @@ data class CoderToolboxContext(
             i18n.ptrl("OK")
         )
     }
+
+    suspend fun logAndShowInfo(title: String, info: String) {
+        logger.info(info)
+        ui.showSnackbar(
+            UUID.randomUUID().toString(),
+            i18n.pnotr(title),
+            i18n.pnotr(info),
+            i18n.ptrl("OK")
+        )
+    }
 }
