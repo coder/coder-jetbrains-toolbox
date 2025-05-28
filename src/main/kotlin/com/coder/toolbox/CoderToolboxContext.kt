@@ -58,4 +58,24 @@ data class CoderToolboxContext(
             i18n.ptrl("OK")
         )
     }
+
+    suspend fun logAndShowError(title: String, error: String, exception: Exception) {
+        logger.error(exception, error)
+        ui.showSnackbar(
+            UUID.randomUUID().toString(),
+            i18n.pnotr(title),
+            i18n.pnotr(error),
+            i18n.ptrl("OK")
+        )
+    }
+
+    suspend fun logAndShowWarning(title: String, warning: String) {
+        logger.warn(warning)
+        ui.showSnackbar(
+            UUID.randomUUID().toString(),
+            i18n.pnotr(title),
+            i18n.pnotr(warning),
+            i18n.ptrl("OK")
+        )
+    }
 }

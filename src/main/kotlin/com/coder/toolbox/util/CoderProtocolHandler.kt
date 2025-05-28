@@ -57,85 +57,13 @@ open class CoderProtocolHandler(
 
         val deploymentURL = resolveDeploymentUrl(params) ?: return
         val token = resolveToken(params) ?: return
-        // TODO: Show a dropdown and ask for the workspace if missing. Right now it's not possible because dialogs are quite limited
-        val workspaceName = resolveWorkspace(params) ?: return
+        val workspaceName = resolveWorkspaceName(params) ?: return
         val restClient = buildRestClient(deploymentURL, token) ?: return
+        val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL) ?: return
+        val agent = resolveAgent(params, workspace) ?: return
 
-        val workspaces = restClient.workspaces()
-        val workspace = workspaces.firstOrNull { it.name == workspaceName }
-        if (workspace == null) {
-            context.logger.error("There is no workspace with name $workspaceName on $deploymentURL")
-            context.showErrorPopup(MissingArgumentException("Can't handle URI because workspace with name $workspaceName does not exist"))
-            return
-        }
-
-        when (workspace.latestBuild.status) {
-            WorkspaceStatus.PENDING, WorkspaceStatus.STARTING ->
-                if (restClient.waitForReady(workspace) != true) {
-                    context.logger.error("$workspaceName from $deploymentURL could not be ready on time")
-                    context.showErrorPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be ready on time"))
-                    return
-                }
-
-            WorkspaceStatus.STOPPING, WorkspaceStatus.STOPPED,
-            WorkspaceStatus.CANCELING, WorkspaceStatus.CANCELED -> {
-                if (settings.disableAutostart) {
-                    context.logger.warn("$workspaceName from $deploymentURL is not started and autostart is disabled.")
-                    context.showInfoPopup(
-                        context.i18n.pnotr("$workspaceName is not running"),
-                        context.i18n.ptrl("Can't handle URI because workspace is not running and autostart is disabled. Please start the workspace manually and execute the URI again."),
-                        context.i18n.ptrl("OK")
-                    )
-                    return
-                }
-
-                try {
-                    restClient.startWorkspace(workspace)
-                } catch (e: Exception) {
-                    context.logger.error(
-                        e,
-                        "$workspaceName from $deploymentURL could not be started while handling URI"
-                    )
-                    context.showErrorPopup(MissingArgumentException("Can't handle URI because an error was encountered while trying to start workspace $workspaceName"))
-                    return
-                }
-                if (restClient.waitForReady(workspace) != true) {
-                    context.logger.error("$workspaceName from $deploymentURL could not be started on time")
-                    context.showErrorPopup(MissingArgumentException("Can't handle URI because workspace $workspaceName could not be started on time"))
-                    return
-                }
-            }
-
-            WorkspaceStatus.FAILED, WorkspaceStatus.DELETING, WorkspaceStatus.DELETED -> {
-                context.logger.error("Unable to connect to $workspaceName from $deploymentURL")
-                context.showErrorPopup(MissingArgumentException("Can't handle URI because because we're unable to connect to workspace $workspaceName"))
-                return
-            }
-
-            WorkspaceStatus.RUNNING -> Unit // All is well
-        }
-
-        // TODO: Show a dropdown and ask for an agent if missing.
-        val agent: WorkspaceAgent
-        try {
-            agent = getMatchingAgent(params, workspace)
-        } catch (e: IllegalArgumentException) {
-            context.logger.error(e, "Can't resolve an agent for workspace $workspaceName from $deploymentURL")
-            context.showErrorPopup(
-                MissingArgumentException(
-                    "Can't handle URI because we can't resolve an agent for workspace $workspaceName from $deploymentURL",
-                    e
-                )
-            )
-            return
-        }
-        val status = WorkspaceAndAgentStatus.from(workspace, agent)
-
-        if (!status.ready()) {
-            context.logger.error("Agent ${agent.name} for workspace $workspaceName from $deploymentURL is not ready")
-            context.showErrorPopup(MissingArgumentException("Can't handle URI because agent ${agent.name} for workspace $workspaceName from $deploymentURL is not ready"))
-            return
-        }
+        if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
+        if (!ensureAgentIsReady(workspace, agent)) return
 
         val cli = ensureCLI(
             context,
@@ -150,7 +78,7 @@ open class CoderProtocolHandler(
         }
 
         context.logger.info("Configuring Coder CLI...")
-        cli.configSsh(restClient.groupByAgents(workspaces))
+        cli.configSsh(restClient.workspacesByAgents())
 
         if (shouldWaitForAutoLogin) {
             isInitialized.waitForTrue()
@@ -247,7 +175,7 @@ open class CoderProtocolHandler(
         return token
     }
 
-    private suspend fun resolveWorkspace(params: Map<String, String>): String? {
+    private suspend fun resolveWorkspaceName(params: Map<String, String>): String? {
         val workspace = params.workspace()
         if (workspace.isNullOrBlank()) {
             context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$WORKSPACE\" is missing from URI")
@@ -277,6 +205,153 @@ open class CoderProtocolHandler(
         )
         client.authenticate()
         return client
+    }
+
+    private suspend fun List<Workspace>.matchName(workspaceName: String, deploymentURL: String): Workspace? {
+        val workspace = this.firstOrNull { it.name == workspaceName }
+        if (workspace == null) {
+            context.logAndShowError(
+                CAN_T_HANDLE_URI_TITLE,
+                "There is no workspace with name $workspaceName on $deploymentURL"
+            )
+            return null
+        }
+        return workspace
+    }
+
+    private suspend fun prepareWorkspace(
+        workspace: Workspace,
+        restClient: CoderRestClient,
+        workspaceName: String,
+        deploymentURL: String
+    ): Boolean {
+        when (workspace.latestBuild.status) {
+            WorkspaceStatus.PENDING, WorkspaceStatus.STARTING ->
+                if (!restClient.waitForReady(workspace)) {
+                    context.logAndShowError(
+                        CAN_T_HANDLE_URI_TITLE,
+                        "$workspaceName from $deploymentURL could not be ready on time"
+                    )
+                    return false
+                }
+
+            WorkspaceStatus.STOPPING, WorkspaceStatus.STOPPED,
+            WorkspaceStatus.CANCELING, WorkspaceStatus.CANCELED -> {
+                if (settings.disableAutostart) {
+                    context.logAndShowWarning(
+                        CAN_T_HANDLE_URI_TITLE,
+                        "$workspaceName from $deploymentURL is not running and autostart is disabled"
+                    )
+                    return false
+                }
+
+                try {
+                    restClient.startWorkspace(workspace)
+                } catch (e: Exception) {
+                    context.logAndShowError(
+                        CAN_T_HANDLE_URI_TITLE,
+                        "$workspaceName from $deploymentURL could not be started",
+                        e
+                    )
+                    return false
+                }
+
+                if (!restClient.waitForReady(workspace)) {
+                    context.logAndShowError(
+                        CAN_T_HANDLE_URI_TITLE,
+                        "$workspaceName from $deploymentURL could not be started on time",
+                    )
+                    return false
+                }
+            }
+
+            WorkspaceStatus.FAILED, WorkspaceStatus.DELETING, WorkspaceStatus.DELETED -> {
+                context.logAndShowError(
+                    CAN_T_HANDLE_URI_TITLE,
+                    "Unable to connect to $workspaceName from $deploymentURL"
+                )
+                return false
+            }
+
+            WorkspaceStatus.RUNNING -> return true // All is well
+        }
+        return true
+    }
+
+    private suspend fun resolveAgent(
+        params: Map<String, String>,
+        workspace: Workspace
+    ): WorkspaceAgent? {
+        try {
+            return getMatchingAgent(params, workspace)
+        } catch (e: IllegalArgumentException) {
+            context.logAndShowError(
+                CAN_T_HANDLE_URI_TITLE,
+                "Can't resolve an agent for workspace ${workspace.name}",
+                e
+            )
+            return null
+        }
+    }
+
+    /**
+     * Return the agent matching the provided agent ID or name in the parameters.
+     *
+     * @throws [IllegalArgumentException]
+     */
+    private suspend fun getMatchingAgent(
+        parameters: Map<String, String?>,
+        workspace: Workspace,
+    ): WorkspaceAgent? {
+        val agents = workspace.latestBuild.resources.filter { it.agents != null }.flatMap { it.agents!! }
+        if (agents.isEmpty()) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "The workspace \"${workspace.name}\" has no agents")
+            return null
+        }
+
+        // If the agent is missing and the workspace has only one, use that.
+        // Prefer the ID over the name if both are set.
+        val agent =
+            if (!parameters.agentID().isNullOrBlank()) {
+                agents.firstOrNull { it.id.toString() == parameters.agentID() }
+            } else if (agents.size == 1) {
+                agents.first()
+            } else {
+                null
+            }
+
+        if (agent == null) {
+            if (!parameters.agentID().isNullOrBlank()) {
+                context.logAndShowError(
+                    CAN_T_HANDLE_URI_TITLE,
+                    "The workspace \"${workspace.name}\" does not have an agent with ID \"${parameters.agentID()}\""
+                )
+                return null
+            } else {
+                context.logAndShowError(
+                    CAN_T_HANDLE_URI_TITLE,
+                    "Unable to determine which agent to connect to; \"$AGENT_ID\" must be set because the workspace \"${workspace.name}\" has more than one agent"
+                )
+                return null
+            }
+        }
+        return agent
+    }
+
+    private suspend fun ensureAgentIsReady(
+        workspace: Workspace,
+        agent: WorkspaceAgent
+    ): Boolean {
+        val status = WorkspaceAndAgentStatus.from(workspace, agent)
+
+        if (!status.ready()) {
+            context.logAndShowError(
+                CAN_T_HANDLE_URI_TITLE,
+                "Agent ${agent.name} for workspace ${workspace.name} is not ready"
+            )
+            return false
+        }
+        return true
     }
 
     private suspend fun CoderRestClient.waitForReady(workspace: Workspace): Boolean {
@@ -344,44 +419,6 @@ internal fun resolveRedirects(url: URL): URL {
         location = URL(location, nextLocation)
     }
     throw Exception("Too many redirects")
-}
-
-/**
- * Return the agent matching the provided agent ID or name in the parameters.
- *
- * @throws [IllegalArgumentException]
- */
-internal fun getMatchingAgent(
-    parameters: Map<String, String?>,
-    workspace: Workspace,
-): WorkspaceAgent {
-    val agents = workspace.latestBuild.resources.filter { it.agents != null }.flatMap { it.agents!! }
-    if (agents.isEmpty()) {
-        throw IllegalArgumentException("The workspace \"${workspace.name}\" has no agents")
-    }
-
-    // If the agent is missing and the workspace has only one, use that.
-    // Prefer the ID over the name if both are set.
-    val agent =
-        if (!parameters.agentID().isNullOrBlank()) {
-            agents.firstOrNull { it.id.toString() == parameters.agentID() }
-        } else if (agents.size == 1) {
-            agents.first()
-        } else {
-            null
-        }
-
-    if (agent == null) {
-        if (!parameters.agentID().isNullOrBlank()) {
-            throw IllegalArgumentException("The workspace \"${workspace.name}\" does not have an agent with ID \"${parameters.agentID()}\"")
-        } else {
-            throw MissingArgumentException(
-                "Unable to determine which agent to connect to; \"$AGENT_ID\" must be set because the workspace \"${workspace.name}\" has more than one agent",
-            )
-        }
-    }
-
-    return agent
 }
 
 private suspend fun CoderToolboxContext.showErrorPopup(error: Throwable) {
