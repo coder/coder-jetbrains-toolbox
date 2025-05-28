@@ -65,20 +65,7 @@ open class CoderProtocolHandler(
         if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
         if (!ensureAgentIsReady(workspace, agent)) return
 
-        val cli = ensureCLI(
-            context,
-            deploymentURL.toURL(),
-            restClient.buildInfo().version
-        )
-
-        // We only need to log in if we are using token-based auth.
-        if (restClient.token != null) {
-            context.logger.info("Authenticating Coder CLI...")
-            cli.login(restClient.token)
-        }
-
-        context.logger.info("Configuring Coder CLI...")
-        cli.configSsh(restClient.workspacesByAgents())
+        val cli = configureCli(deploymentURL, restClient)
 
         if (shouldWaitForAutoLogin) {
             isInitialized.waitForTrue()
@@ -86,74 +73,14 @@ open class CoderProtocolHandler(
         reInitialize(restClient, cli)
 
         val environmentId = "${workspace.name}.${agent.name}"
-        context.popupPluginMainPage()
-        context.envPageManager.showEnvironmentPage(environmentId, false)
+        context.showEnvironmentPage(environmentId)
+
         val productCode = params.ideProductCode()
         val buildNumber = params.ideBuildNumber()
         val projectFolder = params.projectFolder()
+
         if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
-            var selectedIde = "$productCode-$buildNumber"
-            context.cs.launch {
-                val installedIdes = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
-                val alreadyInstalled = installedIdes.firstOrNull { it.contains(buildNumber) } != null
-                if (alreadyInstalled) {
-                    context.logger.info("$productCode-$buildNumber is already on $environmentId. Going to launch JBClient")
-                } else {
-                    val availableVersions =
-                        context.remoteIdeOrchestrator.getAvailableRemoteTools(environmentId, productCode)
-                    if (availableVersions.isEmpty()) {
-                        val error = IllegalArgumentException("$productCode is not available on $environmentId")
-                        context.logger.error(error, "Error encountered while handling Coder URI")
-                        context.ui.showSnackbar(
-                            UUID.randomUUID().toString(),
-                            context.i18n.ptrl("Error encountered while handling Coder URI"),
-                            context.i18n.pnotr("$productCode is not available on $environmentId"),
-                            context.i18n.ptrl("OK")
-                        )
-                        return@launch
-                    }
-
-                    val matchingBuildNumber = availableVersions.firstOrNull { it.contains(buildNumber) } != null
-                    if (!matchingBuildNumber) {
-                        selectedIde = availableVersions.maxOf { it }
-                        val msg =
-                            "$productCode-$buildNumber is not available, we've selected the latest $selectedIde"
-                        context.logger.info(msg)
-                        context.ui.showSnackbar(
-                            UUID.randomUUID().toString(),
-                            context.i18n.pnotr("$productCode-$buildNumber not available"),
-                            context.i18n.pnotr(msg),
-                            context.i18n.ptrl("OK")
-                        )
-                    }
-
-                    // needed otherwise TBX will install it again
-                    if (!installedIdes.contains(selectedIde)) {
-                        context.logger.info("Installing $selectedIde on $environmentId...")
-                        context.remoteIdeOrchestrator.installRemoteTool(environmentId, selectedIde)
-                        if (context.remoteIdeOrchestrator.waitForIdeToBeInstalled(environmentId, selectedIde)) {
-                            context.logger.info("Successfully installed $selectedIde on $environmentId...")
-                        } else {
-                            context.ui.showSnackbar(
-                                UUID.randomUUID().toString(),
-                                context.i18n.pnotr("$selectedIde could not be installed"),
-                                context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
-                                context.i18n.ptrl("OK")
-                            )
-                        }
-                    } else {
-                        context.logger.info("$selectedIde is already present on $environmentId...")
-                    }
-                }
-
-                val job = context.cs.launch {
-                    context.logger.info("Downloading and installing JBClient counterpart to $selectedIde locally")
-                    context.jbClientOrchestrator.prepareClient(environmentId, selectedIde)
-                }
-                job.join()
-                context.logger.info("Launching $selectedIde on $environmentId")
-                context.jbClientOrchestrator.connectToIde(environmentId, selectedIde, projectFolder)
-            }
+            launchIde(productCode, buildNumber, environmentId, projectFolder)
         }
     }
 
@@ -354,6 +281,97 @@ open class CoderProtocolHandler(
         return true
     }
 
+    private suspend fun configureCli(
+        deploymentURL: String,
+        restClient: CoderRestClient
+    ): CoderCLIManager {
+        val cli = ensureCLI(
+            context,
+            deploymentURL.toURL(),
+            restClient.buildInfo().version
+        )
+
+        // We only need to log in if we are using token-based auth.
+        if (restClient.token != null) {
+            context.logger.info("Authenticating Coder CLI...")
+            cli.login(restClient.token)
+        }
+
+        context.logger.info("Configuring Coder CLI...")
+        cli.configSsh(restClient.workspacesByAgents())
+        return cli
+    }
+
+    private fun launchIde(
+        productCode: String,
+        buildNumber: String,
+        environmentId: String,
+        projectFolder: String?
+    ) {
+        var selectedIde = "$productCode-$buildNumber"
+        context.cs.launch {
+            val installedIdes = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
+            val alreadyInstalled = installedIdes.firstOrNull { it.contains(buildNumber) } != null
+            if (alreadyInstalled) {
+                context.logger.info("$productCode-$buildNumber is already on $environmentId. Going to launch JBClient")
+            } else {
+                val availableVersions =
+                    context.remoteIdeOrchestrator.getAvailableRemoteTools(environmentId, productCode)
+                if (availableVersions.isEmpty()) {
+                    val error = IllegalArgumentException("$productCode is not available on $environmentId")
+                    context.logger.error(error, "Error encountered while handling Coder URI")
+                    context.ui.showSnackbar(
+                        UUID.randomUUID().toString(),
+                        context.i18n.ptrl("Error encountered while handling Coder URI"),
+                        context.i18n.pnotr("$productCode is not available on $environmentId"),
+                        context.i18n.ptrl("OK")
+                    )
+                    return@launch
+                }
+
+                val matchingBuildNumber = availableVersions.firstOrNull { it.contains(buildNumber) } != null
+                if (!matchingBuildNumber) {
+                    selectedIde = availableVersions.maxOf { it }
+                    val msg =
+                        "$productCode-$buildNumber is not available, we've selected the latest $selectedIde"
+                    context.logger.info(msg)
+                    context.ui.showSnackbar(
+                        UUID.randomUUID().toString(),
+                        context.i18n.pnotr("$productCode-$buildNumber not available"),
+                        context.i18n.pnotr(msg),
+                        context.i18n.ptrl("OK")
+                    )
+                }
+
+                // needed otherwise TBX will install it again
+                if (!installedIdes.contains(selectedIde)) {
+                    context.logger.info("Installing $selectedIde on $environmentId...")
+                    context.remoteIdeOrchestrator.installRemoteTool(environmentId, selectedIde)
+                    if (context.remoteIdeOrchestrator.waitForIdeToBeInstalled(environmentId, selectedIde)) {
+                        context.logger.info("Successfully installed $selectedIde on $environmentId...")
+                    } else {
+                        context.ui.showSnackbar(
+                            UUID.randomUUID().toString(),
+                            context.i18n.pnotr("$selectedIde could not be installed"),
+                            context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
+                            context.i18n.ptrl("OK")
+                        )
+                    }
+                } else {
+                    context.logger.info("$selectedIde is already present on $environmentId...")
+                }
+            }
+
+            val job = context.cs.launch {
+                context.logger.info("Downloading and installing JBClient counterpart to $selectedIde locally")
+                context.jbClientOrchestrator.prepareClient(environmentId, selectedIde)
+            }
+            job.join()
+            context.logger.info("Launching $selectedIde on $environmentId")
+            context.jbClientOrchestrator.connectToIde(environmentId, selectedIde, projectFolder)
+        }
+    }
+
     private suspend fun CoderRestClient.waitForReady(workspace: Workspace): Boolean {
         var status = workspace.latestBuild.status
         try {
@@ -438,6 +456,11 @@ private suspend fun CoderToolboxContext.showInfoPopup(
 private fun CoderToolboxContext.popupPluginMainPage() {
     this.ui.showWindow()
     this.envPageManager.showPluginEnvironmentsPage(true)
+}
+
+private suspend fun CoderToolboxContext.showEnvironmentPage(envId: String) {
+    this.ui.showWindow()
+    this.envPageManager.showEnvironmentPage(envId, false)
 }
 
 class MissingArgumentException(message: String, ex: Throwable? = null) : IllegalArgumentException(message, ex)
