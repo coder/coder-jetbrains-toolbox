@@ -14,6 +14,7 @@ import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import kotlinx.coroutines.CoroutineScope
 import java.net.URL
+import java.util.UUID
 
 @Suppress("UnstableApiUsage")
 data class CoderToolboxContext(
@@ -47,4 +48,14 @@ data class CoderToolboxContext(
             }
             return this.settingsStore.defaultURL.toURL()
         }
+
+    suspend fun logAndShowError(title: String, error: String) {
+        logger.error(error)
+        ui.showSnackbar(
+            UUID.randomUUID().toString(),
+            i18n.pnotr(title),
+            i18n.pnotr(error),
+            i18n.ptrl("OK")
+        )
+    }
 }

@@ -25,6 +25,8 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
 
+private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
+
 @Suppress("UnstableApiUsage")
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
@@ -46,35 +48,18 @@ open class CoderProtocolHandler(
         reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
         context.popupPluginMainPage()
+        context.logger.info("Handling $uri...")
         val params = uri.toQueryParameters()
         if (params.isEmpty()) {
             // probably a plugin installation scenario
             return
         }
 
-        val deploymentURL = params.url() ?: askUrl()
-        if (deploymentURL.isNullOrBlank()) {
-            context.logger.error("Query parameter \"$URL\" is missing from URI $uri")
-            context.showErrorPopup(MissingArgumentException("Can't handle URI because query parameter \"$URL\" is missing"))
-            return
-        }
-
-        val queryToken = params.token()
-        val restClient = try {
-            authenticate(deploymentURL, queryToken)
-        } catch (ex: Exception) {
-            context.logger.error(ex, "Query parameter \"$TOKEN\" is missing from URI $uri")
-            context.showErrorPopup(IllegalStateException(humanizeConnectionError(deploymentURL.toURL(), true, ex)))
-            return
-        }
-
+        val deploymentURL = resolveDeploymentUrl(params) ?: return
+        val token = resolveToken(params) ?: return
         // TODO: Show a dropdown and ask for the workspace if missing. Right now it's not possible because dialogs are quite limited
-        val workspaceName = params.workspace()
-        if (workspaceName.isNullOrBlank()) {
-            context.logger.error("Query parameter \"$WORKSPACE\" is missing from URI $uri")
-            context.showErrorPopup(MissingArgumentException("Can't handle URI because query parameter \"$WORKSPACE\" is missing"))
-            return
-        }
+        val workspaceName = resolveWorkspace(params) ?: return
+        val restClient = buildRestClient(deploymentURL, token) ?: return
 
         val workspaces = restClient.workspaces()
         val workspace = workspaces.firstOrNull { it.name == workspaceName }
@@ -244,6 +229,56 @@ open class CoderProtocolHandler(
         }
     }
 
+    private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
+        val deploymentURL = params.url() ?: askUrl()
+        if (deploymentURL.isNullOrBlank()) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$URL\" is missing from URI")
+            return null
+        }
+        return deploymentURL
+    }
+
+    private suspend fun resolveToken(params: Map<String, String>): String? {
+        val token = params.token()
+        if (token.isNullOrBlank()) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")
+            return null
+        }
+        return token
+    }
+
+    private suspend fun resolveWorkspace(params: Map<String, String>): String? {
+        val workspace = params.workspace()
+        if (workspace.isNullOrBlank()) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$WORKSPACE\" is missing from URI")
+            return null
+        }
+        return workspace
+    }
+
+    private suspend fun buildRestClient(deploymentURL: String, token: String): CoderRestClient? {
+        try {
+            return authenticate(deploymentURL, token)
+        } catch (ex: Exception) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, humanizeConnectionError(deploymentURL.toURL(), true, ex))
+            return null
+        }
+    }
+
+    /**
+     * Returns an authenticated Coder CLI.
+     */
+    private suspend fun authenticate(deploymentURL: String, token: String): CoderRestClient {
+        val client = CoderRestClient(
+            context,
+            deploymentURL.toURL(),
+            if (settings.requireTokenAuth) token else null,
+            PluginManager.pluginInfo.version
+        )
+        client.authenticate()
+        return client
+    }
+
     private suspend fun CoderRestClient.waitForReady(workspace: Workspace): Boolean {
         var status = workspace.latestBuild.status
         try {
@@ -285,43 +320,6 @@ open class CoderProtocolHandler(
             context.i18n.ptrl("Enter the full URL of your Coder deployment")
         )
     }
-
-    /**
-     * Return an authenticated Coder CLI, asking for the token.
-     * Throw MissingArgumentException if the user aborts. Any network or invalid
-     * token error may also be thrown.
-     */
-    private suspend fun authenticate(
-        deploymentURL: String,
-        tryToken: String?
-    ): CoderRestClient {
-        val token =
-            if (settings.requireTokenAuth) {
-                // Try the provided token immediately on the first attempt.
-                if (!tryToken.isNullOrBlank()) {
-                    tryToken
-                } else {
-                    context.popupPluginMainPage()
-                    // Otherwise ask for a new token, showing the previous token.
-                    dialogUi.askToken(deploymentURL.toURL())
-                }
-            } else {
-                null
-            }
-
-        if (settings.requireTokenAuth && token == null) { // User aborted.
-            throw MissingArgumentException("Token is required")
-        }
-        val client = CoderRestClient(
-            context,
-            deploymentURL.toURL(),
-            token,
-            PluginManager.pluginInfo.version
-        )
-        client.authenticate()
-        return client
-    }
-
 }
 
 /**
