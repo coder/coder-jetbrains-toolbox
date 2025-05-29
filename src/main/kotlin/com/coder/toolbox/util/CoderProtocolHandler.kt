@@ -9,7 +9,6 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
@@ -17,9 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.withTimeout
-import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 import java.util.UUID
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -227,7 +224,7 @@ open class CoderProtocolHandler(
      *
      * @throws [IllegalArgumentException]
      */
-    private suspend fun getMatchingAgent(
+    internal suspend fun getMatchingAgent(
         parameters: Map<String, String?>,
         workspace: Workspace,
     ): WorkspaceAgent? {
@@ -238,7 +235,6 @@ open class CoderProtocolHandler(
         }
 
         // If the agent is missing and the workspace has only one, use that.
-        // Prefer the ID over the name if both are set.
         val agent =
             if (!parameters.agentID().isNullOrBlank()) {
                 agents.firstOrNull { it.id.toString() == parameters.agentID() }
@@ -428,44 +424,6 @@ open class CoderProtocolHandler(
             context.i18n.ptrl("Enter the full URL of your Coder deployment")
         )
     }
-}
-
-/**
- * Follow a URL's redirects to its final destination.
- */
-internal fun resolveRedirects(url: URL): URL {
-    var location = url
-    val maxRedirects = 10
-    for (i in 1..maxRedirects) {
-        val conn = location.openConnection() as HttpURLConnection
-        conn.instanceFollowRedirects = false
-        conn.connect()
-        val code = conn.responseCode
-        val nextLocation = conn.getHeaderField("Location")
-        conn.disconnect()
-        // Redirects are triggered by any code starting with 3 plus a
-        // location header.
-        if (code < 300 || code >= 400 || nextLocation.isNullOrBlank()) {
-            return location
-        }
-        // Location headers might be relative.
-        location = URL(location, nextLocation)
-    }
-    throw Exception("Too many redirects")
-}
-
-private suspend fun CoderToolboxContext.showErrorPopup(error: Throwable) {
-    popupPluginMainPage()
-    this.ui.showErrorInfoPopup(error)
-}
-
-private suspend fun CoderToolboxContext.showInfoPopup(
-    title: LocalizableString,
-    message: LocalizableString,
-    okLabel: LocalizableString
-) {
-    popupPluginMainPage()
-    this.ui.showInfoPopup(title, message, okLabel)
 }
 
 private fun CoderToolboxContext.popupPluginMainPage() {

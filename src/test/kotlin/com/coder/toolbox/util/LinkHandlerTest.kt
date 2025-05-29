@@ -1,41 +1,49 @@
 package com.coder.toolbox.util
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.DataGen
-import com.sun.net.httpserver.HttpHandler
-import com.sun.net.httpserver.HttpServer
-import java.net.HttpURLConnection
-import java.net.InetSocketAddress
+import com.coder.toolbox.settings.Environment
+import com.coder.toolbox.store.CoderSecretsStore
+import com.coder.toolbox.store.CoderSettingsStore
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
+import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
+import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
+import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
+import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
+import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
+import com.jetbrains.toolbox.api.ui.ToolboxUi
+import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import java.util.UUID
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 
 internal class LinkHandlerTest {
-    /**
-     * Create, start, and return a server that uses the provided handler.
-     */
-    private fun mockServer(handler: HttpHandler): Pair<HttpServer, String> {
-        val srv = HttpServer.create(InetSocketAddress(0), 0)
-        srv.createContext("/", handler)
-        srv.start()
-        return Pair(srv, "http://localhost:" + srv.address.port)
-    }
+    private val context = CoderToolboxContext(
+        mockk<ToolboxUi>(relaxed = true),
+        mockk<EnvironmentUiPageManager>(),
+        mockk<EnvironmentStateColorPalette>(),
+        mockk<RemoteToolsHelper>(),
+        mockk<ClientHelper>(),
+        mockk<LocalDesktopManager>(),
+        mockk<CoroutineScope>(),
+        mockk<Logger>(relaxed = true),
+        mockk<LocalizableStringFactory>(relaxed = true),
+        CoderSettingsStore(pluginTestSettingsStore(), Environment(), mockk<Logger>(relaxed = true)),
+        mockk<CoderSecretsStore>(),
+        mockk<ToolboxProxySettings>()
+    )
 
-    /**
-     * Create, start, and return a server that mocks redirects.
-     */
-    private fun mockRedirectServer(
-        location: String,
-        temp: Boolean,
-    ): Pair<HttpServer, String> = mockServer { exchange ->
-        exchange.responseHeaders.set("Location", location)
-        exchange.sendResponseHeaders(
-            if (temp) HttpURLConnection.HTTP_MOVED_TEMP else HttpURLConnection.HTTP_MOVED_PERM,
-            -1,
-        )
-        exchange.close()
-    }
+    private val protocolHandler = CoderProtocolHandler(
+        context,
+        DialogUi(context),
+        MutableStateFlow(false)
+    )
 
     private val agents =
         mapOf(
@@ -49,7 +57,7 @@ internal class LinkHandlerTest {
         )
 
     @Test
-    fun getMatchingAgent() {
+    fun tstgetMatchingAgent() {
         val ws = DataGen.workspace("ws", agents = agents)
 
         val tests =
@@ -74,9 +82,10 @@ internal class LinkHandlerTest {
                     "b0e4c54d-9ba9-4413-8512-11ca1e826a24",
                 ),
             )
-
-        tests.forEach {
-            assertEquals(UUID.fromString(it.second), getMatchingAgent(it.first, ws).id)
+        runBlocking {
+            tests.forEach {
+                assertEquals(UUID.fromString(it.second), protocolHandler.getMatchingAgent(it.first, ws)?.id)
+            }
         }
     }
 
@@ -104,14 +113,10 @@ internal class LinkHandlerTest {
                     "agent with ID",
                 ),
             )
-
-        tests.forEach {
-            val ex =
-                assertFailsWith(
-                    exceptionClass = it.second,
-                    block = { getMatchingAgent(it.first, ws).id },
-                )
-            assertContains(ex.message.toString(), it.third)
+        runBlocking {
+            tests.forEach {
+                assertNull(protocolHandler.getMatchingAgent(it.first, ws)?.id)
+            }
         }
     }
 
@@ -126,15 +131,16 @@ internal class LinkHandlerTest {
                 mapOf("agent" to null),
                 mapOf("agent_id" to null),
             )
-
-        tests.forEach {
-            assertEquals(
-                UUID.fromString("b0e4c54d-9ba9-4413-8512-11ca1e826a24"),
-                getMatchingAgent(
-                    it,
-                    ws,
-                ).id,
-            )
+        runBlocking {
+            tests.forEach {
+                assertEquals(
+                    UUID.fromString("b0e4c54d-9ba9-4413-8512-11ca1e826a24"),
+                    protocolHandler.getMatchingAgent(
+                        it,
+                        ws,
+                    )?.id,
+                )
+            }
         }
     }
 
@@ -149,14 +155,10 @@ internal class LinkHandlerTest {
                     "agent with ID"
                 ),
             )
-
-        tests.forEach {
-            val ex =
-                assertFailsWith(
-                    exceptionClass = it.second,
-                    block = { getMatchingAgent(it.first, ws).id },
-                )
-            assertContains(ex.message.toString(), it.third)
+        runBlocking {
+            tests.forEach {
+                assertNull(protocolHandler.getMatchingAgent(it.first, ws)?.id)
+            }
         }
     }
 
@@ -177,43 +179,10 @@ internal class LinkHandlerTest {
                     "has no agents"
                 ),
             )
-
-        tests.forEach {
-            val ex =
-                assertFailsWith(
-                    exceptionClass = it.second,
-                    block = { getMatchingAgent(it.first, ws).id },
-                )
-            assertContains(ex.message.toString(), it.third)
-        }
-    }
-
-    @Test
-    fun followsRedirects() {
-        val (srv1, url1) =
-            mockServer { exchange ->
-                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, -1)
-                exchange.close()
+        runBlocking {
+            tests.forEach {
+                assertNull(protocolHandler.getMatchingAgent(it.first, ws)?.id)
             }
-        val (srv2, url2) = mockRedirectServer(url1, false)
-        val (srv3, url3) = mockRedirectServer(url2, true)
-
-        assertEquals(url1.toURL(), resolveRedirects(java.net.URL(url3)))
-
-        srv1.stop(0)
-        srv2.stop(0)
-        srv3.stop(0)
-    }
-
-    @Test
-    fun followsMaximumRedirects() {
-        val (srv, url) = mockRedirectServer(".", true)
-
-        assertFailsWith(
-            exceptionClass = Exception::class,
-            block = { resolveRedirects(java.net.URL(url)) },
-        )
-
-        srv.stop(0)
+        }
     }
 }
