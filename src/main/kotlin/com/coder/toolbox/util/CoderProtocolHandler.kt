@@ -57,7 +57,6 @@ open class CoderProtocolHandler(
         }
 
         context.logger.info("Handling $uri...")
-        context.popupPluginMainPage()
         val deploymentURL = resolveDeploymentUrl(params) ?: return
         val token = resolveToken(params) ?: return
         val workspaceName = resolveWorkspaceName(params) ?: return
