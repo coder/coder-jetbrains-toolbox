@@ -23,7 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-internal class LinkHandlerTest {
+internal class CoderProtocolHandlerTest {
     private val context = CoderToolboxContext(
         mockk<ToolboxUi>(relaxed = true),
         mockk<EnvironmentUiPageManager>(),
