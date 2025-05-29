@@ -138,3 +138,6 @@ msgstr ""
 
 msgid "Create workspace"
 msgstr ""
+
+msgid "Error encountered while handling Coder URI"
+msgstr ""

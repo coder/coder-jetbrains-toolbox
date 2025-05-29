@@ -3,7 +3,6 @@ package com.coder.toolbox.util
 const val URL = "url"
 const val TOKEN = "token"
 const val WORKSPACE = "workspace"
-const val AGENT_NAME = "agent"
 const val AGENT_ID = "agent_id"
 private const val IDE_PRODUCT_CODE = "ide_product_code"
 private const val IDE_BUILD_NUMBER = "ide_build_number"

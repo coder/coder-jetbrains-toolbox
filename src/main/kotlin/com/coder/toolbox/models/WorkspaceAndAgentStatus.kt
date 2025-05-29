@@ -7,7 +7,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.jetbrains.toolbox.api.core.ui.color.StateColor
-import com.jetbrains.toolbox.api.remoteDev.states.CustomRemoteEnvironmentState
+import com.jetbrains.toolbox.api.remoteDev.states.CustomRemoteEnvironmentStateV2
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateIcons
 import com.jetbrains.toolbox.api.remoteDev.states.StandardRemoteEnvironmentState
 
@@ -61,9 +61,9 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
      * Note that a reachable environment will always display "connected" or
      * "disconnected" regardless of the label we give that status.
      */
-    fun toRemoteEnvironmentState(context: CoderToolboxContext): CustomRemoteEnvironmentState {
-        return CustomRemoteEnvironmentState(
-            label,
+    fun toRemoteEnvironmentState(context: CoderToolboxContext): CustomRemoteEnvironmentStateV2 {
+        return CustomRemoteEnvironmentStateV2(
+            context.i18n.pnotr(label),
             color = getStateColor(context),
             reachable = ready() || unhealthy(),
             // TODO@JB: How does this work?  Would like a spinner for pending states.
@@ -90,10 +90,10 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
         else EnvironmentStateIcons.NoIcon
     }
 
-    fun toSshConnectingEnvState(context: CoderToolboxContext): CustomRemoteEnvironmentState {
+    fun toSshConnectingEnvState(context: CoderToolboxContext): CustomRemoteEnvironmentStateV2 {
         val existingState = toRemoteEnvironmentState(context)
-        return CustomRemoteEnvironmentState(
-            "SSHing",
+        return CustomRemoteEnvironmentStateV2(
+            context.i18n.pnotr("SSHing"),
             existingState.color,
             existingState.isReachable,
             EnvironmentStateIcons.Connecting

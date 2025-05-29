@@ -192,12 +192,12 @@ open class CoderRestClient(
     }
 
     /**
-     * Maps the list of workspaces to the associated agents.
+     * Maps the available workspaces to the associated agents.
      */
-    suspend fun groupByAgents(workspaces: List<Workspace>): Set<Pair<Workspace, WorkspaceAgent>> {
+    suspend fun workspacesByAgents(): Set<Pair<Workspace, WorkspaceAgent>> {
         // It is possible for there to be resources with duplicate names so we
         // need to use a set.
-        return workspaces.flatMap { ws ->
+        return workspaces().flatMap { ws ->
             when (ws.latestBuild.status) {
                 WorkspaceStatus.RUNNING -> ws.latestBuild.resources
                 else -> resources(ws)
