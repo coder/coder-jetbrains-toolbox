@@ -45,14 +45,19 @@ open class CoderProtocolHandler(
         shouldWaitForAutoLogin: Boolean,
         reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
-        context.popupPluginMainPage()
-        context.logger.info("Handling $uri...")
         val params = uri.toQueryParameters()
         if (params.isEmpty()) {
             // probably a plugin installation scenario
+            context.logAndShowInfo("URI will not be handled", "No query parameters were provided")
             return
         }
 
+        if (shouldWaitForAutoLogin) {
+            isInitialized.waitForTrue()
+        }
+
+        context.logger.info("Handling $uri...")
+        context.popupPluginMainPage()
         val deploymentURL = resolveDeploymentUrl(params) ?: return
         val token = resolveToken(params) ?: return
         val workspaceName = resolveWorkspaceName(params) ?: return
@@ -66,10 +71,6 @@ open class CoderProtocolHandler(
         if (!ensureAgentIsReady(workspace, agent)) return
 
         val cli = configureCli(deploymentURL, restClient)
-
-        if (shouldWaitForAutoLogin) {
-            isInitialized.waitForTrue()
-        }
         reInitialize(restClient, cli)
 
         val environmentId = "${workspace.name}.${agent.name}"
