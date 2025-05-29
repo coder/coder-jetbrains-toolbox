@@ -58,9 +58,11 @@ open class CoderProtocolHandler(
         val workspaceName = resolveWorkspaceName(params) ?: return
         val restClient = buildRestClient(deploymentURL, token) ?: return
         val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL) ?: return
-        val agent = resolveAgent(params, workspace) ?: return
-
         if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
+
+        // we resolve the agent after the workspace is started otherwise we can get misleading
+        // errors like: no agent available while workspace is starting or stopping
+        val agent = resolveAgent(params, workspace) ?: return
         if (!ensureAgentIsReady(workspace, agent)) return
 
         val cli = configureCli(deploymentURL, restClient)
