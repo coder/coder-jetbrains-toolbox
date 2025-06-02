@@ -1,10 +1,8 @@
 package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.browser.browse
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.TextType
-import java.net.URL
 
 /**
  * Dialog implementation for standalone Gateway.
@@ -24,36 +22,6 @@ class DialogUi(private val context: CoderToolboxContext) {
     ): String? {
         return context.ui.showTextInputPopup(
             title, description, placeholder, TextType.General, context.i18n.ptrl("OK"), context.i18n.ptrl("Cancel")
-        )
-    }
-
-    suspend fun askPassword(
-        title: LocalizableString,
-        description: LocalizableString,
-        placeholder: LocalizableString? = null,
-    ): String? {
-        return context.ui.showTextInputPopup(
-            title, description, placeholder, TextType.Password, context.i18n.ptrl("OK"), context.i18n.ptrl("Cancel")
-        )
-    }
-
-    private suspend fun openUrl(url: URL) {
-        context.desktop.browse(url.toString()) {
-            context.ui.showErrorInfoPopup(it)
-        }
-    }
-
-    /**
-     * Open a dialog for providing the token.
-     */
-    suspend fun askToken(
-        url: URL,
-    ): String? {
-        openUrl(url.withPath("/login?redirect=%2Fcli-auth"))
-        return askPassword(
-            title = context.i18n.ptrl("Session Token"),
-            description = context.i18n.pnotr("Please paste the session token from the web-page"),
-            placeholder = context.i18n.pnotr("")
         )
     }
 }

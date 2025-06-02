@@ -24,6 +24,7 @@ import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
+import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
@@ -102,6 +103,7 @@ class CoderRestClientTest {
         mockk<ToolboxUi>(),
         mockk<EnvironmentUiPageManager>(),
         mockk<EnvironmentStateColorPalette>(),
+        mockk<RemoteToolsHelper>(),
         mockk<ClientHelper>(),
         mockk<LocalDesktopManager>(),
         mockk<CoroutineScope>(),
