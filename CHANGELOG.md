@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- show errors when the Toolbox is visible again after being minimized.
+
 ## 0.2.3 - 2025-05-26
 
 ### Changed

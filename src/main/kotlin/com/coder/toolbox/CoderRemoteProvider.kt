@@ -70,6 +70,13 @@ class CoderRemoteProvider(
         LoadableState.Loading
     )
 
+    private val visibilityState = MutableStateFlow(
+        ProviderVisibilityState(
+            applicationVisible = false,
+            providerVisible = false
+        )
+    )
+
     /**
      * With the provided client, start polling for workspaces.  Every time a new
      * workspace is added, reconfigure SSH using the provided cli (including the
@@ -263,7 +270,11 @@ class CoderRemoteProvider(
      *        a place to put a timer ("last updated 10 seconds ago" for example)
      *        and a manual refresh button.
      */
-    override fun setVisible(visibilityState: ProviderVisibilityState) {}
+    override fun setVisible(visibility: ProviderVisibilityState) {
+        visibilityState.update {
+            visibility
+        }
+    }
 
     /**
      * Handle incoming links (like from the dashboard).
@@ -309,7 +320,7 @@ class CoderRemoteProvider(
                     if (autologin && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !settings.requireTokenAuth)) {
                         try {
                             AuthWizardState.goToStep(WizardStep.LOGIN)
-                            return AuthWizardPage(context, settingsPage, true, ::onConnect)
+                            return AuthWizardPage(context, settingsPage, visibilityState, true, ::onConnect)
                         } catch (ex: Exception) {
                             errorBuffer.add(ex)
                         }
@@ -319,7 +330,7 @@ class CoderRemoteProvider(
             firstRun = false
 
             // Login flow.
-            val authWizard = AuthWizardPage(context, settingsPage, false, ::onConnect)
+            val authWizard = AuthWizardPage(context, settingsPage, visibilityState, onConnect = ::onConnect)
             // We might have navigated here due to a polling error.
             errorBuffer.forEach {
                 authWizard.notify("Error encountered", it)
