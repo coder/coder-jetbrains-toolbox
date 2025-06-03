@@ -148,6 +148,8 @@ class CoderRemoteProvider(
                 } else {
                     context.logger.error(ex, "workspace polling error encountered, trying to auto-login")
                     close()
+                    // force auto-login
+                    firstRun = true
                     goToEnvironmentsPage()
                     break
                 }
