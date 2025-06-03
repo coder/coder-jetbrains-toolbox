@@ -8,8 +8,9 @@ import java.net.URL
 class APIResponseException(action: String, url: URL, code: Int, errorResponse: ApiErrorResponse?) :
     IOException(formatToPretty(action, url, code, errorResponse)) {
 
-
+    val reason = errorResponse?.detail
     val isUnauthorized = HttpURLConnection.HTTP_UNAUTHORIZED == code
+    val isTokenExpired = isUnauthorized && reason?.contains("API key expired") == true
 
     companion object {
         private fun formatToPretty(

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- the plugin will now remember the SSH connection state for each workspace, and it will try to automatically
+  establish it after an expired token was refreshed.
+
+### Fixed
+
+- show errors when the Toolbox is visible again after being minimized.
+
 ## 0.2.3 - 2025-05-26
 
 ### Changed
