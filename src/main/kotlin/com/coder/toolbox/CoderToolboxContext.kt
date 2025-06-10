@@ -3,6 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.util.toURL
+import com.coder.toolbox.views.CoderPage
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
@@ -13,8 +14,10 @@ import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import java.net.URL
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 
 @Suppress("UnstableApiUsage")
 data class CoderToolboxContext(
@@ -87,5 +90,14 @@ data class CoderToolboxContext(
             i18n.pnotr(info),
             i18n.ptrl("OK")
         )
+    }
+
+    /**
+     * Forces the title bar on the main page to be refreshed
+     */
+    suspend fun refreshMainPage() {
+        ui.showUiPage(CoderPage.emptyPage(this))
+        delay(10.milliseconds)
+        envPageManager.showPluginEnvironmentsPage()
     }
 }

@@ -16,7 +16,7 @@ class AuthWizardPage(
     private val context: CoderToolboxContext,
     private val settingsPage: CoderSettingsPage,
     initialAutoLogin: Boolean = false,
-    onConnect: (
+    onConnect: suspend (
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,

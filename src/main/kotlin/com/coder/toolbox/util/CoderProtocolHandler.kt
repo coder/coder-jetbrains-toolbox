@@ -43,6 +43,8 @@ open class CoderProtocolHandler(
     suspend fun handle(
         uri: URI,
         shouldWaitForAutoLogin: Boolean,
+        markAsBusy: () -> Unit,
+        unmarkAsBusy: () -> Unit,
         reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
         val params = uri.toQueryParameters()
@@ -62,16 +64,22 @@ open class CoderProtocolHandler(
         val workspaceName = resolveWorkspaceName(params) ?: return
         val restClient = buildRestClient(deploymentURL, token) ?: return
         val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL) ?: return
-        if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
-
-        // we resolve the agent after the workspace is started otherwise we can get misleading
-        // errors like: no agent available while workspace is starting or stopping
-        val agent = resolveAgent(params, workspace) ?: return
-        if (!ensureAgentIsReady(workspace, agent)) return
 
         val cli = configureCli(deploymentURL, restClient)
         reInitialize(restClient, cli)
 
+        var agent: WorkspaceAgent
+        try {
+            markAsBusy()
+            context.refreshMainPage()
+            if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
+            // we resolve the agent after the workspace is started otherwise we can get misleading
+            // errors like: no agent available while workspace is starting or stopping
+            agent = resolveAgent(params, workspace) ?: return
+            if (!ensureAgentIsReady(workspace, agent)) return
+        } finally {
+            unmarkAsBusy()
+        }
         val environmentId = "${workspace.name}.${agent.name}"
         context.showEnvironmentPage(environmentId)
 
@@ -431,6 +439,7 @@ open class CoderProtocolHandler(
         )
     }
 }
+
 
 private fun CoderToolboxContext.popupPluginMainPage() {
     this.ui.showWindow()
