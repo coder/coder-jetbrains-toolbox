@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- outdated and stopped workspaces are now updated and started when handling URI 
+
 ## 0.3.0 - 2025-06-10
 
 ### Added

@@ -173,7 +173,11 @@ open class CoderProtocolHandler(
                 }
 
                 try {
-                    restClient.startWorkspace(workspace)
+                    if (workspace.outdated) {
+                        restClient.updateWorkspace(workspace)
+                    } else {
+                        restClient.startWorkspace(workspace)
+                    }
                 } catch (e: Exception) {
                     context.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
