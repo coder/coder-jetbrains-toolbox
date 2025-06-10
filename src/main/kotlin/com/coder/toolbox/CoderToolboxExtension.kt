@@ -13,6 +13,7 @@ import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.RemoteDevExtension
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
+import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
@@ -31,6 +32,7 @@ class CoderToolboxExtension : RemoteDevExtension {
                 serviceLocator.getService<ToolboxUi>(),
                 serviceLocator.getService<EnvironmentUiPageManager>(),
                 serviceLocator.getService<EnvironmentStateColorPalette>(),
+                serviceLocator.getService<RemoteToolsHelper>(),
                 serviceLocator.getService<ClientHelper>(),
                 serviceLocator.getService<LocalDesktopManager>(),
                 serviceLocator.getService<CoroutineScope>(),

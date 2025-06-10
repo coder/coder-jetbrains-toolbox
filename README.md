@@ -101,6 +101,11 @@ If `ide_product_code` and `ide_build_number` is missing, Toolbox will only open 
 page. Coder Toolbox will attempt to start the workspace if it’s not already running; however, for the most reliable
 experience, it’s recommended to ensure the workspace is running prior to initiating the connection.
 
+> ⚠️ Note: `folder` should point to a remote IDEA project that has already been opened and appears in the `Projects` tab.
+> If the path refers to a project that doesn't exist, the remote IDE won’t start or load it.
+
+> Until [TBX-14952](https://youtrack.jetbrains.com/issue/TBX-14952/) is fixed, it's best to either use a path to a previously opened project or leave it empty.
+
 ## Configuring and Testing workspace polling with HTTP & SOCKS5 Proxy
 
 This section explains how to set up a local proxy (without authentication which is not yet supported) and verify that
