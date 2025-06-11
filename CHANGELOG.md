@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- `Stop` action is now available for running workspaces that have an out of date template.
+
 ## 0.3.0 - 2025-06-10
 
 ### Added
