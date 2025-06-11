@@ -96,7 +96,20 @@ data class CoderToolboxContext(
      * Forces the title bar on the main page to be refreshed
      */
     suspend fun refreshMainPage() {
+        // the url/title on the main page is only refreshed if
+        // we're navigating to the main env page from another page.
+        // If TBX is already on the main page the title is not refreshed
+        // hence we force a navigation from a blank page.
         ui.showUiPage(CoderPage.emptyPage(this))
+
+
+        // Toolbox uses an internal shared flow with a buffer of 4 items and a DROP_OLDEST strategy.
+        // Both showUiPage and showPluginEnvironmentsPage send events to this flow.
+        // If we emit two events back-to-back, the first one often gets dropped and only the second is shown.
+        // To reduce this risk, we add a small delay to let the UI coroutine process the first event.
+        // Simply yielding the coroutine isn't reliable, especially right after Toolbox starts via URI handling.
+        // Based on my testing, a 5–10 ms delay is enough to ensure the blank page is processed,
+        // while still short enough to be invisible to users.
         delay(10.milliseconds)
         envPageManager.showPluginEnvironmentsPage()
     }
