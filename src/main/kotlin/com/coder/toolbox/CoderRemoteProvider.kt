@@ -109,7 +109,6 @@ class CoderRemoteProvider(
                     return@launch
                 }
 
-
                 // Reconfigure if environments changed.
                 if (lastEnvironments.size != resolvedEnvironments.size || lastEnvironments != resolvedEnvironments) {
                     context.logger.info("Workspaces have changed, reconfiguring CLI: $resolvedEnvironments")

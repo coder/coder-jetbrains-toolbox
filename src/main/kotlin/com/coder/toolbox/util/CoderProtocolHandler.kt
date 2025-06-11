@@ -75,7 +75,12 @@ open class CoderProtocolHandler(
             if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
             // we resolve the agent after the workspace is started otherwise we can get misleading
             // errors like: no agent available while workspace is starting or stopping
-            agent = resolveAgent(params, workspace) ?: return
+            // we also need to retrieve the workspace again to have the latest resources (ex: agent)
+            // attached to the workspace.
+            agent = resolveAgent(
+                params,
+                restClient.workspace(workspace.id)
+            ) ?: return
             if (!ensureAgentIsReady(workspace, agent)) return
         } finally {
             unmarkAsBusy()
