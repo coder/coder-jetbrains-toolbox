@@ -346,7 +346,7 @@ class CoderRemoteProvider(
         // Show sign in page if we have not configured the client yet.
         if (client == null) {
             val errorBuffer = mutableListOf<Throwable>()
-            // When coming back to the application, authenticate immediately.
+            // When coming back to the application, initializeSession immediately.
             val autologin = shouldDoAutoLogin()
             context.secrets.lastToken.let { lastToken ->
                 context.secrets.lastDeploymentURL.let { lastDeploymentURL ->

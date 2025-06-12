@@ -86,7 +86,7 @@ class ConnectStep(
                 )
                 // allows interleaving with the back/cancel action
                 yield()
-                client.authenticate()
+                client.initializeSession()
                 statusField.textState.update { (context.i18n.ptrl("Checking Coder binary...")) }
                 val cli = ensureCLI(context, client.url, client.buildVersion)
                 // We only need to log in if we are using token-based auth.

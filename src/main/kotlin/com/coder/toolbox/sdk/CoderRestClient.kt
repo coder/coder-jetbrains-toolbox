@@ -131,12 +131,11 @@ open class CoderRestClient(
     }
 
     /**
-     * Authenticate and load information about the current user and the build
-     * version.
+     * Load information about the current user and the build version.
      *
      * @throws [APIResponseException].
      */
-    suspend fun authenticate(): User {
+    suspend fun initializeSession(): User {
         me = me()
         buildVersion = buildInfo().version
         return me
@@ -149,7 +148,12 @@ open class CoderRestClient(
     suspend fun me(): User {
         val userResponse = retroRestClient.me()
         if (!userResponse.isSuccessful) {
-            throw APIResponseException("authenticate", url, userResponse.code(), userResponse.parseErrorBody(moshi))
+            throw APIResponseException(
+                "initializeSession",
+                url,
+                userResponse.code(),
+                userResponse.parseErrorBody(moshi)
+            )
         }
 
         return userResponse.body()!!

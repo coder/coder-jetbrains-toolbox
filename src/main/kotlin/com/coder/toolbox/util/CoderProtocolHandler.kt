@@ -143,7 +143,7 @@ open class CoderProtocolHandler(
             if (settings.requireTokenAuth) token else null,
             PluginManager.pluginInfo.version
         )
-        client.authenticate()
+        client.initializeSession()
         return client
     }
 

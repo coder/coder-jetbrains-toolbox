@@ -203,7 +203,7 @@ class CoderCLIManager(
     }
 
     /**
-     * Use the provided token to authenticate the CLI.
+     * Use the provided token to initializeSession the CLI.
      */
     fun login(token: String): String {
         logger.info("Storing CLI credentials in $coderConfigPath")
