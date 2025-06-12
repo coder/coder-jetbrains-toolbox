@@ -234,8 +234,7 @@ class CoderRemoteEnvironment(
      * The contents are provided by the SSH view provided by Toolbox, all we
      * have to do is provide it a host name.
      */
-    override suspend
-    fun getContentsView(): EnvironmentContentsView = EnvironmentView(
+    override suspend fun getContentsView(): EnvironmentContentsView = EnvironmentView(
         client.url,
         cli,
         workspace,
@@ -243,19 +242,30 @@ class CoderRemoteEnvironment(
     )
 
     /**
-     * Does nothing.  In theory, we could do something like start the workspace
-     * when you click into the workspace, but you would still need to press
-     * "connect" anyway before the content is populated so there does not seem
-     * to be much value.
+     * Automatically launches the SSH connection if the workspace is visible, is ready and there is no
+     * connection already established.
      */
     override fun setVisible(visibilityState: EnvironmentVisibilityState) {
-        if (wsRawStatus.ready() && visibilityState.contentsVisible == true && isConnected.value == false) {
+        if (visibilityState.contentsVisible) {
+            startSshConnection()
+        }
+    }
+
+    /**
+     * Launches the SSH connection if the workspace is ready and there is no connection already established.
+     *
+     * Returns true if the SSH connection was scheduled to start, false otherwise.
+     */
+    fun startSshConnection(): Boolean {
+        if (wsRawStatus.ready() && !isConnected.value) {
             context.cs.launch {
                 connectionRequest.update {
                     true
                 }
             }
+            return true
         }
+        return false
     }
 
     override fun getDeleteEnvironmentConfirmationParams(): DeleteEnvironmentConfirmationParams? {
@@ -297,6 +307,8 @@ class CoderRemoteEnvironment(
             }
         }
     }
+
+    fun isConnected(): Boolean = isConnected.value
 
     /**
      * An environment is equal if it has the same ID.

@@ -3,24 +3,29 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.views.state.AuthContext
 import com.coder.toolbox.views.state.AuthWizardState
 import com.coder.toolbox.views.state.WizardStep
+import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 class AuthWizardPage(
     private val context: CoderToolboxContext,
     private val settingsPage: CoderSettingsPage,
+    private val visibilityState: MutableStateFlow<ProviderVisibilityState>,
     initialAutoLogin: Boolean = false,
     onConnect: suspend (
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,
-) : CoderPage(context, context.i18n.ptrl("Authenticate to Coder"), false) {
+) : CoderPage(context.i18n.ptrl("Authenticate to Coder"), false) {
     private val shouldAutoLogin = MutableStateFlow(initialAutoLogin)
     private val settingsAction = Action(context.i18n.ptrl("Settings"), actionBlock = {
         context.ui.showUiPage(settingsPage)
@@ -42,6 +47,8 @@ class AuthWizardPage(
     override val fields: MutableStateFlow<List<UiField>> = MutableStateFlow(emptyList())
     override val actionButtons: MutableStateFlow<List<RunnableActionDescription>> = MutableStateFlow(emptyList())
 
+    private val errorBuffer = mutableListOf<Throwable>()
+
     init {
         if (shouldAutoLogin.value) {
             AuthContext.url = context.secrets.lastDeploymentURL.toURL()
@@ -51,6 +58,12 @@ class AuthWizardPage(
 
     override fun beforeShow() {
         displaySteps()
+        if (errorBuffer.isNotEmpty() && visibilityState.value.applicationVisible) {
+            errorBuffer.forEach {
+                showError(it)
+            }
+            errorBuffer.clear()
+        }
     }
 
     private fun displaySteps() {
@@ -111,6 +124,36 @@ class AuthWizardPage(
                 }
                 connectStep.onVisible()
             }
+        }
+    }
+
+    /**
+     * Show an error as a popup on this page.
+     */
+    fun notify(logPrefix: String, ex: Throwable) {
+        context.logger.error(ex, logPrefix)
+        if (!visibilityState.value.applicationVisible) {
+            context.logger.debug("Toolbox is not yet visible, scheduling error to be displayed later")
+            errorBuffer.add(ex)
+            return
+        }
+        showError(ex)
+    }
+
+    private fun showError(ex: Throwable) {
+        val textError = if (ex is APIResponseException) {
+            if (!ex.reason.isNullOrBlank()) {
+                ex.reason
+            } else ex.message
+        } else ex.message
+
+        context.cs.launch {
+            context.ui.showSnackbar(
+                UUID.randomUUID().toString(),
+                context.i18n.ptrl("Error encountered during authentication"),
+                context.i18n.pnotr(textError ?: ""),
+                context.i18n.ptrl("Dismiss")
+            )
         }
     }
 }

@@ -141,3 +141,6 @@ msgstr ""
 
 msgid "Error encountered while handling Coder URI"
 msgstr ""
+
+msgid "Error encountered during authentication"
+msgstr ""

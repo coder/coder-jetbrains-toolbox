@@ -7,8 +7,6 @@ import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
-import java.util.UUID
 
 /**
  * Base page that handles the icon, displaying error notifications, and
@@ -21,7 +19,6 @@ import java.util.UUID
  *       to use the mouse.
  */
 abstract class CoderPage(
-    private val context: CoderToolboxContext,
     title: LocalizableString,
     showIcon: Boolean = true,
 ) : UiPage(title) {
@@ -41,21 +38,6 @@ abstract class CoderPage(
     }
 
     override val isBusyCreatingNewEnvironment: MutableStateFlow<Boolean> = MutableStateFlow(false)
-
-    /**
-     * Show an error as a popup on this page.
-     */
-    fun notify(logPrefix: String, ex: Throwable) {
-        context.logger.error(ex, logPrefix)
-        context.cs.launch {
-            context.ui.showSnackbar(
-                UUID.randomUUID().toString(),
-                context.i18n.pnotr(logPrefix),
-                context.i18n.pnotr(ex.message ?: ""),
-                context.i18n.ptrl("Dismiss")
-            )
-        }
-    }
 
     companion object {
         fun emptyPage(ctx: CoderToolboxContext): UiPage = UiPage(ctx.i18n.pnotr(""))

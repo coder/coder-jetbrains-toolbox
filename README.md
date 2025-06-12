@@ -101,10 +101,12 @@ If `ide_product_code` and `ide_build_number` is missing, Toolbox will only open 
 page. Coder Toolbox will attempt to start the workspace if it’s not already running; however, for the most reliable
 experience, it’s recommended to ensure the workspace is running prior to initiating the connection.
 
-> ⚠️ Note: `folder` should point to a remote IDEA project that has already been opened and appears in the `Projects` tab.
+> ⚠️ Note: `folder` should point to a remote IDEA project that has already been opened and appears in the `Projects`
+> tab.
 > If the path refers to a project that doesn't exist, the remote IDE won’t start or load it.
 
-> Until [TBX-14952](https://youtrack.jetbrains.com/issue/TBX-14952/) is fixed, it's best to either use a path to a previously opened project or leave it empty.
+> Until [TBX-14952](https://youtrack.jetbrains.com/issue/TBX-14952/) is fixed, it's best to either use a path to a
+> previously opened project or leave it empty.
 
 ## Configuring and Testing workspace polling with HTTP & SOCKS5 Proxy
 
@@ -144,11 +146,11 @@ mitmproxy can do HTTP and SOCKS5 proxying. To configure one or the other:
 
 ## Debugging and Reporting issues
 
-Enabling debug logging is essential for diagnosing issues with the Toolbox plugin, especially when SSH 
-connections to the remote environment fail — it provides detailed output that includes SSH negotiation 
+Enabling debug logging is essential for diagnosing issues with the Toolbox plugin, especially when SSH
+connections to the remote environment fail — it provides detailed output that includes SSH negotiation
 and command execution, which is not visible at the default log level.
 
-If you encounter a problem with Coder's JetBrains Toolbox plugin, follow the steps below to gather more 
+If you encounter a problem with Coder's JetBrains Toolbox plugin, follow the steps below to gather more
 information and help us diagnose and resolve it quickly.
 
 ### Enable Debug Logging
@@ -164,7 +166,7 @@ Steps to enable debug logging:
 
 3. In the screen that appears, select _DEBUG_ for the `Log level:` section.
 
-4. Hit the back button at the top. 
+4. Hit the back button at the top.
 
 There is no need to restart Toolbox, as it will begin logging at the __DEBUG__ level right away.
 
@@ -172,10 +174,10 @@ There is no need to restart Toolbox, as it will begin logging at the __DEBUG__ l
 
 #### Viewing the Logs
 
-Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly 
+Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly
 via Toolbox App Menu > About > Show log files.
 
-Alternatively, you can generate a ZIP file using the Workspace action menu, available either on the main 
+Alternatively, you can generate a ZIP file using the Workspace action menu, available either on the main
 Workspaces page in Coder or within the individual workspace view, under the option labeled _Collect logs_.
 
 ## Coder Settings
@@ -183,19 +185,20 @@ Workspaces page in Coder or within the individual workspace view, under the opti
 The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data
 storage paths. The options can be configured from the plugin's main Workspaces page > deployment action menu > Settings.
 
-### CLI related settings 
+### CLI related settings
 
 ```Binary source``` specifies the source URL or relative path from which the Coder CLI should be downloaded.
 If a relative path is provided, it is resolved against the deployment domain.
 
 ```Enable downloads``` allows automatic downloading of the CLI if the current version is missing or outdated.
 
-```Binary directory``` specifies the directory where CLI binaries are stored. If omitted, it defaults to the data directory.
+```Binary directory``` specifies the directory where CLI binaries are stored. If omitted, it defaults to the data
+directory.
 
 ```Enable binary directory fallback``` if enabled, falls back to the data directory when the specified binary
 directory is not writable.
 
-```Data directory``` directory where plugin-specific data such as session tokens and binaries are stored if not 
+```Data directory``` directory where plugin-specific data such as session tokens and binaries are stored if not
 overridden by the binary directory setting.
 
 ```Header command``` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
@@ -203,7 +206,8 @@ The environment variable CODER_URL will be available to the command process.
 
 ### TLS settings
 
-The following options control the secure communication behavior of the plugin with Coder deployment and its available API.
+The following options control the secure communication behavior of the plugin with Coder deployment and its available
+API.
 
 ```TLS cert path``` path to a client certificate file for TLS authentication with Coder deployment.
 The certificate should be in X.509 PEM format.
@@ -215,7 +219,7 @@ The certificate should be in X.509 PEM format.
 certs returned by the Coder deployment. The file should be in X.509 PEM format. This option can also be used to verify
 proxy certificates.
 
-```TLS alternate hostname``` overrides the hostname used in TLS verification. This is useful when the hostname 
+```TLS alternate hostname``` overrides the hostname used in TLS verification. This is useful when the hostname
 used to connect to the Coder deployment does not match the hostname in the TLS certificate.
 
 ### SSH settings
@@ -232,11 +236,13 @@ rules for matching multiple workspaces.
 
 ```SSH network metrics directory``` directory where network information used by the SSH proxy is stored.
 
-```Extra SSH options``` additional options appended to the SSH configuration. Can be used to customize the behavior of SSH connections.
+```Extra SSH options``` additional options appended to the SSH configuration. Can be used to customize the behavior of
+SSH connections.
 
 ### Saving Changes
 
-Changes made in the settings page are saved by clicking the Save button. Some changes, like toggling SSH wildcard support,
+Changes made in the settings page are saved by clicking the Save button. Some changes, like toggling SSH wildcard
+support,
 may trigger regeneration of SSH configurations.
 
 ### Security considerations

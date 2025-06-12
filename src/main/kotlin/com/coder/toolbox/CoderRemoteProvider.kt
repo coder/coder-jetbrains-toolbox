@@ -3,6 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
@@ -19,7 +20,6 @@ import com.jetbrains.toolbox.api.core.util.LoadableState
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
-import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
 import com.jetbrains.toolbox.api.ui.actions.ActionDelimiter
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
@@ -65,8 +65,16 @@ class CoderRemoteProvider(
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
     private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(context.deploymentUrl.toString()))
     private val linkHandler = CoderProtocolHandler(context, dialogUi, isInitialized)
-    override val environments: MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>> = MutableStateFlow(
+
+    override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
         LoadableState.Loading
+    )
+
+    private val visibilityState = MutableStateFlow(
+        ProviderVisibilityState(
+            applicationVisible = false,
+            providerVisible = false
+        )
     )
 
     /**
@@ -118,7 +126,7 @@ class CoderRemoteProvider(
                 environments.update {
                     LoadableState.Value(resolvedEnvironments.toList())
                 }
-                if (isInitialized.value == false) {
+                if (!isInitialized.value) {
                     context.logger.info("Environments for ${client.url} are now initialized")
                     isInitialized.update {
                         true
@@ -128,6 +136,21 @@ class CoderRemoteProvider(
                     clear()
                     addAll(resolvedEnvironments.sortedBy { it.id })
                 }
+
+                if (WorkspaceConnectionManager.shouldEstablishWorkspaceConnections) {
+                    WorkspaceConnectionManager.allConnected().forEach { wsId ->
+                        val env = lastEnvironments.firstOrNull() { it.id == wsId }
+                        if (env != null && !env.isConnected()) {
+                            context.logger.info("Establishing lost SSH connection for workspace with id $wsId")
+                            if (!env.startSshConnection()) {
+                                context.logger.info("Can't establish lost SSH connection for workspace with id $wsId")
+                            }
+                        }
+                    }
+                    WorkspaceConnectionManager.reset()
+                }
+
+                WorkspaceConnectionManager.collectStatuses(lastEnvironments)
             } catch (_: CancellationException) {
                 context.logger.debug("${client.url} polling loop canceled")
                 break
@@ -138,7 +161,12 @@ class CoderRemoteProvider(
                     client.setupSession()
                 } else {
                     context.logger.error(ex, "workspace polling error encountered, trying to auto-login")
+                    if (ex is APIResponseException && ex.isTokenExpired) {
+                        WorkspaceConnectionManager.shouldEstablishWorkspaceConnections = true
+                    }
                     close()
+                    // force auto-login
+                    firstRun = true
                     goToEnvironmentsPage()
                     break
                 }
@@ -168,6 +196,7 @@ class CoderRemoteProvider(
         // Keep the URL and token to make it easy to log back in, but set
         // rememberMe to false so we do not try to automatically log in.
         context.secrets.rememberMe = false
+        WorkspaceConnectionManager.reset()
         close()
     }
 
@@ -261,7 +290,11 @@ class CoderRemoteProvider(
      *        a place to put a timer ("last updated 10 seconds ago" for example)
      *        and a manual refresh button.
      */
-    override fun setVisible(visibilityState: ProviderVisibilityState) {}
+    override fun setVisible(visibility: ProviderVisibilityState) {
+        visibilityState.update {
+            visibility
+        }
+    }
 
     /**
      * Handle incoming links (like from the dashboard).
@@ -320,7 +353,7 @@ class CoderRemoteProvider(
                     if (autologin && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !settings.requireTokenAuth)) {
                         try {
                             AuthWizardState.goToStep(WizardStep.LOGIN)
-                            return AuthWizardPage(context, settingsPage, true, ::onConnect)
+                            return AuthWizardPage(context, settingsPage, visibilityState, true, ::onConnect)
                         } catch (ex: Exception) {
                             errorBuffer.add(ex)
                         }
@@ -330,7 +363,7 @@ class CoderRemoteProvider(
             firstRun = false
 
             // Login flow.
-            val authWizard = AuthWizardPage(context, settingsPage, false, ::onConnect)
+            val authWizard = AuthWizardPage(context, settingsPage, visibilityState, onConnect = ::onConnect)
             // We might have navigated here due to a polling error.
             errorBuffer.forEach {
                 authWizard.notify("Error encountered", it)
@@ -358,7 +391,7 @@ class CoderRemoteProvider(
         context.refreshMainPage()
     }
 
-    private fun MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>>.showLoadingMessage() {
+    private fun MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>>.showLoadingMessage() {
         this.update {
             LoadableState.Loading
         }

@@ -15,6 +15,6 @@ import kotlinx.coroutines.flow.StateFlow
  * support creating environments from the plugin.
  */
 class NewEnvironmentPage(context: CoderToolboxContext, deploymentURL: LocalizableString) :
-    CoderPage(context, deploymentURL) {
+    CoderPage(deploymentURL) {
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(emptyList())
 }
