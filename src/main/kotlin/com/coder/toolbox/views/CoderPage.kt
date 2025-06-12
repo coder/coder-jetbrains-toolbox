@@ -6,6 +6,7 @@ import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -38,6 +39,8 @@ abstract class CoderPage(
     } else {
         SvgIcon(byteArrayOf(), type = IconType.Masked)
     }
+
+    override val isBusyCreatingNewEnvironment: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
     /**
      * Show an error as a popup on this page.

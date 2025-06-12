@@ -28,7 +28,7 @@ class ConnectStep(
     private val shouldAutoLogin: StateFlow<Boolean>,
     private val notify: (String, Throwable) -> Unit,
     private val refreshWizard: () -> Unit,
-    private val onConnect: (
+    private val onConnect: suspend (
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,

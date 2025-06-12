@@ -9,7 +9,6 @@ import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.AuthWizardPage
-import com.coder.toolbox.views.CoderPage
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.NewEnvironmentPage
 import com.coder.toolbox.views.state.AuthWizardState
@@ -109,7 +108,6 @@ class CoderRemoteProvider(
                 if (!isActive) {
                     return@launch
                 }
-
 
                 // Reconfigure if environments changed.
                 if (lastEnvironments.size != resolvedEnvironments.size || lastEnvironments != resolvedEnvironments) {
@@ -269,12 +267,25 @@ class CoderRemoteProvider(
      * Handle incoming links (like from the dashboard).
      */
     override suspend fun handleUri(uri: URI) {
-        linkHandler.handle(uri, shouldDoAutoLogin()) { restClient, cli ->
+        linkHandler.handle(
+            uri, shouldDoAutoLogin(),
+            {
+                coderHeaderPage.isBusyCreatingNewEnvironment.update {
+                    true
+                }
+            },
+            {
+                coderHeaderPage.isBusyCreatingNewEnvironment.update {
+                    false
+                }
+            }
+        ) { restClient, cli ->
             // stop polling and de-initialize resources
             close()
             // start initialization with the new settings
             this@CoderRemoteProvider.client = restClient
             coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(restClient.url.toString()))
+
             environments.showLoadingMessage()
             pollJob = poll(restClient, cli)
         }
@@ -332,7 +343,7 @@ class CoderRemoteProvider(
 
     private fun shouldDoAutoLogin(): Boolean = firstRun && context.secrets.rememberMe == true
 
-    private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
+    private suspend fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
         context.secrets.lastDeploymentURL = client.url.toString()
         context.secrets.lastToken = client.token ?: ""
@@ -344,8 +355,7 @@ class CoderRemoteProvider(
         environments.showLoadingMessage()
         coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(client.url.toString()))
         pollJob = poll(client, cli)
-        context.ui.showUiPage(CoderPage.emptyPage(context))
-        goToEnvironmentsPage()
+        context.refreshMainPage()
     }
 
     private fun MutableStateFlow<LoadableState<List<RemoteProviderEnvironment>>>.showLoadingMessage() {
