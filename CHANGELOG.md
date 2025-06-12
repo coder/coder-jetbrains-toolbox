@@ -9,7 +9,15 @@
 
 ### Fixed
 
+- `Stop` action is now available for running workspaces that have an out of date template.
+- outdated and stopped workspaces are now updated and started when handling URI
 - show errors when the Toolbox is visible again after being minimized.
+
+## 0.3.0 - 2025-06-10
+
+### Added
+
+- support for Toolbox 2.6.3 with improved URI handling
 
 ## 0.2.3 - 2025-05-26
 

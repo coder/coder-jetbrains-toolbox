@@ -6,6 +6,7 @@ import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * Base page that handles the icon, displaying error notifications, and
@@ -18,7 +19,6 @@ import com.jetbrains.toolbox.api.ui.components.UiPage
  *       to use the mouse.
  */
 abstract class CoderPage(
-    private val context: CoderToolboxContext,
     title: LocalizableString,
     showIcon: Boolean = true,
 ) : UiPage(title) {
@@ -36,6 +36,8 @@ abstract class CoderPage(
     } else {
         SvgIcon(byteArrayOf(), type = IconType.Masked)
     }
+
+    override val isBusyCreatingNewEnvironment: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
     companion object {
         fun emptyPage(ctx: CoderToolboxContext): UiPage = UiPage(ctx.i18n.pnotr(""))

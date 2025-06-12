@@ -27,6 +27,7 @@ import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -125,16 +126,15 @@ class CoderRemoteEnvironment(
                         update(workspace.copy(latestBuild = build), agent)
                     }
                 })
-            } else {
-                actions.add(Action(context.i18n.ptrl("Stop")) {
-                    context.cs.launch {
-                        tryStopSshConnection()
-
-                        val build = client.stopWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
-                    }
-                })
             }
+            actions.add(Action(context.i18n.ptrl("Stop")) {
+                context.cs.launch {
+                    tryStopSshConnection()
+
+                    val build = client.stopWorkspace(workspace)
+                    update(workspace.copy(latestBuild = build), agent)
+                }
+            })
         }
         return actions
     }
@@ -203,7 +203,7 @@ class CoderRemoteEnvironment(
 
     private fun File.doesNotExists(): Boolean = !this.exists()
 
-    override fun afterDisconnect() {
+    override fun afterDisconnect(isManual: Boolean) {
         context.logger.info("Stopping the network metrics poll job for $id")
         pollJob?.cancel()
         this.connectionRequest.update { false }
@@ -279,7 +279,7 @@ class CoderRemoteEnvironment(
         }
     }
 
-    override fun onDelete() {
+    override val deleteActionFlow: StateFlow<(() -> Unit)?> = MutableStateFlow {
         context.cs.launch {
             try {
                 client.removeWorkspace(workspace)
