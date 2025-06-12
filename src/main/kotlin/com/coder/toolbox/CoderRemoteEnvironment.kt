@@ -126,16 +126,15 @@ class CoderRemoteEnvironment(
                         update(workspace.copy(latestBuild = build), agent)
                     }
                 })
-            } else {
-                actions.add(Action(context.i18n.ptrl("Stop")) {
-                    context.cs.launch {
-                        tryStopSshConnection()
-
-                        val build = client.stopWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
-                    }
-                })
             }
+            actions.add(Action(context.i18n.ptrl("Stop")) {
+                context.cs.launch {
+                    tryStopSshConnection()
+
+                    val build = client.stopWorkspace(workspace)
+                    update(workspace.copy(latestBuild = build), agent)
+                }
+            })
         }
         return actions
     }
