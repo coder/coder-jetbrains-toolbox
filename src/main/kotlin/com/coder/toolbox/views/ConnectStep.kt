@@ -77,7 +77,6 @@ class ConnectStep(
         signInJob?.cancel()
         signInJob = context.cs.launch {
             try {
-                statusField.textState.update { (context.i18n.ptrl("Authenticating to ${AuthContext.url!!.host}...")) }
                 val client = CoderRestClient(
                     context,
                     AuthContext.url!!,
