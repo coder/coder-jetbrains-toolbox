@@ -77,7 +77,6 @@ class ConnectStep(
         signInJob?.cancel()
         signInJob = context.cs.launch {
             try {
-                statusField.textState.update { (context.i18n.ptrl("Authenticating to ${AuthContext.url!!.host}...")) }
                 val client = CoderRestClient(
                     context,
                     AuthContext.url!!,
@@ -86,12 +85,17 @@ class ConnectStep(
                 )
                 // allows interleaving with the back/cancel action
                 yield()
-                client.authenticate()
-                statusField.textState.update { (context.i18n.ptrl("Checking Coder binary...")) }
-                val cli = ensureCLI(context, client.url, client.buildVersion)
+                client.initializeSession()
+                statusField.textState.update { (context.i18n.ptrl("Checking Coder CLI...")) }
+                val cli = ensureCLI(
+                    context, client.url,
+                    client.buildVersion
+                ) { progress ->
+                    statusField.textState.update { (context.i18n.pnotr(progress)) }
+                }
                 // We only need to log in if we are using token-based auth.
                 if (client.token != null) {
-                    statusField.textState.update { (context.i18n.ptrl("Configuring CLI...")) }
+                    statusField.textState.update { (context.i18n.ptrl("Configuring Coder CLI...")) }
                     // allows interleaving with the back/cancel action
                     yield()
                     cli.login(client.token)

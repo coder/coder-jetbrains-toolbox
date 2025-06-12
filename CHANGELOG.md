@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- visual text progress during Coder CLI downloading
+
 ### Changed
 
 - the plugin will now remember the SSH connection state for each workspace, and it will try to automatically
