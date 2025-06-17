@@ -167,6 +167,7 @@ class CoderCLIManager(
             when (conn.responseCode) {
                 HttpURLConnection.HTTP_OK -> {
                     logger.info("Downloading binary to $localBinaryPath")
+                    Files.deleteIfExists(localBinaryPath)
                     Files.createDirectories(localBinaryPath.parent)
                     val outputStream = Files.newOutputStream(
                         localBinaryPath,
