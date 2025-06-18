@@ -4,7 +4,6 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
-import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.LinkField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
@@ -31,7 +30,6 @@ class TokenStep(
         RowGroup.RowField(linkField),
         RowGroup.RowField(errorField)
     )
-    override val nextButtonTitle: LocalizableString? = context.i18n.ptrl("Connect")
 
     override fun onVisible() {
         errorField.textState.update {

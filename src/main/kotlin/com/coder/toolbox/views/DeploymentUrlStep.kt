@@ -4,7 +4,6 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
-import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
@@ -31,8 +30,6 @@ class DeploymentUrlStep(
         RowGroup.RowField(urlField),
         RowGroup.RowField(errorField)
     )
-
-    override val nextButtonTitle: LocalizableString? = context.i18n.ptrl("Next")
 
     override fun onVisible() {
         errorField.textState.update {

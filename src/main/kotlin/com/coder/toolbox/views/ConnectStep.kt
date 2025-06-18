@@ -7,7 +7,6 @@ import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
-import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
@@ -42,8 +41,6 @@ class ConnectStep(
         RowGroup.RowField(statusField),
         RowGroup.RowField(errorField)
     )
-
-    override val nextButtonTitle: LocalizableString? = null
 
     override fun onVisible() {
         errorField.textState.update {
