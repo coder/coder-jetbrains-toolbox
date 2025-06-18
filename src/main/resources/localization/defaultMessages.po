@@ -144,3 +144,6 @@ msgstr ""
 
 msgid "Error encountered during authentication"
 msgstr ""
+
+msgid "Setting up Coder"
+msgstr ""

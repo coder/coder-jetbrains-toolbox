@@ -25,7 +25,7 @@ class AuthWizardPage(
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,
-) : CoderPage(context.i18n.ptrl("Authenticate to Coder"), false) {
+) : CoderPage(context.i18n.ptrl("Setting up Coder"), false) {
     private val shouldAutoLogin = MutableStateFlow(initialAutoLogin)
     private val settingsAction = Action(context.i18n.ptrl("Settings"), actionBlock = {
         context.ui.showUiPage(settingsPage)
