@@ -382,8 +382,8 @@ open class CoderProtocolHandler(
             return null
         }
 
-        val matchingBuildNumber = availableVersions.firstOrNull { it.contains(buildNumber) } != null
-        if (!matchingBuildNumber) {
+        val buildNumberIsNotAvailable = availableVersions.firstOrNull { it.contains(buildNumber) } == null
+        if (buildNumberIsNotAvailable) {
             val selectedIde = availableVersions.maxOf { it }
             context.logAndShowInfo(
                 "$productCode-$buildNumber not available",
@@ -391,7 +391,7 @@ open class CoderProtocolHandler(
             )
             return selectedIde
         }
-        return null
+        return "$productCode-$buildNumber"
     }
 
     private fun installJBClient(selectedIde: String, environmentId: String): Job = context.cs.launch {
