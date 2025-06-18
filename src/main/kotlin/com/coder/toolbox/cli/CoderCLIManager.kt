@@ -82,7 +82,7 @@ fun ensureCLI(
         context.logger.info(DOWNLOADING_CODER_CLI)
         showTextProgress(DOWNLOADING_CODER_CLI)
         try {
-            cli.download(showTextProgress)
+            cli.download(buildVersion, showTextProgress)
             return cli
         } catch (e: java.nio.file.AccessDeniedException) {
             // Might be able to fall back to the data directory.
@@ -104,7 +104,7 @@ fun ensureCLI(
     if (settings.enableDownloads) {
         context.logger.info(DOWNLOADING_CODER_CLI)
         showTextProgress(DOWNLOADING_CODER_CLI)
-        dataCLI.download(showTextProgress)
+        dataCLI.download(buildVersion, showTextProgress)
         return dataCLI
     }
 
@@ -142,7 +142,7 @@ class CoderCLIManager(
     /**
      * Download the CLI from the deployment if necessary.
      */
-    fun download(showTextProgress: (String) -> Unit): Boolean {
+    fun download(buildVersion: String, showTextProgress: (String) -> Unit): Boolean {
         val eTag = getBinaryETag()
         val conn = remoteBinaryURL.openConnection() as HttpURLConnection
         if (!settings.headerCommand.isNullOrBlank()) {
@@ -185,7 +185,7 @@ class CoderCLIManager(
                             while (source.read(buffer).also { bytesRead = it } != -1) {
                                 sink.write(buffer, 0, bytesRead)
                                 totalRead += bytesRead
-                                showTextProgress("Downloaded ${totalRead.toHumanReadableSize()}...")
+                                showTextProgress("${settings.defaultCliBinaryNameByOsAndArch} $buildVersion - ${totalRead.toHumanReadableSize()} downloaded")
                             }
                         }
                     }
