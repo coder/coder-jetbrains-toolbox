@@ -24,6 +24,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
 
 private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
+private val noOpTextProgress: (String) -> Unit = { _ -> }
 
 @Suppress("UnstableApiUsage")
 open class CoderProtocolHandler(
@@ -143,7 +144,7 @@ open class CoderProtocolHandler(
             if (settings.requireTokenAuth) token else null,
             PluginManager.pluginInfo.version
         )
-        client.authenticate()
+        client.initializeSession()
         return client
     }
 
@@ -304,7 +305,8 @@ open class CoderProtocolHandler(
         val cli = ensureCLI(
             context,
             deploymentURL.toURL(),
-            restClient.buildInfo().version
+            restClient.buildInfo().version,
+            noOpTextProgress
         )
 
         // We only need to log in if we are using token-based auth.

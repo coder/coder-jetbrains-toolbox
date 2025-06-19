@@ -2,9 +2,8 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.toURL
-import com.coder.toolbox.views.state.AuthContext
-import com.coder.toolbox.views.state.AuthWizardState
-import com.jetbrains.toolbox.api.localization.LocalizableString
+import com.coder.toolbox.views.state.CoderCliSetupContext
+import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
@@ -19,7 +18,7 @@ import java.net.URL
  * Populates with the provided URL, at which point the user can accept or
  * enter their own.
  */
-class SignInStep(
+class DeploymentUrlStep(
     private val context: CoderToolboxContext,
     private val notify: (String, Throwable) -> Unit
 ) :
@@ -31,8 +30,6 @@ class SignInStep(
         RowGroup.RowField(urlField),
         RowGroup.RowField(errorField)
     )
-
-    override val nextButtonTitle: LocalizableString? = context.i18n.ptrl("Sign In")
 
     override fun onVisible() {
         errorField.textState.update {
@@ -55,12 +52,12 @@ class SignInStep(
             url
         }
         try {
-            AuthContext.url = validateRawUrl(url)
+            CoderCliSetupContext.url = validateRawUrl(url)
         } catch (e: MalformedURLException) {
             notify("URL is invalid", e)
             return false
         }
-        AuthWizardState.goToNextStep()
+        CoderCliSetupWizardState.goToNextStep()
         return true
     }
 

@@ -62,6 +62,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
+private const val VERSION_FOR_PROGRESS_REPORTING = "v2.23.1-devel+de07351b8"
+private val noOpTextProgress: (String) -> Unit = { _ -> }
+
 internal class CoderCLIManagerTest {
     private val context = CoderToolboxContext(
         mockk<ToolboxUi>(),
@@ -145,7 +148,7 @@ internal class CoderCLIManagerTest {
         val ex =
             assertFailsWith(
                 exceptionClass = ResponseException::class,
-                block = { ccm.download() },
+                block = { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) },
             )
         assertEquals(HttpURLConnection.HTTP_INTERNAL_ERROR, ex.code)
 
@@ -200,7 +203,7 @@ internal class CoderCLIManagerTest {
 
         assertFailsWith(
             exceptionClass = AccessDeniedException::class,
-            block = { ccm.download() },
+            block = { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) },
         )
 
         srv.stop(0)
@@ -229,11 +232,11 @@ internal class CoderCLIManagerTest {
             ).readOnly(),
         )
 
-        assertTrue(ccm.download())
+        assertTrue(ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress))
         assertDoesNotThrow { ccm.version() }
 
         // It should skip the second attempt.
-        assertFalse(ccm.download())
+        assertFalse(ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress))
 
         // Make sure login failures propagate.
         assertFailsWith(
@@ -258,11 +261,11 @@ internal class CoderCLIManagerTest {
             ).readOnly(),
         )
 
-        assertEquals(true, ccm.download())
+        assertEquals(true, ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress))
         assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
 
         // It should skip the second attempt.
-        assertEquals(false, ccm.download())
+        assertEquals(false, ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress))
 
         // Should use the source override.
         ccm = CoderCLIManager(
@@ -278,7 +281,7 @@ internal class CoderCLIManagerTest {
             ).readOnly(),
         )
 
-        assertEquals(true, ccm.download())
+        assertEquals(true, ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress))
         assertContains(ccm.localBinaryPath.toFile().readText(), "0.0.0")
 
         srv.stop(0)
@@ -326,7 +329,7 @@ internal class CoderCLIManagerTest {
         assertEquals("cli", ccm.localBinaryPath.toFile().readText())
         assertEquals(0, ccm.localBinaryPath.toFile().lastModified())
 
-        assertTrue(ccm.download())
+        assertTrue(ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress))
 
         assertNotEquals("cli", ccm.localBinaryPath.toFile().readText())
         assertNotEquals(0, ccm.localBinaryPath.toFile().lastModified())
@@ -351,8 +354,8 @@ internal class CoderCLIManagerTest {
         val ccm1 = CoderCLIManager(url1, context.logger, settings)
         val ccm2 = CoderCLIManager(url2, context.logger, settings)
 
-        assertTrue(ccm1.download())
-        assertTrue(ccm2.download())
+        assertTrue(ccm1.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress))
+        assertTrue(ccm2.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress))
 
         srv1.stop(0)
         srv2.stop(0)
@@ -883,12 +886,12 @@ internal class CoderCLIManagerTest {
                 Result.ERROR -> {
                     assertFailsWith(
                         exceptionClass = AccessDeniedException::class,
-                        block = { ensureCLI(localContext, url, it.buildVersion) },
+                        block = { ensureCLI(localContext, url, it.buildVersion, noOpTextProgress) },
                     )
                 }
 
                 Result.NONE -> {
-                    val ccm = ensureCLI(localContext, url, it.buildVersion)
+                    val ccm = ensureCLI(localContext, url, it.buildVersion, noOpTextProgress)
                     assertEquals(settings.binPath(url), ccm.localBinaryPath)
                     assertFailsWith(
                         exceptionClass = ProcessInitException::class,
@@ -897,25 +900,25 @@ internal class CoderCLIManagerTest {
                 }
 
                 Result.DL_BIN -> {
-                    val ccm = ensureCLI(localContext, url, it.buildVersion)
+                    val ccm = ensureCLI(localContext, url, it.buildVersion, noOpTextProgress)
                     assertEquals(settings.binPath(url), ccm.localBinaryPath)
                     assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
                 }
 
                 Result.DL_DATA -> {
-                    val ccm = ensureCLI(localContext, url, it.buildVersion)
+                    val ccm = ensureCLI(localContext, url, it.buildVersion, noOpTextProgress)
                     assertEquals(settings.binPath(url, true), ccm.localBinaryPath)
                     assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
                 }
 
                 Result.USE_BIN -> {
-                    val ccm = ensureCLI(localContext, url, it.buildVersion)
+                    val ccm = ensureCLI(localContext, url, it.buildVersion, noOpTextProgress)
                     assertEquals(settings.binPath(url), ccm.localBinaryPath)
                     assertEquals(SemVer.parse(it.version ?: ""), ccm.version())
                 }
 
                 Result.USE_DATA -> {
-                    val ccm = ensureCLI(localContext, url, it.buildVersion)
+                    val ccm = ensureCLI(localContext, url, it.buildVersion, noOpTextProgress)
                     assertEquals(settings.binPath(url, true), ccm.localBinaryPath)
                     assertEquals(SemVer.parse(it.fallbackVersion ?: ""), ccm.version())
                 }
@@ -955,7 +958,7 @@ internal class CoderCLIManagerTest {
                     context.logger,
                 ).readOnly(),
             )
-            assertEquals(true, ccm.download())
+            assertEquals(true, ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress))
             assertEquals(it.second, ccm.features, "version: ${it.first}")
 
             srv.stop(0)

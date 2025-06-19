@@ -32,7 +32,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.util.zip.GZIPInputStream
 import javax.net.ssl.HttpsURLConnection
 
@@ -43,6 +43,8 @@ import javax.net.ssl.HttpsURLConnection
 internal data class Version(
     @Json(name = "version") val version: String,
 )
+
+private const val DOWNLOADING_CODER_CLI = "Downloading Coder CLI..."
 
 /**
  * Do as much as possible to get a valid, up-to-date CLI.
@@ -60,6 +62,7 @@ fun ensureCLI(
     context: CoderToolboxContext,
     deploymentURL: URL,
     buildVersion: String,
+    showTextProgress: (String) -> Unit
 ): CoderCLIManager {
     val settings = context.settingsStore.readOnly()
     val cli = CoderCLIManager(deploymentURL, context.logger, settings)
@@ -76,9 +79,10 @@ fun ensureCLI(
 
     // If downloads are enabled download the new version.
     if (settings.enableDownloads) {
-        context.logger.info("Downloading Coder CLI...")
+        context.logger.info(DOWNLOADING_CODER_CLI)
+        showTextProgress(DOWNLOADING_CODER_CLI)
         try {
-            cli.download()
+            cli.download(buildVersion, showTextProgress)
             return cli
         } catch (e: java.nio.file.AccessDeniedException) {
             // Might be able to fall back to the data directory.
@@ -98,8 +102,9 @@ fun ensureCLI(
     }
 
     if (settings.enableDownloads) {
-        context.logger.info("Downloading Coder CLI...")
-        dataCLI.download()
+        context.logger.info(DOWNLOADING_CODER_CLI)
+        showTextProgress(DOWNLOADING_CODER_CLI)
+        dataCLI.download(buildVersion, showTextProgress)
         return dataCLI
     }
 
@@ -137,7 +142,7 @@ class CoderCLIManager(
     /**
      * Download the CLI from the deployment if necessary.
      */
-    fun download(): Boolean {
+    fun download(buildVersion: String, showTextProgress: (String) -> Unit): Boolean {
         val eTag = getBinaryETag()
         val conn = remoteBinaryURL.openConnection() as HttpURLConnection
         if (!settings.headerCommand.isNullOrBlank()) {
@@ -162,13 +167,27 @@ class CoderCLIManager(
             when (conn.responseCode) {
                 HttpURLConnection.HTTP_OK -> {
                     logger.info("Downloading binary to $localBinaryPath")
+                    Files.deleteIfExists(localBinaryPath)
                     Files.createDirectories(localBinaryPath.parent)
-                    conn.inputStream.use {
-                        Files.copy(
-                            if (conn.contentEncoding == "gzip") GZIPInputStream(it) else it,
-                            localBinaryPath,
-                            StandardCopyOption.REPLACE_EXISTING,
-                        )
+                    val outputStream = Files.newOutputStream(
+                        localBinaryPath,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.TRUNCATE_EXISTING
+                    )
+                    val sourceStream = if (conn.isGzip()) GZIPInputStream(conn.inputStream) else conn.inputStream
+
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var bytesRead: Int
+                    var totalRead = 0L
+
+                    sourceStream.use { source ->
+                        outputStream.use { sink ->
+                            while (source.read(buffer).also { bytesRead = it } != -1) {
+                                sink.write(buffer, 0, bytesRead)
+                                totalRead += bytesRead
+                                showTextProgress("${settings.defaultCliBinaryNameByOsAndArch} $buildVersion - ${totalRead.toHumanReadableSize()} downloaded")
+                            }
+                        }
                     }
                     if (getOS() != OS.WINDOWS) {
                         localBinaryPath.toFile().setExecutable(true)
@@ -178,6 +197,7 @@ class CoderCLIManager(
 
                 HttpURLConnection.HTTP_NOT_MODIFIED -> {
                     logger.info("Using cached binary at $localBinaryPath")
+                    showTextProgress("Using cached binary")
                     return false
                 }
             }
@@ -188,6 +208,21 @@ class CoderCLIManager(
             conn.disconnect()
         }
         throw ResponseException("Unexpected response from $remoteBinaryURL", conn.responseCode)
+    }
+
+    private fun HttpURLConnection.isGzip(): Boolean = this.contentEncoding.equals("gzip", ignoreCase = true)
+
+    fun Long.toHumanReadableSize(): String {
+        if (this < 1024) return "$this B"
+
+        val kb = this / 1024.0
+        if (kb < 1024) return String.format("%.1f KB", kb)
+
+        val mb = kb / 1024.0
+        if (mb < 1024) return String.format("%.1f MB", mb)
+
+        val gb = mb / 1024.0
+        return String.format("%.1f GB", gb)
     }
 
     /**
@@ -203,7 +238,7 @@ class CoderCLIManager(
     }
 
     /**
-     * Use the provided token to authenticate the CLI.
+     * Use the provided token to initializeSession the CLI.
      */
     fun login(token: String): String {
         logger.info("Storing CLI credentials in $coderConfigPath")

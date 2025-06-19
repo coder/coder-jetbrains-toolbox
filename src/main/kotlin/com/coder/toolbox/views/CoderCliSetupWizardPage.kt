@@ -5,8 +5,8 @@ import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.util.toURL
-import com.coder.toolbox.views.state.AuthContext
-import com.coder.toolbox.views.state.AuthWizardState
+import com.coder.toolbox.views.state.CoderCliSetupContext
+import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
@@ -16,26 +16,26 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-class AuthWizardPage(
+class CoderCliSetupWizardPage(
     private val context: CoderToolboxContext,
     private val settingsPage: CoderSettingsPage,
     private val visibilityState: MutableStateFlow<ProviderVisibilityState>,
-    initialAutoLogin: Boolean = false,
+    initialAutoSetup: Boolean = false,
     onConnect: suspend (
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,
-) : CoderPage(context.i18n.ptrl("Authenticate to Coder"), false) {
-    private val shouldAutoLogin = MutableStateFlow(initialAutoLogin)
+) : CoderPage(context.i18n.ptrl("Setting up Coder"), false) {
+    private val shouldAutoSetup = MutableStateFlow(initialAutoSetup)
     private val settingsAction = Action(context.i18n.ptrl("Settings"), actionBlock = {
         context.ui.showUiPage(settingsPage)
     })
 
-    private val signInStep = SignInStep(context, this::notify)
+    private val deploymentUrlStep = DeploymentUrlStep(context, this::notify)
     private val tokenStep = TokenStep(context)
     private val connectStep = ConnectStep(
         context,
-        shouldAutoLogin,
+        shouldAutoSetup,
         this::notify,
         this::displaySteps,
         onConnect
@@ -50,9 +50,9 @@ class AuthWizardPage(
     private val errorBuffer = mutableListOf<Throwable>()
 
     init {
-        if (shouldAutoLogin.value) {
-            AuthContext.url = context.secrets.lastDeploymentURL.toURL()
-            AuthContext.token = context.secrets.lastToken
+        if (shouldAutoSetup.value) {
+            CoderCliSetupContext.url = context.secrets.lastDeploymentURL.toURL()
+            CoderCliSetupContext.token = context.secrets.lastToken
         }
     }
 
@@ -67,22 +67,22 @@ class AuthWizardPage(
     }
 
     private fun displaySteps() {
-        when (AuthWizardState.currentStep()) {
+        when (CoderCliSetupWizardState.currentStep()) {
             WizardStep.URL_REQUEST -> {
                 fields.update {
-                    listOf(signInStep.panel)
+                    listOf(deploymentUrlStep.panel)
                 }
                 actionButtons.update {
                     listOf(
-                        Action(context.i18n.ptrl("Sign In"), closesPage = false, actionBlock = {
-                            if (signInStep.onNext()) {
+                        Action(context.i18n.ptrl("Next"), closesPage = false, actionBlock = {
+                            if (deploymentUrlStep.onNext()) {
                                 displaySteps()
                             }
                         }),
                         settingsAction
                     )
                 }
-                signInStep.onVisible()
+                deploymentUrlStep.onVisible()
             }
 
             WizardStep.TOKEN_REQUEST -> {
@@ -106,7 +106,7 @@ class AuthWizardPage(
                 tokenStep.onVisible()
             }
 
-            WizardStep.LOGIN -> {
+            WizardStep.CONNECT -> {
                 fields.update {
                     listOf(connectStep.panel)
                 }
@@ -115,7 +115,7 @@ class AuthWizardPage(
                         settingsAction,
                         Action(context.i18n.ptrl("Back"), closesPage = false, actionBlock = {
                             connectStep.onBack()
-                            shouldAutoLogin.update {
+                            shouldAutoSetup.update {
                                 false
                             }
                             displaySteps()
@@ -150,7 +150,7 @@ class AuthWizardPage(
         context.cs.launch {
             context.ui.showSnackbar(
                 UUID.randomUUID().toString(),
-                context.i18n.ptrl("Error encountered during authentication"),
+                context.i18n.ptrl("Error encountered while setting up Coder"),
                 context.i18n.pnotr(textError ?: ""),
                 context.i18n.ptrl("Dismiss")
             )

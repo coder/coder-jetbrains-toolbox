@@ -2,9 +2,8 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.withPath
-import com.coder.toolbox.views.state.AuthContext
-import com.coder.toolbox.views.state.AuthWizardState
-import com.jetbrains.toolbox.api.localization.LocalizableString
+import com.coder.toolbox.views.state.CoderCliSetupContext
+import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.jetbrains.toolbox.api.ui.components.LinkField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
@@ -31,15 +30,14 @@ class TokenStep(
         RowGroup.RowField(linkField),
         RowGroup.RowField(errorField)
     )
-    override val nextButtonTitle: LocalizableString? = context.i18n.ptrl("Connect")
 
     override fun onVisible() {
         errorField.textState.update {
             context.i18n.pnotr("")
         }
-        if (AuthContext.hasUrl()) {
+        if (CoderCliSetupContext.hasUrl()) {
             tokenField.textState.update {
-                context.secrets.tokenFor(AuthContext.url!!) ?: ""
+                context.secrets.tokenFor(CoderCliSetupContext.url!!) ?: ""
             }
         } else {
             errorField.textState.update {
@@ -48,7 +46,7 @@ class TokenStep(
             }
         }
         (linkField.urlState as MutableStateFlow).update {
-            AuthContext.url!!.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
+            CoderCliSetupContext.url!!.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
         }
     }
 
@@ -59,12 +57,12 @@ class TokenStep(
             return false
         }
 
-        AuthContext.token = token
-        AuthWizardState.goToNextStep()
+        CoderCliSetupContext.token = token
+        CoderCliSetupWizardState.goToNextStep()
         return true
     }
 
     override fun onBack() {
-        AuthWizardState.goToPreviousStep()
+        CoderCliSetupWizardState.goToPreviousStep()
     }
 }

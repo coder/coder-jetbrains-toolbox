@@ -9,10 +9,10 @@ import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
-import com.coder.toolbox.views.AuthWizardPage
+import com.coder.toolbox.views.CoderCliSetupWizardPage
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.NewEnvironmentPage
-import com.coder.toolbox.views.state.AuthWizardState
+import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
@@ -242,7 +242,7 @@ class CoderRemoteProvider(
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
         client = null
-        AuthWizardState.resetSteps()
+        CoderCliSetupWizardState.resetSteps()
     }
 
     override val svgIcon: SvgIcon =
@@ -301,7 +301,7 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         linkHandler.handle(
-            uri, shouldDoAutoLogin(),
+            uri, shouldDoAutoSetup(),
             {
                 coderHeaderPage.isBusyCreatingNewEnvironment.update {
                     true
@@ -343,17 +343,17 @@ class CoderRemoteProvider(
      * list.
      */
     override fun getOverrideUiPage(): UiPage? {
-        // Show sign in page if we have not configured the client yet.
+        // Show the setup page if we have not configured the client yet.
         if (client == null) {
             val errorBuffer = mutableListOf<Throwable>()
-            // When coming back to the application, authenticate immediately.
-            val autologin = shouldDoAutoLogin()
+            // When coming back to the application, initializeSession immediately.
+            val autoSetup = shouldDoAutoSetup()
             context.secrets.lastToken.let { lastToken ->
                 context.secrets.lastDeploymentURL.let { lastDeploymentURL ->
-                    if (autologin && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !settings.requireTokenAuth)) {
+                    if (autoSetup && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !settings.requireTokenAuth)) {
                         try {
-                            AuthWizardState.goToStep(WizardStep.LOGIN)
-                            return AuthWizardPage(context, settingsPage, visibilityState, true, ::onConnect)
+                            CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
+                            return CoderCliSetupWizardPage(context, settingsPage, visibilityState, true, ::onConnect)
                         } catch (ex: Exception) {
                             errorBuffer.add(ex)
                         }
@@ -363,18 +363,19 @@ class CoderRemoteProvider(
             firstRun = false
 
             // Login flow.
-            val authWizard = AuthWizardPage(context, settingsPage, visibilityState, onConnect = ::onConnect)
+            val setupWizardPage =
+                CoderCliSetupWizardPage(context, settingsPage, visibilityState, onConnect = ::onConnect)
             // We might have navigated here due to a polling error.
             errorBuffer.forEach {
-                authWizard.notify("Error encountered", it)
+                setupWizardPage.notify("Error encountered", it)
             }
             // and now reset the errors, otherwise we show it every time on the screen
-            return authWizard
+            return setupWizardPage
         }
         return null
     }
 
-    private fun shouldDoAutoLogin(): Boolean = firstRun && context.secrets.rememberMe == true
+    private fun shouldDoAutoSetup(): Boolean = firstRun && context.secrets.rememberMe == true
 
     private suspend fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.

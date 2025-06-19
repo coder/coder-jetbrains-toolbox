@@ -5,9 +5,8 @@ import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.views.state.AuthContext
-import com.coder.toolbox.views.state.AuthWizardState
-import com.jetbrains.toolbox.api.localization.LocalizableString
+import com.coder.toolbox.views.state.CoderCliSetupContext
+import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
@@ -43,21 +42,19 @@ class ConnectStep(
         RowGroup.RowField(errorField)
     )
 
-    override val nextButtonTitle: LocalizableString? = null
-
     override fun onVisible() {
         errorField.textState.update {
             context.i18n.pnotr("")
         }
 
-        if (AuthContext.isNotReadyForAuth()) {
+        if (CoderCliSetupContext.isNotReadyForAuth()) {
             errorField.textState.update {
                 context.i18n.pnotr("URL and token were not properly configured. Please go back and provide a proper URL and token!")
             }
             return
         }
 
-        statusField.textState.update { context.i18n.pnotr("Connecting to ${AuthContext.url!!.host}...") }
+        statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderCliSetupContext.url!!.host}...") }
         connect()
     }
 
@@ -65,51 +62,55 @@ class ConnectStep(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
-        if (!AuthContext.hasUrl()) {
+        if (!CoderCliSetupContext.hasUrl()) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return
         }
 
-        if (!AuthContext.hasToken()) {
+        if (!CoderCliSetupContext.hasToken()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
         signInJob?.cancel()
         signInJob = context.cs.launch {
             try {
-                statusField.textState.update { (context.i18n.ptrl("Authenticating to ${AuthContext.url!!.host}...")) }
                 val client = CoderRestClient(
                     context,
-                    AuthContext.url!!,
-                    AuthContext.token!!,
+                    CoderCliSetupContext.url!!,
+                    CoderCliSetupContext.token!!,
                     PluginManager.pluginInfo.version,
                 )
                 // allows interleaving with the back/cancel action
                 yield()
-                client.authenticate()
-                statusField.textState.update { (context.i18n.ptrl("Checking Coder binary...")) }
-                val cli = ensureCLI(context, client.url, client.buildVersion)
+                client.initializeSession()
+                statusField.textState.update { (context.i18n.ptrl("Checking Coder CLI...")) }
+                val cli = ensureCLI(
+                    context, client.url,
+                    client.buildVersion
+                ) { progress ->
+                    statusField.textState.update { (context.i18n.pnotr(progress)) }
+                }
                 // We only need to log in if we are using token-based auth.
                 if (client.token != null) {
-                    statusField.textState.update { (context.i18n.ptrl("Configuring CLI...")) }
+                    statusField.textState.update { (context.i18n.ptrl("Configuring Coder CLI...")) }
                     // allows interleaving with the back/cancel action
                     yield()
                     cli.login(client.token)
                 }
-                statusField.textState.update { (context.i18n.ptrl("Successfully configured ${AuthContext.url!!.host}...")) }
+                statusField.textState.update { (context.i18n.ptrl("Successfully configured ${CoderCliSetupContext.url!!.host}...")) }
                 // allows interleaving with the back/cancel action
                 yield()
-                AuthContext.reset()
-                AuthWizardState.resetSteps()
+                CoderCliSetupContext.reset()
+                CoderCliSetupWizardState.resetSteps()
                 onConnect(client, cli)
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
-                    notify("Connection to ${AuthContext.url!!.host} was configured", ex)
+                    notify("Connection to ${CoderCliSetupContext.url!!.host} was configured", ex)
                     onBack()
                     refreshWizard()
                 }
             } catch (ex: Exception) {
-                notify("Failed to configure ${AuthContext.url!!.host}", ex)
+                notify("Failed to configure ${CoderCliSetupContext.url!!.host}", ex)
                 onBack()
                 refreshWizard()
             }
@@ -125,11 +126,11 @@ class ConnectStep(
             signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
         } finally {
             if (shouldAutoLogin.value) {
-                AuthContext.reset()
-                AuthWizardState.resetSteps()
+                CoderCliSetupContext.reset()
+                CoderCliSetupWizardState.resetSteps()
                 context.secrets.rememberMe = false
             } else {
-                AuthWizardState.goToPreviousStep()
+                CoderCliSetupWizardState.goToPreviousStep()
             }
         }
     }

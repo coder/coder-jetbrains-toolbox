@@ -106,7 +106,7 @@ msgstr ""
 msgid "Configuring CLI..."
 msgstr ""
 
-msgid "Sign In"
+msgid "Next"
 msgstr ""
 
 msgid "Token"
@@ -142,5 +142,8 @@ msgstr ""
 msgid "Error encountered while handling Coder URI"
 msgstr ""
 
-msgid "Error encountered during authentication"
+msgid "Error encountered while setting up Coder"
+msgstr ""
+
+msgid "Setting up Coder"
 msgstr ""
