@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.1 - 2025-06-19
+
 ### Added
 
 - visual text progress during Coder CLI downloading
