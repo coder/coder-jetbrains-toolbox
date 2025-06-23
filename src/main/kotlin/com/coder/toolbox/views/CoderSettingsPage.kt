@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
  *          I have not been able to test this page.
  */
 class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<Boolean>) :
-    CoderPage(context.i18n.ptrl("Coder Settings"), false) {
+    CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
     private val settings = context.settingsStore.readOnly()
 
     // TODO: Copy over the descriptions, holding until I can test this page.

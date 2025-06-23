@@ -19,9 +19,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
  *       to use the mouse.
  */
 abstract class CoderPage(
-    title: LocalizableString,
+    private val titleObservable: MutableStateFlow<LocalizableString>,
     showIcon: Boolean = true,
-) : UiPage(title) {
+) : UiPage(titleObservable) {
 
     /**
      * Return the icon, if showing one.
