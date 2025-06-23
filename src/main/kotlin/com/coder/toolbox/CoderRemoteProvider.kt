@@ -377,7 +377,7 @@ class CoderRemoteProvider(
 
     private fun shouldDoAutoSetup(): Boolean = firstRun && context.secrets.rememberMe == true
 
-    private suspend fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
+    private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
         context.secrets.lastDeploymentURL = client.url.toString()
         context.secrets.lastToken = client.token ?: ""
@@ -387,9 +387,8 @@ class CoderRemoteProvider(
         this.client = client
         pollJob?.cancel()
         environments.showLoadingMessage()
-        coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(client.url.toString()))
+        coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
         pollJob = poll(client, cli)
-        context.refreshMainPage()
     }
 
     private fun MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>>.showLoadingMessage() {
