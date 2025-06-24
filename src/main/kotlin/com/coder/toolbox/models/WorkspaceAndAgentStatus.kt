@@ -68,6 +68,7 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
             isReachable = ready() || unhealthy(),
             // TODO@JB: How does this work?  Would like a spinner for pending states.
             iconId = getStateIcon().id,
+            isPriorityShow = true
         )
     }
 
