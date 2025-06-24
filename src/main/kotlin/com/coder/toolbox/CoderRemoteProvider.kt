@@ -167,7 +167,7 @@ class CoderRemoteProvider(
                     close()
                     // force auto-login
                     firstRun = true
-                    goToEnvironmentsPage()
+                    context.envPageManager.showPluginEnvironmentsPage()
                     break
                 }
             }
@@ -325,18 +325,6 @@ class CoderRemoteProvider(
     }
 
     /**
-     * Make Toolbox ask for the page again.  Use any time we need to change the
-     * root page (for example, sign-in or the environment list).
-     *
-     * When moving between related pages, instead use ui.showUiPage() and
-     * ui.hideUiPage() which stacks and has built-in back navigation, rather
-     * than using multiple root pages.
-     */
-    private fun goToEnvironmentsPage() {
-        context.envPageManager.showPluginEnvironmentsPage()
-    }
-
-    /**
      * Return the sign-in page if we do not have a valid client.
 
      * Otherwise, return null, which causes Toolbox to display the environment
@@ -389,6 +377,7 @@ class CoderRemoteProvider(
         environments.showLoadingMessage()
         coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
         pollJob = poll(client, cli)
+        context.envPageManager.showPluginEnvironmentsPage()
     }
 
     private fun MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>>.showLoadingMessage() {
