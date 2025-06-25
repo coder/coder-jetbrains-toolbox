@@ -133,7 +133,7 @@ fun CopySpec.fromCompileDependencies() {
     }
     from("src/main/resources") {
         include("icon.svg")
-        rename("icon.svg", "pluginIcon.svg")
+        include("pluginIcon.svg")
     }
 
     // Copy dependencies, excluding those provided by Toolbox.
