@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- support for basic proxy authentication
+
 ### Changed
 
 - improved message while loading the workspace
