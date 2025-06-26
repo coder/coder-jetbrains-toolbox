@@ -252,6 +252,13 @@ may trigger regeneration of SSH configurations.
 ## Releasing
 
 1. Check that the changelog lists all the important changes.
-2. Update the gradle.properties version.
+2. Update the `gradle.properties` version.
 3. Publish the resulting draft release after validating it.
 4. Merge the resulting changelog PR.
+5. **Compliance Reminder for auto-approval**  
+   JetBrains enabled auto-approval for the plugin, so we need to ensure we continue to meet the following requirements:
+    - do **not** use Kotlin experimental APIs.
+    - do **not** add any lambdas, handlers, or class handles to Java runtime hooks.
+    - do **not** create threads manually (including via libraries). If you must, ensure they are properly cleaned up in the plugin's `CoderRemoteProvider#close()` method.
+    - do **not** bundle libraries that are already provided by Toolbox.
+    - do **not** perform any ill-intentioned actions.
