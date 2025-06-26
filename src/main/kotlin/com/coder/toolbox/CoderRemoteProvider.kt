@@ -66,6 +66,7 @@ class CoderRemoteProvider(
     private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
     private val linkHandler = CoderProtocolHandler(context, dialogUi, isInitialized)
 
+    override val loadingEnvironmentsDescription: LocalizableString = context.i18n.ptrl("Loading workspaces...")
     override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
         LoadableState.Loading
     )

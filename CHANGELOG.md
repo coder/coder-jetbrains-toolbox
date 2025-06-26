@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- improved message while loading the workspace
+
 ## 0.3.2 - 2025-06-25
 
 ### Changed
