@@ -15,6 +15,7 @@ changelog = "2.2.1"
 gettext = "0.7.0"
 plugin-structure = "3.308"
 mockk = "1.14.4"
+detekt = "1.23.7"
 
 [libraries]
 toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "toolbox-plugin-api" }
@@ -46,3 +47,4 @@ ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 gradle-wrapper = { id = "me.filippov.gradle.jvm.wrapper", version.ref = "gradle-wrapper" }
 changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }
 gettext = { id = "name.kropp.kotlinx-gettext", version.ref = "gettext" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
