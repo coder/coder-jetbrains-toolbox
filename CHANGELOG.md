@@ -4,7 +4,8 @@
 
 ### Added
 
-- support for basic proxy authentication
+- support for basic authentication for HTTP/HTTPS proxy
+- support for Toolbox 2.7 release
 
 ### Changed
 

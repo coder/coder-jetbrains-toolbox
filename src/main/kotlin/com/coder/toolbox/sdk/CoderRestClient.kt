@@ -80,6 +80,9 @@ open class CoderRestClient(
             builder.proxySelector(context.proxySettings.getProxySelector()!!)
         }
 
+        // Note: This handles only HTTP/HTTPS proxy authentication.
+        // SOCKS5 proxy authentication is currently not supported due to limitations described in:
+        // https://youtrack.jetbrains.com/issue/TBX-14532/Missing-proxy-authentication-settings#focus=Comments-27-12265861.0-0
         builder.proxyAuthenticator { _, response ->
             val proxyAuth = context.proxySettings.getProxyAuth()
             if (proxyAuth == null || proxyAuth !is ProxyAuth.Basic) {
