@@ -25,7 +25,7 @@ class CoderCliSetupWizardPage(
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,
-) : CoderPage(context.i18n.ptrl("Setting up Coder"), false) {
+) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
     private val shouldAutoSetup = MutableStateFlow(initialAutoSetup)
     private val settingsAction = Action(context.i18n.ptrl("Settings"), actionBlock = {
         context.ui.showUiPage(settingsPage)

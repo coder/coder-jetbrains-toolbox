@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- support for basic authentication for HTTP/HTTPS proxy
+- support for Toolbox 2.7 release
+
+### Changed
+
+- improved message while loading the workspace
+
 ## 0.3.2 - 2025-06-25
 
 ### Changed

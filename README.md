@@ -110,7 +110,7 @@ experience, it’s recommended to ensure the workspace is running prior to initi
 
 ## Configuring and Testing workspace polling with HTTP & SOCKS5 Proxy
 
-This section explains how to set up a local proxy (without authentication which is not yet supported) and verify that
+This section explains how to set up a local proxy and verify that
 the plugin’s REST client works correctly when routed through it.
 
 We’ll use [mitmproxy](https://mitmproxy.org/) for this — it can act as both an HTTP and SOCKS5 proxy with SSL
@@ -134,6 +134,12 @@ mitmproxy can do HTTP and SOCKS5 proxying. To configure one or the other:
 2. Navigate to `Options -> Edit Options`
 3. Update the `Mode` field to `regular` in order to activate HTTP/HTTPS or to `socks5`
 4. Proxy authentication can be enabled by updating the `proxyauth` to `username:password`
+5. Alternatively you can run the following commands:
+
+```bash
+mitmweb --ssl-insecure --set stream_large_bodies="10m" --mode regular --proxyauth proxyUsername:proxyPassword
+mitmweb --ssl-insecure --set stream_large_bodies="10m" --mode socks5
+```
 
 ### Configure Proxy in Toolbox
 
@@ -143,6 +149,10 @@ mitmproxy can do HTTP and SOCKS5 proxying. To configure one or the other:
 4. If we go manually, add `127.0.0.1` to the host and port `8080` for HTTP/HTTPS or `1080` for SOCKS5.
 5. Before authenticating to the Coder deployment we need to tell the plugin where can we find mitmproxy
    certificates. In Coder's Settings page, set the `TLS CA path` to `~/.mitmproxy/mitmproxy-ca-cert.pem`
+
+> ⚠️ Note: Coder Toolbox plugin handles only HTTP/HTTPS proxy authentication.
+> SOCKS5 proxy authentication is currently not supported due to limitations
+> described in: https://youtrack.jetbrains.com/issue/TBX-14532/Missing-proxy-authentication-settings#focus=Comments-27-12265861.0-0
 
 ## Debugging and Reporting issues
 

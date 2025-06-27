@@ -24,6 +24,7 @@ import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
+import com.jetbrains.toolbox.api.remoteDev.connection.ProxyAuth
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
@@ -114,6 +115,8 @@ class CoderRestClientTest {
         object : ToolboxProxySettings {
             override fun getProxy(): Proxy? = null
             override fun getProxySelector(): ProxySelector? = null
+            override fun getProxyAuth(): ProxyAuth? = null
+
             override fun addProxyChangeListener(listener: Runnable) {
             }
 
@@ -579,6 +582,7 @@ class CoderRestClientTest {
                         }
                     }
 
+                    override fun getProxyAuth(): ProxyAuth? = null
                     override fun addProxyChangeListener(listener: Runnable) {
                     }
 
