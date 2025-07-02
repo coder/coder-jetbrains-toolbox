@@ -101,7 +101,8 @@ If `ide_product_code` and `ide_build_number` is missing, Toolbox will only open 
 page. Coder Toolbox will attempt to start the workspace if it’s not already running; however, for the most reliable
 experience, it’s recommended to ensure the workspace is running prior to initiating the connection.
 
-> ⚠️ Note: `folder` should point to a remote IDEA project that has already been opened and appears in the `Projects`
+> [!NOTE]
+> `folder` should point to a remote IDEA project that has already been opened and appears in the `Projects`
 > tab.
 > If the path refers to a project that doesn't exist, the remote IDE won’t start or load it.
 
@@ -150,7 +151,8 @@ mitmweb --ssl-insecure --set stream_large_bodies="10m" --mode socks5
 5. Before authenticating to the Coder deployment we need to tell the plugin where can we find mitmproxy
    certificates. In Coder's Settings page, set the `TLS CA path` to `~/.mitmproxy/mitmproxy-ca-cert.pem`
 
-> ⚠️ Note: Coder Toolbox plugin handles only HTTP/HTTPS proxy authentication.
+> [!NOTE]
+> Coder Toolbox plugin handles only HTTP/HTTPS proxy authentication.
 > SOCKS5 proxy authentication is currently not supported due to limitations
 > described in: https://youtrack.jetbrains.com/issue/TBX-14532/Missing-proxy-authentication-settings#focus=Comments-27-12265861.0-0
 
