@@ -72,7 +72,7 @@ open class CoderProtocolHandler(
         try {
             markAsBusy()
             reInitialize(restClient, cli)
-            context.refreshMainPage()
+            context.envPageManager.showPluginEnvironmentsPage()
             if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
             // we resolve the agent after the workspace is started otherwise we can get misleading
             // errors like: no agent available while workspace is starting or stopping
