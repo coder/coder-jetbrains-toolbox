@@ -67,11 +67,11 @@ open class CoderProtocolHandler(
         val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL) ?: return
 
         val cli = configureCli(deploymentURL, restClient)
-        reInitialize(restClient, cli)
 
         var agent: WorkspaceAgent
         try {
             markAsBusy()
+            reInitialize(restClient, cli)
             context.refreshMainPage()
             if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
             // we resolve the agent after the workspace is started otherwise we can get misleading
@@ -86,6 +86,7 @@ open class CoderProtocolHandler(
         } finally {
             unmarkAsBusy()
         }
+        delay(2.seconds)
         val environmentId = "${workspace.name}.${agent.name}"
         context.showEnvironmentPage(environmentId)
 

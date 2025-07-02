@@ -7,6 +7,7 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
+import com.coder.toolbox.util.waitForTrue
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderCliSetupWizardPage
@@ -316,12 +317,16 @@ class CoderRemoteProvider(
         ) { restClient, cli ->
             // stop polling and de-initialize resources
             close()
+            isInitialized.update {
+                false
+            }
             // start initialization with the new settings
             this@CoderRemoteProvider.client = restClient
             coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
 
             environments.showLoadingMessage()
             pollJob = poll(restClient, cli)
+            isInitialized.waitForTrue()
         }
     }
 
