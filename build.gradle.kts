@@ -22,6 +22,7 @@ plugins {
     alias(libs.plugins.gradle.wrapper)
     alias(libs.plugins.changelog)
     alias(libs.plugins.gettext)
+    alias(libs.plugins.detekt)
 }
 
 
@@ -108,6 +109,23 @@ tasks.compileKotlin {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+// Detekt configuration for code quality
+detekt {
+    buildUponDefaultConfig = true
+    allRules = false
+}
+
+// Configure detekt for code quality reporting
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    jvmTarget = "21"
+    reports {
+        html.required.set(true)
+        xml.required.set(true)
+    }
+    // Don't fail build on detekt issues - just report them
+    ignoreFailures = true
 }
 
 
