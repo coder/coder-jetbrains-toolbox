@@ -7,6 +7,7 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
+import com.coder.toolbox.util.waitForTrue
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderCliSetupWizardPage
@@ -63,9 +64,10 @@ class CoderRemoteProvider(
     // On the first load, automatically log in if we can.
     private var firstRun = true
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
-    private var coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(context.deploymentUrl.toString()))
+    private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
     private val linkHandler = CoderProtocolHandler(context, dialogUi, isInitialized)
 
+    override val loadingEnvironmentsDescription: LocalizableString = context.i18n.ptrl("Loading workspaces...")
     override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
         LoadableState.Loading
     )
@@ -167,7 +169,7 @@ class CoderRemoteProvider(
                     close()
                     // force auto-login
                     firstRun = true
-                    goToEnvironmentsPage()
+                    context.envPageManager.showPluginEnvironmentsPage()
                     break
                 }
             }
@@ -315,25 +317,17 @@ class CoderRemoteProvider(
         ) { restClient, cli ->
             // stop polling and de-initialize resources
             close()
+            isInitialized.update {
+                false
+            }
             // start initialization with the new settings
             this@CoderRemoteProvider.client = restClient
-            coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(restClient.url.toString()))
+            coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
 
             environments.showLoadingMessage()
             pollJob = poll(restClient, cli)
+            isInitialized.waitForTrue()
         }
-    }
-
-    /**
-     * Make Toolbox ask for the page again.  Use any time we need to change the
-     * root page (for example, sign-in or the environment list).
-     *
-     * When moving between related pages, instead use ui.showUiPage() and
-     * ui.hideUiPage() which stacks and has built-in back navigation, rather
-     * than using multiple root pages.
-     */
-    private fun goToEnvironmentsPage() {
-        context.envPageManager.showPluginEnvironmentsPage()
     }
 
     /**
@@ -377,7 +371,7 @@ class CoderRemoteProvider(
 
     private fun shouldDoAutoSetup(): Boolean = firstRun && context.secrets.rememberMe == true
 
-    private suspend fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
+    private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
         context.secrets.lastDeploymentURL = client.url.toString()
         context.secrets.lastToken = client.token ?: ""
@@ -387,9 +381,9 @@ class CoderRemoteProvider(
         this.client = client
         pollJob?.cancel()
         environments.showLoadingMessage()
-        coderHeaderPage = NewEnvironmentPage(context, context.i18n.pnotr(client.url.toString()))
+        coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
         pollJob = poll(client, cli)
-        context.refreshMainPage()
+        context.envPageManager.showPluginEnvironmentsPage()
     }
 
     private fun MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>>.showLoadingMessage() {
