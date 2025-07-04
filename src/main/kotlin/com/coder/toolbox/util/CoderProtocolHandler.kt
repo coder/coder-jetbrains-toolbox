@@ -55,6 +55,9 @@ open class CoderProtocolHandler(
             return
         }
 
+        // this switches to the main plugin screen, even
+        // if last opened provider was not Coder
+        context.envPageManager.showPluginEnvironmentsPage()
         if (shouldWaitForAutoLogin) {
             isInitialized.waitForTrue()
         }
