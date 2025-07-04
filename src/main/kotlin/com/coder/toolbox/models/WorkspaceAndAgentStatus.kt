@@ -91,16 +91,6 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
         else EnvironmentStateIcons.NoIcon
     }
 
-    fun toSshConnectingEnvState(context: CoderToolboxContext): CustomRemoteEnvironmentStateV2 {
-        val existingState = toRemoteEnvironmentState(context)
-        return CustomRemoteEnvironmentStateV2(
-            context.i18n.pnotr("SSHing"),
-            existingState.color,
-            existingState.isReachable,
-            EnvironmentStateIcons.Connecting
-        )
-    }
-
     /**
      * Return true if the agent is in a connectable state.
      */
