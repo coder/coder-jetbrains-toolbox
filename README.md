@@ -82,6 +82,11 @@ jetbrains://gateway/com.coder.toolbox
   &folder=<absolute-path-to-a-project-folder>
 ```
 
+Starting from Toolbox 2.7, you can use `coder` as a shortcut in place of the full plugin ID. The URI can be simplified as:
+```text
+jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
+```
+
 | Query param      | 	Description                                                                 | Mandatory |
 |------------------|------------------------------------------------------------------------------|-----------|
 | url              | 	Your Coder deployment URL (encoded)                                         | Yes       |
