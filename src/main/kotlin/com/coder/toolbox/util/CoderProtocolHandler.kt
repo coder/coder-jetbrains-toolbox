@@ -54,10 +54,10 @@ open class CoderProtocolHandler(
             context.logAndShowInfo("URI will not be handled", "No query parameters were provided")
             return
         }
-
         // this switches to the main plugin screen, even
         // if last opened provider was not Coder
         context.envPageManager.showPluginEnvironmentsPage()
+        markAsBusy()
         if (shouldWaitForAutoLogin) {
             isInitialized.waitForTrue()
         }
@@ -73,7 +73,6 @@ open class CoderProtocolHandler(
 
         var agent: WorkspaceAgent
         try {
-            markAsBusy()
             reInitialize(restClient, cli)
             context.envPageManager.showPluginEnvironmentsPage()
             if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
