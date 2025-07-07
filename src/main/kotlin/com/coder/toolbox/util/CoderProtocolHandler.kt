@@ -258,26 +258,25 @@ open class CoderProtocolHandler(
         }
 
         // If the agent is missing and the workspace has only one, use that.
-        val agent =
-            if (!parameters.agentID().isNullOrBlank()) {
-                agents.firstOrNull { it.id.toString() == parameters.agentID() }
-            } else if (agents.size == 1) {
-                agents.first()
-            } else {
-                null
-            }
+        val agent = if (!parameters.agentName().isNullOrBlank()) {
+            agents.firstOrNull { it.name == parameters.agentName() }
+        } else if (agents.size == 1) {
+            agents.first()
+        } else {
+            null
+        }
 
         if (agent == null) {
-            if (!parameters.agentID().isNullOrBlank()) {
+            if (!parameters.agentName().isNullOrBlank()) {
                 context.logAndShowError(
                     CAN_T_HANDLE_URI_TITLE,
-                    "The workspace \"${workspace.name}\" does not have an agent with ID \"${parameters.agentID()}\""
+                    "The workspace \"${workspace.name}\" does not have an agent with name \"${parameters.agentName()}\""
                 )
                 return null
             } else {
                 context.logAndShowError(
                     CAN_T_HANDLE_URI_TITLE,
-                    "Unable to determine which agent to connect to; \"$AGENT_ID\" must be set because the workspace \"${workspace.name}\" has more than one agent"
+                    "Unable to determine which agent to connect to; \"$AGENT_NAME\" must be set because the workspace \"${workspace.name}\" has more than one agent"
                 )
                 return null
             }

@@ -6,10 +6,15 @@
 
 - support for basic authentication for HTTP/HTTPS proxy
 - support for Toolbox 2.7 release
+- support for matching workspace agent in the URI via the agent name
 
 ### Changed
 
 - improved message while loading the workspace
+
+### Removed
+
+- dropped support for `agent_id` as a URI parameter
 
 ### Fixed
 
