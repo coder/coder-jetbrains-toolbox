@@ -157,11 +157,6 @@ class CoderRemoteEnvironment(
 
     override fun beforeConnection() {
         context.logger.info("Connecting to $id...")
-        context.cs.launch {
-            state.update {
-                wsRawStatus.toSshConnectingEnvState(context)
-            }
-        }
         isConnected.update { true }
         pollJob = pollNetworkMetrics()
     }

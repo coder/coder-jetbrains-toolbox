@@ -7,6 +7,7 @@ import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 
 /**
  * Base page that handles the icon, displaying error notifications, and
@@ -19,9 +20,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
  *       to use the mouse.
  */
 abstract class CoderPage(
-    title: LocalizableString,
+    private val titleObservable: MutableStateFlow<LocalizableString>,
     showIcon: Boolean = true,
-) : UiPage(title) {
+) : UiPage(titleObservable) {
+
+    fun setTitle(title: LocalizableString) {
+        titleObservable.update {
+            title
+        }
+    }
 
     /**
      * Return the icon, if showing one.

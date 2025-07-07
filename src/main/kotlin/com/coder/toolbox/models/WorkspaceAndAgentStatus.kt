@@ -65,9 +65,10 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
         return CustomRemoteEnvironmentStateV2(
             context.i18n.pnotr(label),
             color = getStateColor(context),
-            reachable = ready() || unhealthy(),
+            isReachable = ready() || unhealthy(),
             // TODO@JB: How does this work?  Would like a spinner for pending states.
-            icon = getStateIcon()
+            iconId = getStateIcon().id,
+            isPriorityShow = true
         )
     }
 
@@ -88,16 +89,6 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
         else if (ready() || unhealthy()) EnvironmentStateIcons.Active
         else if (canStart()) EnvironmentStateIcons.Offline
         else EnvironmentStateIcons.NoIcon
-    }
-
-    fun toSshConnectingEnvState(context: CoderToolboxContext): CustomRemoteEnvironmentStateV2 {
-        val existingState = toRemoteEnvironmentState(context)
-        return CustomRemoteEnvironmentStateV2(
-            context.i18n.pnotr("SSHing"),
-            existingState.color,
-            existingState.isReachable,
-            EnvironmentStateIcons.Connecting
-        )
     }
 
     /**

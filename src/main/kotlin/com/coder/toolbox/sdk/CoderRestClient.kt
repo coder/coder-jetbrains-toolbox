@@ -24,7 +24,9 @@ import com.coder.toolbox.util.coderTrustManagers
 import com.coder.toolbox.util.getArch
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
+import com.jetbrains.toolbox.api.remoteDev.connection.ProxyAuth
 import com.squareup.moshi.Moshi
+import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import retrofit2.Response
 import retrofit2.Retrofit
@@ -78,18 +80,19 @@ open class CoderRestClient(
             builder.proxySelector(context.proxySettings.getProxySelector()!!)
         }
 
-        //TODO - add support for proxy auth. when Toolbox exposes them
-//                    builder.proxyAuthenticator { _, response ->
-//                        if (proxyValues.useAuth && proxyValues.username != null && proxyValues.password != null) {
-//                            val credentials = Credentials.basic(proxyValues.username, proxyValues.password)
-//                            response.request.newBuilder()
-//                                .header("Proxy-Authorization", credentials)
-//                                .build()
-//                        } else {
-//                            null
-//                        }
-//                    }
-//        }
+        // Note: This handles only HTTP/HTTPS proxy authentication.
+        // SOCKS5 proxy authentication is currently not supported due to limitations described in:
+        // https://youtrack.jetbrains.com/issue/TBX-14532/Missing-proxy-authentication-settings#focus=Comments-27-12265861.0-0
+        builder.proxyAuthenticator { _, response ->
+            val proxyAuth = context.proxySettings.getProxyAuth()
+            if (proxyAuth == null || proxyAuth !is ProxyAuth.Basic) {
+                return@proxyAuthenticator null
+            }
+            val credentials = Credentials.basic(proxyAuth.username, proxyAuth.password)
+            response.request.newBuilder()
+                .header("Proxy-Authorization", credentials)
+                .build()
+        }
 
         if (token != null) {
             builder = builder.addInterceptor {
