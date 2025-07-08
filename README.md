@@ -64,9 +64,9 @@ You can use specially crafted JetBrains Gateway URIs to automatically:
 ### Example URIs
 
 ```text
-jetbrains://gateway/com.coder.toolbox?url=https%3A%2F%2Fdev.coder.com&token=zeoX4SbSpP-j2qGpajkdwxR9jBdcekXS2&workspace=bobiverse-bob&agent=dev&ide_product_code=GO&ide_build_number=241.23774.119&folder=%2Fhome%2Fcoder%2Fworkspace%2Fhello-world-rs
+jetbrains://gateway/com.coder.toolbox?url=https%3A%2F%2Fdev.coder.com&token=zeoX4SbSpP-j2qGpajkdwxR9jBdcekXS2&workspace=bobiverse-bob&agent_name=dev&ide_product_code=GO&ide_build_number=241.23774.119&folder=%2Fhome%2Fcoder%2Fworkspace%2Fhello-world-rs
 
-jetbrains://gateway/com.coder.toolbox?url=https%3A%2F%2Fj5gj2r1so5nbi.pit-1.try.coder.app%2F&token=gqEirOoI1U-FfCQ6uj8iOLtybBIk99rr8&workspace=bobiverse-riker&agent=dev&ide_product_code=RR&ide_build_number=243.26053.17&folder=%2Fhome%2Fcoder%2Fworkspace%2Fhello-world-rs
+jetbrains://gateway/coder?url=https%3A%2F%2Fj5gj2r1so5nbi.pit-1.try.coder.app%2F&token=gqEirOoI1U-FfCQ6uj8iOLtybBIk99rr8&workspace=bobiverse-riker&agent_name=dev&ide_product_code=RR&ide_build_number=243.26053.17&folder=%2Fhome%2Fcoder%2Fworkspace%2Fhello-world-rs
 ```
 
 ### URI Breakdown
@@ -76,13 +76,15 @@ jetbrains://gateway/com.coder.toolbox
   ?url=http(s)://<your-coder-deployment>
   &token=<auth-token>
   &workspace=<workspace-name>
-  &agent_id=<agent--id>
+  &agent_name=<agent-name>
   &ide_product_code=<IDE-code>
   &ide_build_number=<IDE-build>
   &folder=<absolute-path-to-a-project-folder>
 ```
 
-Starting from Toolbox 2.7, you can use `coder` as a shortcut in place of the full plugin ID. The URI can be simplified as:
+Starting from Toolbox 2.7, you can use `coder` as a shortcut in place of the full plugin ID. The URI can be simplified
+as:
+
 ```text
 jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
 ```
@@ -92,16 +94,16 @@ jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
 | url              | 	Your Coder deployment URL (encoded)                                         | Yes       |
 | token            | 	Coder authentication token                                                  | Yes       |
 | workspace        | 	Name of the Coder workspace to connect to.                                  | Yes       |
-| agent_id         | 	ID of the agent associated with the workspace                               | No        |
+| agent_name       | 	The name of the agent with the workspace                                    | No        |
 | ide_product_code | 	JetBrains IDE product code (e.g., GO for GoLand, RR for Rider)              | No        |
 | ide_build_number | 	Specific build number of the JetBrains IDE to install on the workspace      | No        |
 | folder           | 	Absolute path to the project folder to open in the remote IDE (URL-encoded) | No        |
 
 > [!NOTE]
-> If only a single agent is available, specifying an agent ID is optional. However, if multiple agents exist,
-> you must provide either the ID to target a specific one. Note that this version of the Coder Toolbox plugin
-> does not automatically start agents if they are offline, so please ensure the selected agent is running before
-> proceeding.
+> If only a single agent is available, specifying an agent name is optional. However, if multiple agents exist, you must
+> provide the
+> agent name. Note that this version of the Coder Toolbox plugin does not automatically start agents if they
+> are offline, so please ensure the selected agent is running before proceeding.
 
 If `ide_product_code` and `ide_build_number` is missing, Toolbox will only open and highlight the workspace environment
 page. Coder Toolbox will attempt to start the workspace if it’s not already running; however, for the most reliable
@@ -151,7 +153,9 @@ mitmweb --ssl-insecure --set stream_large_bodies="10m" --mode socks5
 > [!NOTE]
 > Coder Toolbox plugin handles only HTTP/HTTPS proxy authentication.
 > SOCKS5 proxy authentication is currently not supported due to limitations
-> described in: https://youtrack.jetbrains.com/issue/TBX-14532/Missing-proxy-authentication-settings#focus=Comments-27-12265861.0-0
+> described
+>
+in: https://youtrack.jetbrains.com/issue/TBX-14532/Missing-proxy-authentication-settings#focus=Comments-27-12265861.0-0
 
 ## Debugging and Reporting issues
 
@@ -198,21 +202,21 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 ### CLI related settings
 
 - `Binary source` specifies the source URL or relative path from which the Coder CLI should be downloaded.
-If a relative path is provided, it is resolved against the deployment domain.
+  If a relative path is provided, it is resolved against the deployment domain.
 
 - `Enable downloads` allows automatic downloading of the CLI if the current version is missing or outdated.
 
 - `Binary directory` specifies the directory where CLI binaries are stored. If omitted, it defaults to the data
-directory.
+  directory.
 
 - `Enable binary directory fallback` if enabled, falls back to the data directory when the specified binary
-directory is not writable.
+  directory is not writable.
 
 - `Data directory` directory where plugin-specific data such as session tokens and binaries are stored if not
-overridden by the binary directory setting.
+  overridden by the binary directory setting.
 
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
-The environment variable CODER_URL will be available to the command process.
+  The environment variable CODER_URL will be available to the command process.
 
 ### TLS settings
 
@@ -220,34 +224,34 @@ The following options control the secure communication behavior of the plugin wi
 API.
 
 - `TLS cert path` path to a client certificate file for TLS authentication with Coder deployment.
-The certificate should be in X.509 PEM format.
+  The certificate should be in X.509 PEM format.
 
 - `TLS key path` path to the private key corresponding to the TLS certificate from above.
-The certificate should be in X.509 PEM format.
+  The certificate should be in X.509 PEM format.
 
 - `TLS CA path` the path of a file containing certificates for an alternate certificate authority used to verify TLS
-certs returned by the Coder deployment. The file should be in X.509 PEM format. This option can also be used to verify
-proxy certificates.
+  certs returned by the Coder deployment. The file should be in X.509 PEM format. This option can also be used to verify
+  proxy certificates.
 
 - `TLS alternate hostname` overrides the hostname used in TLS verification. This is useful when the hostname
-used to connect to the Coder deployment does not match the hostname in the TLS certificate.
+  used to connect to the Coder deployment does not match the hostname in the TLS certificate.
 
 ### SSH settings
 
 The following options control the SSH behavior of the Coder CLI.
 
 - `Disable autostart` adds the --disable-autostart flag to the SSH proxy command, preventing the CLI from keeping
-workspaces constantly active.
+  workspaces constantly active.
 
 - `Enable SSH wildcard config` enables or disables wildcard entries in the SSH configuration, which allow generic
-rules for matching multiple workspaces.
+  rules for matching multiple workspaces.
 
 - `SSH proxy log directory` directory where SSH proxy logs are written. Useful for debugging SSH connection issues.
 
 - `SSH network metrics directory` directory where network information used by the SSH proxy is stored.
 
 - `Extra SSH options` additional options appended to the SSH configuration. Can be used to customize the behavior of
-SSH connections.
+  SSH connections.
 
 ### Saving Changes
 
@@ -256,7 +260,7 @@ support, may trigger regeneration of SSH configurations.
 
 ### Security considerations
 
-> [!IMPORTANT] 
+> [!IMPORTANT]
 > Token authentication is required when TLS certificates are not configured.
 
 ## Releasing
@@ -269,6 +273,7 @@ support, may trigger regeneration of SSH configurations.
    JetBrains enabled auto-approval for the plugin, so we need to ensure we continue to meet the following requirements:
     - do **not** use Kotlin experimental APIs.
     - do **not** add any lambdas, handlers, or class handles to Java runtime hooks.
-    - do **not** create threads manually (including via libraries). If you must, ensure they are properly cleaned up in the plugin's `CoderRemoteProvider#close()` method.
+   - do **not** create threads manually (including via libraries). If you must, ensure they are properly cleaned up in
+     the plugin's `CoderRemoteProvider#close()` method.
     - do **not** bundle libraries that are already provided by Toolbox.
     - do **not** perform any ill-intentioned actions.
