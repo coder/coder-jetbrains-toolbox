@@ -39,13 +39,7 @@ This configuration includes JetBrains-specific rules that check for:
 - **ForbiddenImport**: Detects potentially bundled libraries
 - **Standard code quality rules**: Complexity, naming, performance, etc.
 
-### Backup Compliance Check Script
 
-A shell script is also available for quick manual checks:
-
-```bash
-./scripts/jetbrains-compliance-check.sh
-```
 
 ## CI/CD Integration
 
@@ -53,7 +47,6 @@ The GitHub Actions workflow `.github/workflows/jetbrains-compliance.yml` runs co
 
 ## Running Locally
 
-### Primary Compliance Check
 ```bash
 # Run JetBrains compliance and code quality check
 ./gradlew detekt
@@ -62,11 +55,7 @@ The GitHub Actions workflow `.github/workflows/jetbrains-compliance.yml` runs co
 open build/reports/detekt/detekt.html
 ```
 
-### Quick Manual Check
-```bash
-# Run backup shell script for quick manual verification
-./scripts/jetbrains-compliance-check.sh
-```
+
 
 ## Understanding Results
 
