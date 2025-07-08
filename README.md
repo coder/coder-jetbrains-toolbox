@@ -66,7 +66,7 @@ You can use specially crafted JetBrains Gateway URIs to automatically:
 ```text
 jetbrains://gateway/com.coder.toolbox?url=https%3A%2F%2Fdev.coder.com&token=zeoX4SbSpP-j2qGpajkdwxR9jBdcekXS2&workspace=bobiverse-bob&agent_name=dev&ide_product_code=GO&ide_build_number=241.23774.119&folder=%2Fhome%2Fcoder%2Fworkspace%2Fhello-world-rs
 
-jetbrains://gateway/com.coder.toolbox?url=https%3A%2F%2Fj5gj2r1so5nbi.pit-1.try.coder.app%2F&token=gqEirOoI1U-FfCQ6uj8iOLtybBIk99rr8&workspace=bobiverse-riker&agent_name=dev&ide_product_code=RR&ide_build_number=243.26053.17&folder=%2Fhome%2Fcoder%2Fworkspace%2Fhello-world-rs
+jetbrains://gateway/coder?url=https%3A%2F%2Fj5gj2r1so5nbi.pit-1.try.coder.app%2F&token=gqEirOoI1U-FfCQ6uj8iOLtybBIk99rr8&workspace=bobiverse-riker&agent_name=dev&ide_product_code=RR&ide_build_number=243.26053.17&folder=%2Fhome%2Fcoder%2Fworkspace%2Fhello-world-rs
 ```
 
 ### URI Breakdown
@@ -100,7 +100,8 @@ jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
 | folder           | 	Absolute path to the project folder to open in the remote IDE (URL-encoded) | No        |
 
 > [!NOTE]
-> If only a single agent is available, specifying an agent name. However, if multiple agents exist, you must provide the
+> If only a single agent is available, specifying an agent name is optional. However, if multiple agents exist, you must
+> provide the
 > agent name. Note that this version of the Coder Toolbox plugin does not automatically start agents if they
 > are offline, so please ensure the selected agent is running before proceeding.
 
