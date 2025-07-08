@@ -37,6 +37,8 @@ class CoderSettingsStore(
     override val defaultURL: String get() = store[DEFAULT_URL] ?: "https://dev.coder.com"
     override val binarySource: String? get() = store[BINARY_SOURCE]
     override val binaryDirectory: String? get() = store[BINARY_DIRECTORY]
+    override val allowUnsignedBinaryWithoutPrompt: Boolean =
+        store[ALLOW_UNSIGNED_BINARY_EXEC]?.toBooleanStrictOrNull() ?: false
     override val defaultCliBinaryNameByOsAndArch: String get() = getCoderCLIForOS(getOS(), getArch())
     override val binaryName: String get() = store[BINARY_NAME] ?: getCoderCLIForOS(getOS(), getArch())
     override val dataDirectory: String? get() = store[DATA_DIRECTORY]
@@ -156,6 +158,10 @@ class CoderSettingsStore(
 
     fun updateEnableDownloads(shouldEnableDownloads: Boolean) {
         store[ENABLE_DOWNLOADS] = shouldEnableDownloads.toString()
+    }
+
+    fun updateAllowUnsignedBinaryExec(allowUnsignedBinaryExec: Boolean) {
+        store[ALLOW_UNSIGNED_BINARY_EXEC] = allowUnsignedBinaryExec.toString()
     }
 
     fun updateBinaryDirectoryFallback(shouldEnableBinDirFallback: Boolean) {

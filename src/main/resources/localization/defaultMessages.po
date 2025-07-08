@@ -79,6 +79,9 @@ msgstr ""
 msgid "Enable downloads"
 msgstr ""
 
+msgid "Allow unsigned binary execution without prompt"
+msgstr ""
+
 msgid "Enable binary directory fallback"
 msgstr ""
 

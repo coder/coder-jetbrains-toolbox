@@ -10,6 +10,8 @@ internal const val BINARY_SOURCE = "binarySource"
 
 internal const val BINARY_DIRECTORY = "binaryDirectory"
 
+internal const val ALLOW_UNSIGNED_BINARY_EXEC = "allowUnsignedBinaryExec"
+
 internal const val BINARY_NAME = "binaryName"
 
 internal const val DATA_DIRECTORY = "dataDirectory"
