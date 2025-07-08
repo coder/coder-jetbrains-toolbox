@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0 - 2025-07-08
+
 ### Added
 
 - support for basic authentication for HTTP/HTTPS proxy
@@ -18,7 +20,7 @@
 
 ### Fixed
 
-- URI protocol handler is now able to switch to the Coder provider even if the last opened provider was something else  
+- URI protocol handler is now able to switch to the Coder provider even if the last opened provider was something else
 
 ## 0.3.2 - 2025-06-25
 
