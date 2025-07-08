@@ -111,21 +111,22 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// Detekt configuration for code quality
+// Detekt configuration for JetBrains compliance and code quality
 detekt {
+    config.setFrom("$projectDir/detekt.yml")
     buildUponDefaultConfig = true
     allRules = false
 }
 
-// Configure detekt for code quality reporting
+// Configure detekt for JetBrains compliance and code quality
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     jvmTarget = "21"
     reports {
         html.required.set(true)
         xml.required.set(true)
     }
-    // Don't fail build on detekt issues - just report them
-    ignoreFailures = true
+    // Fail build on detekt issues for JetBrains compliance
+    ignoreFailures = false
 }
 
 

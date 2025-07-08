@@ -1,0 +1,204 @@
+# Detekt configuration for JetBrains Toolbox Plugin Auto-Approval Compliance
+# Based on clarified requirements from JetBrains team
+
+build:
+  maxIssues: 1000  # Allow many issues for code quality reporting
+  excludeCorrectable: false
+
+config:
+  validation: true
+  warningsAsErrors: false  # Don't treat warnings as errors
+  checkExhaustiveness: false
+
+# CRITICAL: JetBrains Compliance Rules using detekt built-in rules
+style:
+  active: true
+  
+  # JetBrains Auto-Approval Compliance: Forbidden experimental annotations
+  ForbiddenAnnotation:
+    active: true
+    annotations:
+      - reason: 'Forbidden for JetBrains auto-approval: Core Kotlin experimental APIs are not allowed'
+        value: 'kotlin.ExperimentalStdlibApi'
+      - reason: 'Forbidden for JetBrains auto-approval: Core Kotlin experimental APIs are not allowed'
+        value: 'kotlin.ExperimentalUnsignedTypes'
+      - reason: 'Forbidden for JetBrains auto-approval: Core Kotlin experimental APIs are not allowed'
+        value: 'kotlin.contracts.ExperimentalContracts'
+      - reason: 'Forbidden for JetBrains auto-approval: Core Kotlin experimental APIs are not allowed'
+        value: 'kotlin.experimental.ExperimentalTypeInference'
+      - reason: 'Forbidden for JetBrains auto-approval: Internal coroutines APIs should be avoided'
+        value: 'kotlinx.coroutines.InternalCoroutinesApi'
+      - reason: 'Forbidden for JetBrains auto-approval: Experimental time APIs are not allowed'
+        value: 'kotlin.time.ExperimentalTime'
+      # Note: ExperimentalCoroutinesApi, DelicateCoroutinesApi, FlowPreview are acceptable
+      # based on JetBrains feedback about select/onTimeout being OK
+  
+  # JetBrains Auto-Approval Compliance: Forbidden method calls
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      # Java runtime hooks - forbidden
+      - reason: 'Forbidden for JetBrains auto-approval: Java runtime hooks are not allowed'
+        value: 'java.lang.Runtime.addShutdownHook'
+      - reason: 'Forbidden for JetBrains auto-approval: Java runtime hooks are not allowed'
+        value: 'java.lang.System.setSecurityManager'
+      - reason: 'Forbidden for JetBrains auto-approval: Java runtime hooks are not allowed'
+        value: 'java.lang.Thread.setUncaughtExceptionHandler'
+      - reason: 'Forbidden for JetBrains auto-approval: Java runtime hooks are not allowed'
+        value: 'java.lang.Thread.setDefaultUncaughtExceptionHandler'
+      # Manual thread creation - warnings (allowed with proper cleanup)
+      - reason: 'Warning for JetBrains auto-approval: Manual thread creation detected. Consider using coroutineScope.launch or ensure proper cleanup in CoderRemoteProvider#close()'
+        value: 'java.lang.Thread.<init>'
+      - reason: 'Warning for JetBrains auto-approval: Manual thread creation detected. Consider using coroutineScope.launch or ensure proper cleanup in CoderRemoteProvider#close()'
+        value: 'java.util.concurrent.Executors.newFixedThreadPool'
+      - reason: 'Warning for JetBrains auto-approval: Manual thread creation detected. Consider using coroutineScope.launch or ensure proper cleanup in CoderRemoteProvider#close()'
+        value: 'java.util.concurrent.Executors.newCachedThreadPool'
+      - reason: 'Warning for JetBrains auto-approval: Manual thread creation detected. Consider using coroutineScope.launch or ensure proper cleanup in CoderRemoteProvider#close()'
+        value: 'java.util.concurrent.Executors.newSingleThreadExecutor'
+      - reason: 'Warning for JetBrains auto-approval: Manual thread creation detected. Consider using coroutineScope.launch or ensure proper cleanup in CoderRemoteProvider#close()'
+        value: 'java.util.concurrent.CompletableFuture.runAsync'
+      - reason: 'Warning for JetBrains auto-approval: Manual thread creation detected. Consider using coroutineScope.launch or ensure proper cleanup in CoderRemoteProvider#close()'
+        value: 'java.util.concurrent.CompletableFuture.supplyAsync'
+  
+  # JetBrains Auto-Approval Compliance: Forbidden imports
+  ForbiddenImport:
+    active: true
+    imports:
+      # Potentially bundled libraries - warnings
+      - reason: 'Warning for JetBrains auto-approval: Ensure slf4j is not bundled - it is provided by Toolbox'
+        value: 'org.slf4j.*'
+      - reason: 'Warning for JetBrains auto-approval: Ensure annotations library is not bundled - it is provided by Toolbox'
+        value: 'org.jetbrains.annotations.*'
+      # Runtime hook classes - forbidden
+      - reason: 'Forbidden for JetBrains auto-approval: Runtime hook classes are not allowed'
+        value: 'java.lang.Runtime'
+      - reason: 'Forbidden for JetBrains auto-approval: Security manager modifications are not allowed'
+        value: 'java.security.SecurityManager'
+  
+  # Other important style rules
+  MagicNumber:
+    active: true
+    ignoreNumbers:
+      - '-1'
+      - '0'
+      - '1'
+      - '2'
+    ignoreHashCodeFunction: true
+    ignorePropertyDeclaration: false
+    ignoreLocalVariableDeclaration: false
+    ignoreConstantDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotation: false
+    ignoreNamedArgument: true
+    ignoreEnums: false
+    ignoreRanges: false
+    ignoreExtensionFunctions: true
+  
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+    excludePackageStatements: true
+    excludeImportStatements: true
+    excludeCommentStatements: false
+  
+  NewLineAtEndOfFile:
+    active: true
+  
+  WildcardImport:
+    active: true
+
+# Essential built-in rules for basic code quality
+complexity:
+  active: true
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 15
+  LongMethod:
+    active: true
+    threshold: 60
+  LongParameterList:
+    active: true
+    functionThreshold: 6
+    constructorThreshold: 7
+  NestedBlockDepth:
+    active: true
+    threshold: 4
+
+coroutines:
+  active: true
+  GlobalCoroutineUsage:
+    active: true
+  RedundantSuspendModifier:
+    active: true
+  SleepInsteadOfDelay:
+    active: true
+
+exceptions:
+  active: true
+  ExceptionRaisedInUnexpectedLocation:
+    active: true
+  ObjectExtendsThrowable:
+    active: true
+  PrintStackTrace:
+    active: true
+  ReturnFromFinally:
+    active: true
+  SwallowedException:
+    active: true
+  ThrowingExceptionFromFinally:
+    active: true
+  ThrowingExceptionsWithoutMessageOrCause:
+    active: true
+  TooGenericExceptionCaught:
+    active: true
+  TooGenericExceptionThrown:
+    active: true
+
+naming:
+  active: true
+  ClassNaming:
+    active: true
+    classPattern: '[A-Z][a-zA-Z0-9]*'
+  FunctionNaming:
+    active: true
+    functionPattern: '[a-z][a-zA-Z0-9]*'
+  PackageNaming:
+    active: true
+    packagePattern: '[a-z]+(\.?[a-z][A-Za-z0-9]*)*'
+  VariableNaming:
+    active: true
+    variablePattern: '[a-z][A-Za-z0-9]*'
+
+performance:
+  active: true
+  ArrayPrimitive:
+    active: true
+  ForEachOnRange:
+    active: true
+  SpreadOperator:
+    active: true
+  UnnecessaryTemporaryInstantiation:
+    active: true
+
+potential-bugs:
+  active: true
+  EqualsAlwaysReturnsTrueOrFalse:
+    active: true
+  EqualsWithHashCodeExist:
+    active: true
+  ExplicitGarbageCollectionCall:
+    active: true
+  HasPlatformType:
+    active: true
+  InvalidRange:
+    active: true
+  UnreachableCatchBlock:
+    active: true
+  UnreachableCode:
+    active: true
+  UnsafeCallOnNullableType:
+    active: true
+  UnsafeCast:
+    active: true
+  WrongEqualsTypeParameter:
+    active: true

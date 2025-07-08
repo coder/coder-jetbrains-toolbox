@@ -25,27 +25,26 @@ Based on communication with JetBrains team, the following requirements must be m
 
 ## Linting Setup
 
-### JetBrains Compliance Check Script
+### JetBrains Compliance with Detekt
 
-The primary compliance checking is done via a shell script:
-
-```bash
-./scripts/jetbrains-compliance-check.sh
-```
-
-This script checks for:
-- Forbidden experimental API usage
-- Manual thread creation patterns
-- Java runtime hooks
-- Potentially bundled libraries
-- Coroutines best practices
-
-### Standard Code Quality (Detekt)
-
-Standard Kotlin code quality is checked using Detekt:
+The primary compliance checking is done using Detekt with custom configuration in `detekt.yml`:
 
 ```bash
 ./gradlew detekt
+```
+
+This configuration includes JetBrains-specific rules that check for:
+- **ForbiddenAnnotation**: Detects forbidden experimental API usage
+- **ForbiddenMethodCall**: Detects Java runtime hooks and manual thread creation
+- **ForbiddenImport**: Detects potentially bundled libraries
+- **Standard code quality rules**: Complexity, naming, performance, etc.
+
+### Backup Compliance Check Script
+
+A shell script is also available for quick manual checks:
+
+```bash
+./scripts/jetbrains-compliance-check.sh
 ```
 
 ## CI/CD Integration
@@ -54,19 +53,19 @@ The GitHub Actions workflow `.github/workflows/jetbrains-compliance.yml` runs co
 
 ## Running Locally
 
-### Quick Compliance Check
+### Primary Compliance Check
 ```bash
-# Run JetBrains compliance check
-./scripts/jetbrains-compliance-check.sh
-```
-
-### Full Code Quality Check
-```bash
-# Run detekt for code quality
+# Run JetBrains compliance and code quality check
 ./gradlew detekt
 
 # View HTML report
 open build/reports/detekt/detekt.html
+```
+
+### Quick Manual Check
+```bash
+# Run backup shell script for quick manual verification
+./scripts/jetbrains-compliance-check.sh
 ```
 
 ## Understanding Results
