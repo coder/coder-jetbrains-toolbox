@@ -20,4 +20,10 @@ interface CoderDownloadApi {
         @HeaderMap headers: Map<String, String> = emptyMap(),
         @Header("Accept-Encoding") acceptEncoding: String = "gzip",
     ): Response<ResponseBody>
+
+    @GET
+    suspend fun downloadSignature(
+        @Url url: String,
+        @HeaderMap headers: Map<String, String> = emptyMap()
+    ): Response<ResponseBody>
 }

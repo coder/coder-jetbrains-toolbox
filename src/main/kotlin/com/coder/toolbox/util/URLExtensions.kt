@@ -13,6 +13,20 @@ fun URL.withPath(path: String): URL = URL(
     if (path.startsWith("/")) path else "/$path",
 )
 
+fun URL.withLastSegment(segment: String): URL {
+    val uri = this.toURI()
+    val basePath = uri.path.substringBeforeLast('/')
+    val newPath = "$basePath/$segment"
+    val newUri = URI(
+        uri.scheme,
+        uri.authority,
+        newPath,
+        uri.query,
+        uri.fragment
+    )
+    return newUri.toURL()
+}
+
 /**
  * Return the host, converting IDN to ASCII in case the file system cannot
  * support the necessary character set.

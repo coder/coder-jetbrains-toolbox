@@ -6,9 +6,11 @@ import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.sha1
+import com.coder.toolbox.util.withLastSegment
 import okhttp3.ResponseBody
 import retrofit2.Response
 import java.io.FileInputStream
+import java.net.HttpURLConnection.HTTP_NOT_FOUND
 import java.net.HttpURLConnection.HTTP_NOT_MODIFIED
 import java.net.HttpURLConnection.HTTP_OK
 import java.net.URL
@@ -16,6 +18,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.zip.GZIPInputStream
+import kotlin.io.path.name
 import kotlin.io.path.notExists
 
 /**
@@ -32,21 +35,20 @@ class CoderDownloadService(
 
     suspend fun downloadCli(buildVersion: String, showTextProgress: (String) -> Unit): DownloadResult {
         val eTag = calculateLocalETag()
-        val headers = getRequestHeaders()
         if (eTag != null) {
             context.logger.info("Found existing binary at $localBinaryPath; calculated hash as $eTag")
         }
         val response = downloadApi.downloadCli(
             url = remoteBinaryURL.toString(),
             eTag = eTag?.let { "\"$it\"" },
-            headers = headers
+            headers = getRequestHeaders()
         )
 
         return when (response.code()) {
             HTTP_OK -> {
                 context.logger.info("Downloading binary to $localBinaryPath")
-                response.saveBinaryToDisk(buildVersion, showTextProgress)?.makeExecutable()
-                DownloadResult.Downloaded
+                response.saveToDisk(localBinaryPath, showTextProgress, buildVersion)?.makeExecutable()
+                DownloadResult.Downloaded(localBinaryPath)
             }
 
             HTTP_NOT_MODIFIED -> {
@@ -84,16 +86,17 @@ class CoderDownloadService(
         }
     }
 
-    private fun Response<ResponseBody>.saveBinaryToDisk(
-        buildVersion: String,
-        showTextProgress: (String) -> Unit
+    private fun Response<ResponseBody>.saveToDisk(
+        localPath: Path,
+        showTextProgress: (String) -> Unit,
+        buildVersion: String? = null
     ): Path? {
         val responseBody = this.body() ?: return null
-        Files.deleteIfExists(localBinaryPath)
-        Files.createDirectories(localBinaryPath.parent)
+        Files.deleteIfExists(localPath)
+        Files.createDirectories(localPath.parent)
 
         val outputStream = Files.newOutputStream(
-            localBinaryPath,
+            localPath,
             StandardOpenOption.CREATE,
             StandardOpenOption.TRUNCATE_EXISTING
         )
@@ -108,7 +111,7 @@ class CoderDownloadService(
         var bytesRead: Int
         var totalRead = 0L
         // caching this because the settings store recomputes it every time
-        val binaryName = context.settingsStore.defaultCliBinaryNameByOsAndArch
+        val binaryName = localPath.name
         sourceStream.use { source ->
             outputStream.use { sink ->
                 while (source.read(buffer).also { bytesRead = it } != -1) {
@@ -142,5 +145,40 @@ class CoderDownloadService(
 
         val gb = mb / 1024.0
         return String.format("%.1f GB", gb)
+    }
+
+    suspend fun downloadSignature(showTextProgress: (String) -> Unit): DownloadResult {
+        val defaultCliNameWithoutExt = context.settingsStore.defaultCliBinaryNameByOsAndArch.split('.').first()
+        val signatureName = "$defaultCliNameWithoutExt.asc"
+
+        val signatureURL = remoteBinaryURL.withLastSegment(signatureName)
+        val localSignaturePath = localBinaryPath.parent.resolve(signatureName)
+        context.logger.info("Downloading signature from $signatureURL")
+
+        val response = downloadApi.downloadSignature(
+            url = signatureURL.toString(),
+            headers = getRequestHeaders()
+        )
+
+        return when (response.code()) {
+            HTTP_OK -> {
+                response.saveToDisk(localSignaturePath, showTextProgress)
+                DownloadResult.Downloaded(localSignaturePath)
+            }
+
+            HTTP_NOT_FOUND -> {
+                context.logger.warn("Signature file not found at $signatureURL")
+                DownloadResult.NotFound
+            }
+
+            else -> {
+                DownloadResult.Failed(
+                    ResponseException(
+                        "Failed to download signature from $signatureURL",
+                        response.code()
+                    )
+                )
+            }
+        }
     }
 }

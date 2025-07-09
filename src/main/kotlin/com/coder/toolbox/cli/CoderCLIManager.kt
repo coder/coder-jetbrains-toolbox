@@ -3,7 +3,6 @@ package com.coder.toolbox.cli
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.downloader.CoderDownloadApi
 import com.coder.toolbox.cli.downloader.CoderDownloadService
-import com.coder.toolbox.cli.downloader.DownloadResult
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
 import com.coder.toolbox.sdk.v2.models.Workspace
@@ -160,7 +159,11 @@ class CoderCLIManager(
             downloader.downloadCli(buildVersion, showTextProgress)
         }
 
-        return cliDownloadResult == DownloadResult.Downloaded
+        var singatureDownloadResult = withContext(Dispatchers.IO) {
+            downloader.downloadSignature(showTextProgress)
+        }
+
+        return cliDownloadResult.isDownloaded()
     }
 
     /**
