@@ -159,31 +159,36 @@ class CoderCLIManager(
      * Download the CLI from the deployment if necessary.
      */
     suspend fun download(buildVersion: String, showTextProgress: (String) -> Unit): Boolean {
-        val cliDownloadResult = withContext(Dispatchers.IO) {
+        val cliResult = withContext(Dispatchers.IO) {
             downloader.downloadCli(buildVersion, showTextProgress)
+        }.let { result ->
+            when {
+                result.isSkipped() -> return false
+                result.isNotFoundOrFailed() -> throw IllegalStateException("Could not find or download Coder CLI")
+                else -> result as Downloaded
+            }
         }
-        if (cliDownloadResult.isSkipped()) return false
-        if (cliDownloadResult.isNotFoundOrFailed()) throw IllegalStateException("Could not find or download Coder CLI")
 
-        var singatureDownloadResult = withContext(Dispatchers.IO) {
+        var signatureDownloadResult = withContext(Dispatchers.IO) {
             downloader.downloadSignature(showTextProgress)
         }
 
-        if (singatureDownloadResult.isNotDownloaded()) {
+        if (signatureDownloadResult.isNotDownloaded()) {
             context.logger.info("Trying to download signature file from releases.coder.com")
-            singatureDownloadResult = downloader.downloadReleasesSignature(showTextProgress)
+            signatureDownloadResult = withContext(Dispatchers.IO) {
+                downloader.downloadReleasesSignature(showTextProgress)
+            }
         }
 
         // if we could not find any signature and the user wants to explicitly
         // confirm whether we run an unsigned cli
-        if (singatureDownloadResult.isNotDownloaded()) {
-            val cli = cliDownloadResult as Downloaded
+        if (signatureDownloadResult.isNotDownloaded()) {
             if (context.settingsStore.allowUnsignedBinaryWithoutPrompt) {
-                context.logger.warn("Running unsigned CLI from ${cli.source}")
+                context.logger.warn("Running unsigned CLI from ${cliResult.source}")
             } else {
                 val acceptsUnsignedBinary = context.ui.showYesNoPopup(
                     context.i18n.ptrl("Security Warning"),
-                    context.i18n.pnotr("Can't verify the integrity of the Coder CLI pulled from ${cli.source}"),
+                    context.i18n.pnotr("Can't verify the integrity of the Coder CLI pulled from ${cliResult.source}"),
                     context.i18n.ptrl("Accept"),
                     context.i18n.ptrl("Abort"),
                 )
@@ -193,13 +198,13 @@ class CoderCLIManager(
                 } else {
                     // remove the cli, otherwise next time the user tries to login the cached cli is picked up
                     // and we don't verify cached cli signatures
-                    Files.delete(cli.dst)
-                    throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cli.source} was denied by the user")
+                    Files.delete(cliResult.dst)
+                    throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cliResult.source} was denied by the user")
                 }
             }
         }
 
-        return cliDownloadResult.isDownloaded()
+        return cliResult.isDownloaded()
     }
 
     /**
