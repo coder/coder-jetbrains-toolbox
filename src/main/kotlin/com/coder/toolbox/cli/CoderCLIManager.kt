@@ -132,6 +132,7 @@ class CoderCLIManager(
     private val forceDownloadToData: Boolean = false,
 ) {
     private val downloader = createDownloadService()
+
     val remoteBinaryURL: URL = context.settingsStore.binSource(deploymentURL)
     val localBinaryPath: Path = context.settingsStore.binPath(deploymentURL, forceDownloadToData)
     val coderConfigPath: Path = context.settingsStore.dataDir(deploymentURL).resolve("config")
@@ -175,7 +176,7 @@ class CoderCLIManager(
 
         // if we could not find any signature and the user wants to explicitly
         // confirm whether we run an unsigned cli
-        if (cliDownloadResult.isNotDownloaded()) {
+        if (singatureDownloadResult.isNotDownloaded()) {
             val cli = cliDownloadResult as Downloaded
             if (context.settingsStore.allowUnsignedBinaryWithoutPrompt) {
                 context.logger.warn("Running unsigned CLI from ${cli.source}")
