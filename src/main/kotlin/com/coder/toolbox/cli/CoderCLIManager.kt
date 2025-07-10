@@ -7,6 +7,9 @@ import com.coder.toolbox.cli.downloader.DownloadResult.Downloaded
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
 import com.coder.toolbox.cli.ex.UnsignedBinaryExecutionDeniedException
+import com.coder.toolbox.cli.gpg.GPGVerifier
+import com.coder.toolbox.cli.gpg.VerificationResult.Failed
+import com.coder.toolbox.cli.gpg.VerificationResult.Invalid
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.util.CoderHostnameVerifier
@@ -132,6 +135,7 @@ class CoderCLIManager(
     private val forceDownloadToData: Boolean = false,
 ) {
     private val downloader = createDownloadService()
+    private val gpgVerifier = GPGVerifier(context)
 
     val remoteBinaryURL: URL = context.settingsStore.binSource(deploymentURL)
     val localBinaryPath: Path = context.settingsStore.binPath(deploymentURL, forceDownloadToData)
@@ -169,20 +173,20 @@ class CoderCLIManager(
             }
         }
 
-        var signatureDownloadResult = withContext(Dispatchers.IO) {
+        var signatureResult = withContext(Dispatchers.IO) {
             downloader.downloadSignature(showTextProgress)
         }
 
-        if (signatureDownloadResult.isNotDownloaded()) {
+        if (signatureResult.isNotDownloaded()) {
             context.logger.info("Trying to download signature file from releases.coder.com")
-            signatureDownloadResult = withContext(Dispatchers.IO) {
+            signatureResult = withContext(Dispatchers.IO) {
                 downloader.downloadReleasesSignature(showTextProgress)
             }
         }
 
         // if we could not find any signature and the user wants to explicitly
         // confirm whether we run an unsigned cli
-        if (signatureDownloadResult.isNotDownloaded()) {
+        if (signatureResult.isNotDownloaded()) {
             if (context.settingsStore.allowUnsignedBinaryWithoutPrompt) {
                 context.logger.warn("Running unsigned CLI from ${cliResult.source}")
             } else {
@@ -196,7 +200,7 @@ class CoderCLIManager(
                 if (acceptsUnsignedBinary) {
                     return true
                 } else {
-                    // remove the cli, otherwise next time the user tries to login the cached cli is picked up
+                    // remove the cli, otherwise next time the user tries to login the cached cli is picked up,
                     // and we don't verify cached cli signatures
                     Files.delete(cliResult.dst)
                     throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cliResult.source} was denied by the user")
@@ -204,7 +208,22 @@ class CoderCLIManager(
             }
         }
 
-        return cliResult.isDownloaded()
+        // we have the cli, and signature is downloaded, let's verify the signature
+        signatureResult = signatureResult as Downloaded
+        gpgVerifier.verifySignature(cliResult.dst, signatureResult.dst).let { result ->
+            when {
+                result.isValid() -> return true
+                result.isInvalid() -> {
+                    val reason = (result as Invalid).reason
+                    throw UnsignedBinaryExecutionDeniedException(
+                        "Signature of ${cliResult.dst} is invalid." + reason?.let { " Reason: $it" }.orEmpty()
+                    )
+                }
+
+                result.signatureIsNotFound() -> throw UnsignedBinaryExecutionDeniedException("Can't verify signature of ${cliResult.dst} because ${signatureResult.dst} does not exist")
+                else -> throw UnsignedBinaryExecutionDeniedException((result as Failed).error.message)
+            }
+        }
     }
 
     /**
