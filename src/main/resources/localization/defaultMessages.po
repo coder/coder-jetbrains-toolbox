@@ -153,3 +153,12 @@ msgstr ""
 
 msgid "Loading workspaces..."
 msgstr ""
+
+msgid "Security Warning"
+msgstr ""
+
+msgid "Accept"
+msgstr ""
+
+msgid "Abort"
+msgstr ""
