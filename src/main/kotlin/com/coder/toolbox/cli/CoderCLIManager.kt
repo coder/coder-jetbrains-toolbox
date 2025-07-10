@@ -3,8 +3,10 @@ package com.coder.toolbox.cli
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.downloader.CoderDownloadApi
 import com.coder.toolbox.cli.downloader.CoderDownloadService
+import com.coder.toolbox.cli.downloader.DownloadResult.Downloaded
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
+import com.coder.toolbox.cli.ex.UnsignedBinaryExecutionDeniedException
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.util.CoderHostnameVerifier
@@ -27,6 +29,7 @@ import retrofit2.Retrofit
 import java.io.EOFException
 import java.io.FileNotFoundException
 import java.net.URL
+import java.nio.file.Files
 import java.nio.file.Path
 import javax.net.ssl.X509TrustManager
 
@@ -168,6 +171,31 @@ class CoderCLIManager(
         if (singatureDownloadResult.isNotDownloaded()) {
             context.logger.info("Trying to download signature file from releases.coder.com")
             singatureDownloadResult = downloader.downloadReleasesSignature(showTextProgress)
+        }
+
+        // if we could not find any signature and the user wants to explicitly
+        // confirm whether we run an unsigned cli
+        if (cliDownloadResult.isNotDownloaded()) {
+            val cli = cliDownloadResult as Downloaded
+            if (context.settingsStore.allowUnsignedBinaryWithoutPrompt) {
+                context.logger.warn("Running unsigned CLI from ${cli.source}")
+            } else {
+                val acceptsUnsignedBinary = context.ui.showYesNoPopup(
+                    context.i18n.ptrl("Security Warning"),
+                    context.i18n.pnotr("Can't verify the integrity of the Coder CLI pulled from ${cli.source}"),
+                    context.i18n.ptrl("Accept"),
+                    context.i18n.ptrl("Abort"),
+                )
+
+                if (acceptsUnsignedBinary) {
+                    return true
+                } else {
+                    // remove the cli, otherwise next time the user tries to login the cached cli is picked up
+                    // and we don't verify cached cli signatures
+                    Files.delete(cli.dst)
+                    throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cli.source} was denied by the user")
+                }
+            }
         }
 
         return cliDownloadResult.isDownloaded()
