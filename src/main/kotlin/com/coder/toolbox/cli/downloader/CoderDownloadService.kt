@@ -13,6 +13,7 @@ import java.io.FileInputStream
 import java.net.HttpURLConnection.HTTP_NOT_FOUND
 import java.net.HttpURLConnection.HTTP_NOT_MODIFIED
 import java.net.HttpURLConnection.HTTP_OK
+import java.net.URI
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
@@ -48,7 +49,7 @@ class CoderDownloadService(
             HTTP_OK -> {
                 context.logger.info("Downloading binary to $localBinaryPath")
                 response.saveToDisk(localBinaryPath, showTextProgress, buildVersion)?.makeExecutable()
-                DownloadResult.Downloaded(localBinaryPath)
+                DownloadResult.Downloaded(remoteBinaryURL, localBinaryPath)
             }
 
             HTTP_NOT_MODIFIED -> {
@@ -148,10 +149,14 @@ class CoderDownloadService(
     }
 
     suspend fun downloadSignature(showTextProgress: (String) -> Unit): DownloadResult {
+        return downloadSignature(remoteBinaryURL, showTextProgress)
+    }
+
+    private suspend fun downloadSignature(url: URL, showTextProgress: (String) -> Unit): DownloadResult {
         val defaultCliNameWithoutExt = context.settingsStore.defaultCliBinaryNameByOsAndArch.split('.').first()
         val signatureName = "$defaultCliNameWithoutExt.asc"
 
-        val signatureURL = remoteBinaryURL.withLastSegment(signatureName)
+        val signatureURL = url.withLastSegment(signatureName)
         val localSignaturePath = localBinaryPath.parent.resolve(signatureName)
         context.logger.info("Downloading signature from $signatureURL")
 
@@ -163,7 +168,7 @@ class CoderDownloadService(
         return when (response.code()) {
             HTTP_OK -> {
                 response.saveToDisk(localSignaturePath, showTextProgress)
-                DownloadResult.Downloaded(localSignaturePath)
+                DownloadResult.Downloaded(signatureURL, localSignaturePath)
             }
 
             HTTP_NOT_FOUND -> {
@@ -180,5 +185,10 @@ class CoderDownloadService(
                 )
             }
         }
+
+    }
+
+    suspend fun downloadReleasesSignature(showTextProgress: (String) -> Unit): DownloadResult {
+        return downloadSignature(URI.create("https://releases.coder.com/bin").toURL(), showTextProgress)
     }
 }

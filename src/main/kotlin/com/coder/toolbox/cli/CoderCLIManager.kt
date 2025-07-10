@@ -158,9 +158,16 @@ class CoderCLIManager(
         val cliDownloadResult = withContext(Dispatchers.IO) {
             downloader.downloadCli(buildVersion, showTextProgress)
         }
+        if (cliDownloadResult.isSkipped()) return false
+        if (cliDownloadResult.isNotFoundOrFailed()) throw IllegalStateException("Could not find or download Coder CLI")
 
         var singatureDownloadResult = withContext(Dispatchers.IO) {
             downloader.downloadSignature(showTextProgress)
+        }
+
+        if (singatureDownloadResult.isNotDownloaded()) {
+            context.logger.info("Trying to download signature file from releases.coder.com")
+            singatureDownloadResult = downloader.downloadReleasesSignature(showTextProgress)
         }
 
         return cliDownloadResult.isDownloaded()
