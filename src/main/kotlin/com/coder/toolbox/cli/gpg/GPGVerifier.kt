@@ -18,6 +18,7 @@ import java.io.ByteArrayInputStream
 import java.nio.file.Files
 import java.nio.file.Path
 
+
 class GPGVerifier(
     private val context: CoderToolboxContext,
 ) {
@@ -48,23 +49,29 @@ class GPGVerifier(
     }
 
     private fun getCoderPublicKeyRing(): PGPPublicKeyRing {
-        return try {
-            getDefaultCoderPublicKeyRing()
+        try {
+            val coderPublicKey = javaClass.getResourceAsStream("/META-INF/trusted-keys/pgp-public.key")
+                ?.readAllBytes() ?: throw IllegalStateException("Trusted public key not found")
+            return loadPublicKeyRing(coderPublicKey)
         } catch (e: Exception) {
             throw PGPException("Failed to load Coder public GPG key", e)
         }
     }
 
-    private fun getDefaultCoderPublicKeyRing(): PGPPublicKeyRing {
-        val coderPublicKey = """
-            -----BEGIN PGP PUBLIC KEY BLOCK-----
-            
-            # Replace this with Coder's actual public key
-            
-            -----END PGP PUBLIC KEY BLOCK-----
-        """.trimIndent()
-
-        return loadPublicKeyRing(coderPublicKey.toByteArray())
+    /**
+     * Load public key ring from bytes
+     */
+    fun loadPublicKeyRing(publicKeyBytes: ByteArray): PGPPublicKeyRing {
+        return try {
+            val keyInputStream = ArmoredInputStream(ByteArrayInputStream(publicKeyBytes))
+            val keyRingCollection = PGPPublicKeyRingCollection(
+                PGPUtil.getDecoderStream(keyInputStream),
+                JcaKeyFingerprintCalculator()
+            )
+            keyRingCollection.keyRings.next()
+        } catch (e: Exception) {
+            throw PGPException("Failed to load public key ring", e)
+        }
     }
 
     /**
@@ -101,22 +108,6 @@ class GPGVerifier(
         } catch (e: Exception) {
             context.logger.error(e, "GPG signature verification failed")
             return Failed(e)
-        }
-    }
-
-    /**
-     * Load public key ring from bytes
-     */
-    fun loadPublicKeyRing(publicKeyBytes: ByteArray): PGPPublicKeyRing {
-        return try {
-            val keyInputStream = ArmoredInputStream(ByteArrayInputStream(publicKeyBytes))
-            val keyRingCollection = PGPPublicKeyRingCollection(
-                PGPUtil.getDecoderStream(keyInputStream),
-                JcaKeyFingerprintCalculator()
-            )
-            keyRingCollection.keyRings.next()
-        } catch (e: Exception) {
-            throw PGPException("Failed to load public key ring", e)
         }
     }
 }
