@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bouncycastle.bcpg.ArmoredInputStream
 import org.bouncycastle.openpgp.PGPException
+import org.bouncycastle.openpgp.PGPPublicKey
 import org.bouncycastle.openpgp.PGPPublicKeyRing
 import org.bouncycastle.openpgp.PGPPublicKeyRingCollection
 import org.bouncycastle.openpgp.PGPSignatureList
@@ -19,7 +20,6 @@ import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentVerifierBuilderProv
 import java.io.ByteArrayInputStream
 import java.nio.file.Files
 import java.nio.file.Path
-
 
 class GPGVerifier(
     private val context: CoderToolboxContext,
@@ -38,14 +38,14 @@ class GPGVerifier(
             val (cliBytes, signatureBytes, publicKeyRing) = withContext(Dispatchers.IO) {
                 val cliBytes = Files.readAllBytes(cli)
                 val signatureBytes = Files.readAllBytes(signature)
-                val publicKeyRing = getCoderPublicKeyRing()
+                val publicKeyRing = getCoderPublicKeyRings()
 
                 Triple(cliBytes, signatureBytes, publicKeyRing)
             }
             return verifyDetachedSignature(
                 cliBytes = cliBytes,
                 signatureBytes = signatureBytes,
-                publicKeyRing = publicKeyRing
+                publicKeyRings = publicKeyRing
             )
         } catch (e: Exception) {
             context.logger.error(e, "GPG signature verification failed")
@@ -53,27 +53,27 @@ class GPGVerifier(
         }
     }
 
-    private fun getCoderPublicKeyRing(): PGPPublicKeyRing {
+    private fun getCoderPublicKeyRings(): List<PGPPublicKeyRing> {
         try {
             val coderPublicKey = javaClass.getResourceAsStream("/META-INF/trusted-keys/pgp-public.key")
                 ?.readAllBytes() ?: throw IllegalStateException("Trusted public key not found")
-            return loadPublicKeyRing(coderPublicKey)
+            return loadPublicKeyRings(coderPublicKey)
         } catch (e: Exception) {
             throw PGPException("Failed to load Coder public GPG key", e)
         }
     }
 
     /**
-     * Load public key ring from bytes
+     * Load public key rings from bytes
      */
-    fun loadPublicKeyRing(publicKeyBytes: ByteArray): PGPPublicKeyRing {
+    fun loadPublicKeyRings(publicKeyBytes: ByteArray): List<PGPPublicKeyRing> {
         return try {
             val keyInputStream = ArmoredInputStream(ByteArrayInputStream(publicKeyBytes))
             val keyRingCollection = PGPPublicKeyRingCollection(
                 PGPUtil.getDecoderStream(keyInputStream),
                 JcaKeyFingerprintCalculator()
             )
-            keyRingCollection.keyRings.next()
+            keyRingCollection.keyRings.asSequence().toList()
         } catch (e: Exception) {
             throw PGPException("Failed to load public key ring", e)
         }
@@ -85,7 +85,7 @@ class GPGVerifier(
     fun verifyDetachedSignature(
         cliBytes: ByteArray,
         signatureBytes: ByteArray,
-        publicKeyRing: PGPPublicKeyRing
+        publicKeyRings: List<PGPPublicKeyRing>
     ): VerificationResult {
         try {
             val signatureInputStream = ArmoredInputStream(ByteArrayInputStream(signatureBytes))
@@ -98,7 +98,7 @@ class GPGVerifier(
             }
 
             val signature = signatureList[0]
-            val publicKey = publicKeyRing.getPublicKey(signature.keyID)
+            val publicKey = findPublicKey(publicKeyRings, signature.keyID)
                 ?: throw PGPException("Public key not found for signature")
 
             signature.init(JcaPGPContentVerifierBuilderProvider(), publicKey)
@@ -114,5 +114,18 @@ class GPGVerifier(
             context.logger.error(e, "GPG signature verification failed")
             return Failed(e)
         }
+    }
+
+    /**
+     * Find a public key across all key rings in the collection
+     */
+    private fun findPublicKey(
+        keyRings: List<PGPPublicKeyRing>,
+        keyId: Long
+    ): PGPPublicKey? {
+        keyRings.forEach { keyRing ->
+            keyRing.getPublicKey(keyId)?.let { return it }
+        }
+        return null
     }
 }
