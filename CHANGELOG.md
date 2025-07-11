@@ -4,21 +4,26 @@
 
 ### Added
 
-- support for basic authentication for HTTP/HTTPS proxy
-- support for Toolbox 2.7 release
 - support for matching workspace agent in the URI via the agent name
-
-### Changed
-
-- improved message while loading the workspace
 
 ### Removed
 
 - dropped support for `agent_id` as a URI parameter
 
+## 0.4.0 - 2025-07-08
+
+### Added
+
+- support for basic authentication for HTTP/HTTPS proxy
+- support for Toolbox 2.7 release
+
+### Changed
+
+- improved message while loading the workspace
+
 ### Fixed
 
-- URI protocol handler is now able to switch to the Coder provider even if the last opened provider was something else  
+- URI protocol handler is now able to switch to the Coder provider even if the last opened provider was something else
 
 ## 0.3.2 - 2025-06-25
 
