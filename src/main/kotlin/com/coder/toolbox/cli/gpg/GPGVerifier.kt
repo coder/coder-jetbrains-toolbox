@@ -5,6 +5,8 @@ import com.coder.toolbox.cli.gpg.VerificationResult.Failed
 import com.coder.toolbox.cli.gpg.VerificationResult.Invalid
 import com.coder.toolbox.cli.gpg.VerificationResult.SignatureNotFound
 import com.coder.toolbox.cli.gpg.VerificationResult.Valid
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.bouncycastle.bcpg.ArmoredInputStream
 import org.bouncycastle.openpgp.PGPException
 import org.bouncycastle.openpgp.PGPPublicKeyRing
@@ -23,7 +25,7 @@ class GPGVerifier(
     private val context: CoderToolboxContext,
 ) {
 
-    fun verifySignature(
+    suspend fun verifySignature(
         cli: Path,
         signature: Path,
     ): VerificationResult {
@@ -33,10 +35,13 @@ class GPGVerifier(
                 return SignatureNotFound
             }
 
-            val signatureBytes = Files.readAllBytes(signature)
-            val cliBytes = Files.readAllBytes(cli)
+            val (cliBytes, signatureBytes, publicKeyRing) = withContext(Dispatchers.IO) {
+                val cliBytes = Files.readAllBytes(cli)
+                val signatureBytes = Files.readAllBytes(signature)
+                val publicKeyRing = getCoderPublicKeyRing()
 
-            val publicKeyRing = getCoderPublicKeyRing()
+                Triple(cliBytes, signatureBytes, publicKeyRing)
+            }
             return verifyDetachedSignature(
                 cliBytes = cliBytes,
                 signatureBytes = signatureBytes,
