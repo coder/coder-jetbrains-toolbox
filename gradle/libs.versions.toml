@@ -16,6 +16,7 @@ gettext = "0.7.0"
 plugin-structure = "3.310"
 mockk = "1.14.4"
 detekt = "1.23.7"
+bouncycastle = "1.81"
 
 [libraries]
 toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "toolbox-plugin-api" }
@@ -34,10 +35,13 @@ retrofit-moshi = { module = "com.squareup.retrofit2:converter-moshi", version.re
 plugin-structure = { module = "org.jetbrains.intellij.plugins:structure-toolbox", version.ref = "plugin-structure" }
 mokk = { module = "io.mockk:mockk", version.ref = "mockk" }
 marketplace-client = { module = "org.jetbrains.intellij:plugin-repository-rest-client", version.ref = "marketplace-client" }
+bouncycastle-bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncycastle" }
+bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 
 [bundles]
 serialization = ["serialization-core", "serialization-json", "serialization-json-okio"]
 toolbox-plugin-api = ["toolbox-core-api", "toolbox-ui-api", "toolbox-remote-dev-api"]
+bouncycastle = ["bouncycastle-bcpg", "bouncycastle-bcprov"]
 
 [plugins]
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

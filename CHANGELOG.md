@@ -5,6 +5,7 @@
 ### Added
 
 - support for matching workspace agent in the URI via the agent name
+- support for checking if CLI is signed
 
 ### Removed
 

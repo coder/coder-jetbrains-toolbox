@@ -28,6 +28,12 @@ interface ReadOnlyCoderSettings {
     val binaryDirectory: String?
 
     /**
+     * Controls whether we run the unsigned binary or we prompt
+     * the user for input.
+     */
+    val allowUnsignedBinaryWithoutPrompt: Boolean
+
+    /**
      * Default CLI binary name based on OS and architecture
      */
     val defaultCliBinaryNameByOsAndArch: String

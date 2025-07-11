@@ -79,6 +79,9 @@ msgstr ""
 msgid "Enable downloads"
 msgstr ""
 
+msgid "Allow unsigned binary execution without prompt"
+msgstr ""
+
 msgid "Enable binary directory fallback"
 msgstr ""
 
@@ -149,4 +152,13 @@ msgid "Setting up Coder"
 msgstr ""
 
 msgid "Loading workspaces..."
+msgstr ""
+
+msgid "Security Warning"
+msgstr ""
+
+msgid "Accept"
+msgstr ""
+
+msgid "Abort"
 msgstr ""
