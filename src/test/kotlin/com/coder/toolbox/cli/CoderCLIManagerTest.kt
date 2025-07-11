@@ -226,6 +226,7 @@ internal class CoderCLIManagerTest {
                 settingsStore = CoderSettingsStore(
                     pluginTestSettingsStore(
                         DATA_DIRECTORY to tmpdir.resolve("real-cli").toString(),
+                        ALLOW_UNSIGNED_BINARY_EXEC to "true",
                     ),
                     Environment(),
                     context.logger
