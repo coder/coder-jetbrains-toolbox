@@ -189,6 +189,7 @@ class CoderCLIManager(
         if (signatureResult.isNotDownloaded()) {
             if (context.settingsStore.allowUnsignedBinaryWithoutPrompt) {
                 context.logger.warn("Running unsigned CLI from ${cliResult.source}")
+                return true
             } else {
                 val acceptsUnsignedBinary = context.ui.showYesNoPopup(
                     context.i18n.ptrl("Security Warning"),
@@ -242,7 +243,6 @@ class CoderCLIManager(
                     throw exception
                 }
             }
-
         }
     }
 
