@@ -213,16 +213,36 @@ class CoderCLIManager(
         gpgVerifier.verifySignature(cliResult.dst, signatureResult.dst).let { result ->
             when {
                 result.isValid() -> return true
-                result.isInvalid() -> {
-                    val reason = (result as Invalid).reason
-                    throw UnsignedBinaryExecutionDeniedException(
-                        "Signature of ${cliResult.dst} is invalid." + reason?.let { " Reason: $it" }.orEmpty()
-                    )
-                }
+                else -> {
+                    // remove the cli, otherwise next time the user tries to login the cached cli is picked up,
+                    // and we don't verify cached cli signatures
+                    runCatching { Files.delete(cliResult.dst) }
+                        .onFailure { ex ->
+                            context.logger.warn(ex, "Failed to delete CLI file: ${cliResult.dst}")
+                        }
 
-                result.signatureIsNotFound() -> throw UnsignedBinaryExecutionDeniedException("Can't verify signature of ${cliResult.dst} because ${signatureResult.dst} does not exist")
-                else -> throw UnsignedBinaryExecutionDeniedException((result as Failed).error.message)
+                    val exception = when {
+                        result.isInvalid() -> {
+                            val reason = (result as Invalid).reason
+                            UnsignedBinaryExecutionDeniedException(
+                                "Signature of ${cliResult.dst} is invalid." + reason?.let { " Reason: $it" }.orEmpty()
+                            )
+                        }
+
+                        result.signatureIsNotFound() -> {
+                            UnsignedBinaryExecutionDeniedException(
+                                "Can't verify signature of ${cliResult.dst} because ${signatureResult.dst} does not exist"
+                            )
+                        }
+
+                        else -> {
+                            UnsignedBinaryExecutionDeniedException((result as Failed).error.message)
+                        }
+                    }
+                    throw exception
+                }
             }
+
         }
     }
 
