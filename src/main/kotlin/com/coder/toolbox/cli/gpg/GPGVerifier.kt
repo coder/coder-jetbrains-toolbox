@@ -20,6 +20,7 @@ import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentVerifierBuilderProv
 import java.io.ByteArrayInputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.inputStream
 
 class GPGVerifier(
     private val context: CoderToolboxContext,
@@ -35,15 +36,14 @@ class GPGVerifier(
                 return SignatureNotFound
             }
 
-            val (cliBytes, signatureBytes, publicKeyRing) = withContext(Dispatchers.IO) {
-                val cliBytes = Files.readAllBytes(cli)
+            val (signatureBytes, publicKeyRing) = withContext(Dispatchers.IO) {
                 val signatureBytes = Files.readAllBytes(signature)
                 val publicKeyRing = getCoderPublicKeyRings()
 
-                Triple(cliBytes, signatureBytes, publicKeyRing)
+                Pair(signatureBytes, publicKeyRing)
             }
             return verifyDetachedSignature(
-                cliBytes = cliBytes,
+                cliPath = cli,
                 signatureBytes = signatureBytes,
                 publicKeyRings = publicKeyRing
             )
@@ -83,7 +83,7 @@ class GPGVerifier(
      * Verify a detached GPG signature
      */
     fun verifyDetachedSignature(
-        cliBytes: ByteArray,
+        cliPath: Path,
         signatureBytes: ByteArray,
         publicKeyRings: List<PGPPublicKeyRing>
     ): VerificationResult {
@@ -102,7 +102,13 @@ class GPGVerifier(
                 ?: throw PGPException("Public key not found for signature")
 
             signature.init(JcaPGPContentVerifierBuilderProvider(), publicKey)
-            signature.update(cliBytes)
+            cliPath.inputStream().use { fileStream ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                while (fileStream.read(buffer).also { bytesRead = it } != -1) {
+                    signature.update(buffer, 0, bytesRead)
+                }
+            }
 
             val isValid = signature.verify()
             context.logger.info("GPG signature verification result: $isValid")
