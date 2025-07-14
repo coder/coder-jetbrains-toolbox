@@ -180,7 +180,7 @@ class CoderCLIManager(
         if (signatureResult.isNotDownloaded()) {
             context.logger.info("Trying to download signature file from releases.coder.com")
             signatureResult = withContext(Dispatchers.IO) {
-                downloader.downloadReleasesSignature(showTextProgress)
+                downloader.downloadReleasesSignature(buildVersion, showTextProgress)
             }
         }
 

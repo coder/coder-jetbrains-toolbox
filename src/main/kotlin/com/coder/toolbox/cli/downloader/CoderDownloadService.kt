@@ -3,6 +3,7 @@ package com.coder.toolbox.cli.downloader
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.util.OS
+import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.sha1
@@ -188,7 +189,11 @@ class CoderDownloadService(
 
     }
 
-    suspend fun downloadReleasesSignature(showTextProgress: (String) -> Unit): DownloadResult {
-        return downloadSignature(URI.create("https://releases.coder.com/bin").toURL(), showTextProgress)
+    suspend fun downloadReleasesSignature(buildVersion: String, showTextProgress: (String) -> Unit): DownloadResult {
+        val semVer = SemVer.parse(buildVersion)
+        return downloadSignature(
+            URI.create("https://releases.coder.com/coder-cli/${semVer.major}.${semVer.minor}.${semVer.patch}/").toURL(),
+            showTextProgress
+        )
     }
 }
