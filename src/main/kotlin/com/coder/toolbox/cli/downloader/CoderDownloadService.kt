@@ -154,11 +154,8 @@ class CoderDownloadService(
     }
 
     private suspend fun downloadSignature(url: URL, showTextProgress: (String) -> Unit): DownloadResult {
-        val defaultCliNameWithoutExt = context.settingsStore.defaultCliBinaryNameByOsAndArch.split('.').first()
-        val signatureName = "$defaultCliNameWithoutExt.asc"
-
-        val signatureURL = url.withLastSegment(signatureName)
-        val localSignaturePath = localBinaryPath.parent.resolve(signatureName)
+        val signatureURL = url.withLastSegment(context.settingsStore.defaultSignatureNameByOsAndArch)
+        val localSignaturePath = localBinaryPath.parent.resolve(context.settingsStore.defaultSignatureNameByOsAndArch)
         context.logger.info("Downloading signature from $signatureURL")
 
         val response = downloadApi.downloadSignature(

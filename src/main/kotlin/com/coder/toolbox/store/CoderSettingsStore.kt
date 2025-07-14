@@ -41,6 +41,7 @@ class CoderSettingsStore(
         get() = store[ALLOW_UNSIGNED_BINARY_EXEC]?.toBooleanStrictOrNull() ?: false
     override val defaultCliBinaryNameByOsAndArch: String get() = getCoderCLIForOS(getOS(), getArch())
     override val binaryName: String get() = store[BINARY_NAME] ?: getCoderCLIForOS(getOS(), getArch())
+    override val defaultSignatureNameByOsAndArch: String get() = getCoderSignatureForOS(getOS(), getArch())
     override val dataDirectory: String? get() = store[DATA_DIRECTORY]
     override val globalDataDirectory: String get() = getDefaultGlobalDataDir().normalize().toString()
     override val globalConfigDir: String get() = getDefaultGlobalConfigDir().normalize().toString()
@@ -243,41 +244,59 @@ class CoderSettingsStore(
     }
 
     /**
-     * Return the name of the binary (with extension) for the provided OS and
-     * architecture.
+     * Return the name of the binary (with extension) for the provided OS and architecture.
      */
     private fun getCoderCLIForOS(
         os: OS?,
         arch: Arch?,
     ): String {
-        logger.info("Resolving binary for $os $arch")
+        logger.debug("Resolving binary for $os $arch")
+        return buildCoderFileName(os, arch)
+    }
+
+    /**
+     * Return the name of the signature file (.asc) for the provided OS and architecture.
+     */
+    private fun getCoderSignatureForOS(
+        os: OS?,
+        arch: Arch?,
+    ): String {
+        logger.debug("Resolving signature for $os $arch")
+        return buildCoderFileName(os, arch, true)
+    }
+
+    /**
+     * Build the coder file name based on OS, architecture, and whether it's a signature file.
+     */
+    private fun buildCoderFileName(
+        os: OS?,
+        arch: Arch?,
+        isSignature: Boolean = false
+    ): String {
         if (os == null) {
             logger.error("Could not resolve client OS and architecture, defaulting to WINDOWS AMD64")
-            return "coder-windows-amd64.exe"
+            return if (isSignature) "coder-windows-amd64.asc" else "coder-windows-amd64.exe"
         }
-        return when (os) {
-            OS.WINDOWS ->
-                when (arch) {
-                    Arch.AMD64 -> "coder-windows-amd64.exe"
-                    Arch.ARM64 -> "coder-windows-arm64.exe"
-                    else -> "coder-windows-amd64.exe"
-                }
 
-            OS.LINUX ->
-                when (arch) {
-                    Arch.AMD64 -> "coder-linux-amd64"
-                    Arch.ARM64 -> "coder-linux-arm64"
-                    Arch.ARMV7 -> "coder-linux-armv7"
-                    else -> "coder-linux-amd64"
-                }
-
-            OS.MAC ->
-                when (arch) {
-                    Arch.AMD64 -> "coder-darwin-amd64"
-                    Arch.ARM64 -> "coder-darwin-arm64"
-                    else -> "coder-darwin-amd64"
-                }
+        val osName = when (os) {
+            OS.WINDOWS -> "windows"
+            OS.LINUX -> "linux"
+            OS.MAC -> "darwin"
         }
+
+        val archName = when (arch) {
+            Arch.AMD64 -> "amd64"
+            Arch.ARM64 -> "arm64"
+            Arch.ARMV7 -> "armv7"
+            else -> "amd64" // default fallback
+        }
+
+        val extension = if (isSignature) ".asc" else when (os) {
+            OS.WINDOWS -> ".exe"
+            OS.LINUX, OS.MAC -> ""
+        }
+
+        return "coder-$osName-$archName$extension"
     }
 
     /**

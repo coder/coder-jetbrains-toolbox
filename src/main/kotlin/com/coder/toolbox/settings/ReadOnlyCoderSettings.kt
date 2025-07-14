@@ -44,6 +44,11 @@ interface ReadOnlyCoderSettings {
     val binaryName: String
 
     /**
+     * Default CLI signature name based on OS and architecture
+     */
+    val defaultSignatureNameByOsAndArch: String
+
+    /**
      * Where to save plugin data like the Coder binary (if not configured with
      * binaryDirectory) and the deployment URL and session token.
      */
