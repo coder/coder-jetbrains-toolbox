@@ -489,6 +489,7 @@ class CoderCLIManager(
      * version could not be parsed.
      */
     fun matchesVersion(rawBuildVersion: String): Boolean? {
+        if (Files.notExists(localBinaryPath)) return null
         val cliVersion = tryVersion() ?: return null
         val buildVersion =
             try {
