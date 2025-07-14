@@ -64,7 +64,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
-private const val VERSION_FOR_PROGRESS_REPORTING = "v2.23.1-devel+de07351b8"
+private const val VERSION_FOR_PROGRESS_REPORTING = "v2.13.1-devel+de07351b8"
 private val noOpTextProgress: (String) -> Unit = { _ -> }
 
 internal class CoderCLIManagerTest {
