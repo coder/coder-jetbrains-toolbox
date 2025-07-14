@@ -7,7 +7,6 @@ import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.sha1
-import com.coder.toolbox.util.withLastSegment
 import okhttp3.ResponseBody
 import retrofit2.Response
 import java.io.FileInputStream
@@ -154,7 +153,7 @@ class CoderDownloadService(
     }
 
     private suspend fun downloadSignature(url: URL, showTextProgress: (String) -> Unit): DownloadResult {
-        val signatureURL = url.withLastSegment(context.settingsStore.defaultSignatureNameByOsAndArch)
+        val signatureURL = url.toURI().resolve(context.settingsStore.defaultSignatureNameByOsAndArch).toURL()
         val localSignaturePath = localBinaryPath.parent.resolve(context.settingsStore.defaultSignatureNameByOsAndArch)
         context.logger.info("Downloading signature from $signatureURL")
 
