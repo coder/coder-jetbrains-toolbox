@@ -10,7 +10,8 @@ data class CreateWorkspaceBuildRequest(
     @Json(name = "template_version_id") val templateVersionID: UUID?,
     // Use to start, stop and delete the workspace.
     @Json(name = "transition") val transition: WorkspaceTransition,
-    @Json(name = "orphan") var orphan: Boolean? = null
+    @Json(name = "orphan") var orphan: Boolean? = null,
+    @Json(name = "reason") var reason: WorkspaceBuildReason? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -21,6 +22,7 @@ data class CreateWorkspaceBuildRequest(
         if (templateVersionID != other.templateVersionID) return false
         if (transition != other.transition) return false
         if (orphan != other.orphan) return false
+        if (reason != other.reason) return false
         return true
     }
 
@@ -28,6 +30,7 @@ data class CreateWorkspaceBuildRequest(
         var result = orphan?.hashCode() ?: 0
         result = 31 * result + (templateVersionID?.hashCode() ?: 0)
         result = 31 * result + transition.hashCode()
+        result = 31 * result + (reason?.hashCode() ?: 0)
         return result
     }
 }
