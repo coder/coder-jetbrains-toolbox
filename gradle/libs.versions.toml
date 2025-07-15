@@ -15,7 +15,7 @@ changelog = "2.2.1"
 gettext = "0.7.0"
 plugin-structure = "3.310"
 mockk = "1.14.4"
-detekt = "1.23.7"
+detekt = "1.23.8"
 
 [libraries]
 toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "toolbox-plugin-api" }
