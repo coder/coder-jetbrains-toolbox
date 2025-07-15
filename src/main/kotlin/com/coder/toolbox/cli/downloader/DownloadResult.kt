@@ -19,7 +19,5 @@ sealed class DownloadResult {
 
     fun isFailed(): Boolean = this is Failed
 
-    fun isDownloaded(): Boolean = this is Downloaded
-
     fun isNotDownloaded(): Boolean = this !is Downloaded
 }

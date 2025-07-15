@@ -9,6 +9,7 @@ import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
 import com.coder.toolbox.cli.ex.UnsignedBinaryExecutionDeniedException
 import com.coder.toolbox.cli.gpg.GPGVerifier
+import com.coder.toolbox.cli.gpg.VerificationResult
 import com.coder.toolbox.cli.gpg.VerificationResult.Failed
 import com.coder.toolbox.cli.gpg.VerificationResult.Invalid
 import com.coder.toolbox.sdk.v2.models.Workspace
@@ -221,31 +222,50 @@ class CoderCLIManager(
                     }
 
                     else -> {
-                        val exception = when {
-                            result.isInvalid() -> {
-                                val reason = (result as Invalid).reason
-                                UnsignedBinaryExecutionDeniedException(
-                                    "Signature of ${cliResult.dst} is invalid." + reason?.let { " Reason: $it" }
-                                        .orEmpty()
-                                )
-                            }
+                        logFailure(result, cliResult, signatureResult)
+                        // prompt the user if he wants to accept the risk
+                        val shouldRunAnyway = context.ui.showYesNoPopup(
+                            context.i18n.ptrl("Security Warning"),
+                            context.i18n.pnotr("Could not verify the authenticity of the ${cliResult.source}, it may be tampered with. Would you like to run it anyway?"),
+                            context.i18n.ptrl("Run anyway"),
+                            context.i18n.ptrl("Abort"),
+                        )
 
-                            result.signatureIsNotFound() -> {
-                                UnsignedBinaryExecutionDeniedException(
-                                    "Can't verify signature of ${cliResult.dst} because ${signatureResult.dst} does not exist"
-                                )
-                            }
-
-                            else -> {
-                                UnsignedBinaryExecutionDeniedException((result as Failed).error.message)
-                            }
+                        if (shouldRunAnyway) {
+                            downloader.commit()
+                            return true
+                        } else {
+                            throw UnsignedBinaryExecutionDeniedException("Running unverified CLI from ${cliResult.source} was denied by the user")
                         }
-                        throw exception
                     }
                 }
             }
         } finally {
             downloader.cleanup()
+        }
+    }
+
+    private fun logFailure(
+        result: VerificationResult,
+        cliResult: Downloaded,
+        signatureResult: Downloaded
+    ) {
+        when {
+            result.isInvalid() -> {
+                val reason = (result as Invalid).reason
+                context.logger.error("Signature of ${cliResult.dst} is invalid." + reason?.let { " Reason: $it" }
+                    .orEmpty())
+            }
+
+            result.signatureIsNotFound() -> {
+                context.logger.error("Can't verify signature of ${cliResult.dst} because ${signatureResult.dst} does not exist")
+            }
+
+            else -> {
+                UnsignedBinaryExecutionDeniedException((result as Failed).error.message)
+                val failure = result as DownloadResult.Failed
+                context.logger.error(failure.error, "Failed to verify signature for ${cliResult.dst}")
+            }
         }
     }
 
