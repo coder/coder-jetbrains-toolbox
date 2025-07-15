@@ -7,6 +7,8 @@ import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.sha1
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.ResponseBody
 import retrofit2.Response
 import java.io.FileInputStream
@@ -17,6 +19,7 @@ import java.net.URI
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.zip.GZIPInputStream
 import kotlin.io.path.name
@@ -31,13 +34,14 @@ class CoderDownloadService(
     private val deploymentUrl: URL,
     forceDownloadToData: Boolean,
 ) {
-    val remoteBinaryURL: URL = context.settingsStore.binSource(deploymentUrl)
-    val localBinaryPath: Path = context.settingsStore.binPath(deploymentUrl, forceDownloadToData)
+    private val remoteBinaryURL: URL = context.settingsStore.binSource(deploymentUrl)
+    private val cliFinalDst: Path = context.settingsStore.binPath(deploymentUrl, forceDownloadToData)
+    private val cliTempDst: Path = cliFinalDst.resolveSibling("${cliFinalDst.name}.tmp")
 
     suspend fun downloadCli(buildVersion: String, showTextProgress: (String) -> Unit): DownloadResult {
         val eTag = calculateLocalETag()
         if (eTag != null) {
-            context.logger.info("Found existing binary at $localBinaryPath; calculated hash as $eTag")
+            context.logger.info("Found existing binary at $cliFinalDst; calculated hash as $eTag")
         }
         val response = downloadApi.downloadCli(
             url = remoteBinaryURL.toString(),
@@ -47,13 +51,13 @@ class CoderDownloadService(
 
         return when (response.code()) {
             HTTP_OK -> {
-                context.logger.info("Downloading binary to $localBinaryPath")
-                response.saveToDisk(localBinaryPath, showTextProgress, buildVersion)?.makeExecutable()
-                DownloadResult.Downloaded(remoteBinaryURL, localBinaryPath)
+                context.logger.info("Downloading binary to temporary $cliTempDst")
+                response.saveToDisk(cliTempDst, showTextProgress, buildVersion)?.makeExecutable()
+                DownloadResult.Downloaded(remoteBinaryURL, cliTempDst)
             }
 
             HTTP_NOT_MODIFIED -> {
-                context.logger.info("Using cached binary at $localBinaryPath")
+                context.logger.info("Using cached binary at $cliFinalDst")
                 showTextProgress("Using cached binary")
                 DownloadResult.Skipped
             }
@@ -67,14 +71,40 @@ class CoderDownloadService(
         }
     }
 
+    /**
+     * Renames the temporary binary file to its original destination name.
+     * The implementation will override sibling file that has the original
+     * destination name.
+     */
+    suspend fun commit(): Path {
+        return withContext(Dispatchers.IO) {
+            context.logger.info("Renaming binary from $cliTempDst to $cliFinalDst")
+            Files.move(cliTempDst, cliFinalDst, StandardCopyOption.REPLACE_EXISTING)
+            cliFinalDst.makeExecutable()
+            cliFinalDst
+        }
+    }
+
+    /**
+     * Cleans up the temporary binary file if it exists.
+     */
+    suspend fun cleanup() {
+        withContext(Dispatchers.IO) {
+            runCatching { Files.deleteIfExists(cliTempDst) }
+                .onFailure { ex ->
+                    context.logger.warn(ex, "Failed to delete temporary CLI file: $cliTempDst")
+                }
+        }
+    }
+
     private fun calculateLocalETag(): String? {
         return try {
-            if (localBinaryPath.notExists()) {
+            if (cliFinalDst.notExists()) {
                 return null
             }
-            sha1(FileInputStream(localBinaryPath.toFile()))
+            sha1(FileInputStream(cliFinalDst.toFile()))
         } catch (e: Exception) {
-            context.logger.warn(e, "Unable to calculate hash for $localBinaryPath")
+            context.logger.warn(e, "Unable to calculate hash for $cliFinalDst")
             null
         }
     }
@@ -124,7 +154,7 @@ class CoderDownloadService(
                 }
             }
         }
-        return localBinaryPath
+        return cliFinalDst
     }
 
 
@@ -154,7 +184,7 @@ class CoderDownloadService(
 
     private suspend fun downloadSignature(url: URL, showTextProgress: (String) -> Unit): DownloadResult {
         val signatureURL = url.toURI().resolve(context.settingsStore.defaultSignatureNameByOsAndArch).toURL()
-        val localSignaturePath = localBinaryPath.parent.resolve(context.settingsStore.defaultSignatureNameByOsAndArch)
+        val localSignaturePath = cliFinalDst.parent.resolve(context.settingsStore.defaultSignatureNameByOsAndArch)
         context.logger.info("Downloading signature from $signatureURL")
 
         val response = downloadApi.downloadSignature(

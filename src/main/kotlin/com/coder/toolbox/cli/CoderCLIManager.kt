@@ -164,87 +164,88 @@ class CoderCLIManager(
      * Download the CLI from the deployment if necessary.
      */
     suspend fun download(buildVersion: String, showTextProgress: (String) -> Unit): Boolean {
-        val cliResult = withContext(Dispatchers.IO) {
-            downloader.downloadCli(buildVersion, showTextProgress)
-        }.let { result ->
-            when {
-                result.isSkipped() -> return false
-                result.isNotFound() -> throw IllegalStateException("Could not find Coder CLI")
-                result.isFailed() -> throw (result as DownloadResult.Failed).error
-                else -> result as Downloaded
+        try {
+            val cliResult = withContext(Dispatchers.IO) {
+                downloader.downloadCli(buildVersion, showTextProgress)
+            }.let { result ->
+                when {
+                    result.isSkipped() -> return false
+                    result.isNotFound() -> throw IllegalStateException("Could not find Coder CLI")
+                    result.isFailed() -> throw (result as DownloadResult.Failed).error
+                    else -> result as Downloaded
+                }
             }
-        }
 
-        var signatureResult = withContext(Dispatchers.IO) {
-            downloader.downloadSignature(showTextProgress)
-        }
-
-        if (signatureResult.isNotDownloaded()) {
-            context.logger.info("Trying to download signature file from releases.coder.com")
-            signatureResult = withContext(Dispatchers.IO) {
-                downloader.downloadReleasesSignature(buildVersion, showTextProgress)
+            var signatureResult = withContext(Dispatchers.IO) {
+                downloader.downloadSignature(showTextProgress)
             }
-        }
 
-        // if we could not find any signature and the user wants to explicitly
-        // confirm whether we run an unsigned cli
-        if (signatureResult.isNotDownloaded()) {
-            if (context.settingsStore.allowUnsignedBinaryWithoutPrompt) {
-                context.logger.warn("Running unsigned CLI from ${cliResult.source}")
-                return true
-            } else {
-                val acceptsUnsignedBinary = context.ui.showYesNoPopup(
-                    context.i18n.ptrl("Security Warning"),
-                    context.i18n.pnotr("Can't verify the integrity of the Coder CLI pulled from ${cliResult.source}"),
-                    context.i18n.ptrl("Accept"),
-                    context.i18n.ptrl("Abort"),
-                )
+            if (signatureResult.isNotDownloaded()) {
+                context.logger.info("Trying to download signature file from releases.coder.com")
+                signatureResult = withContext(Dispatchers.IO) {
+                    downloader.downloadReleasesSignature(buildVersion, showTextProgress)
+                }
+            }
 
-                if (acceptsUnsignedBinary) {
+            // if we could not find any signature and the user wants to explicitly
+            // confirm whether we run an unsigned cli
+            if (signatureResult.isNotDownloaded()) {
+                if (context.settingsStore.allowUnsignedBinaryWithoutPrompt) {
+                    context.logger.warn("Running unsigned CLI from ${cliResult.source}")
+                    downloader.commit()
                     return true
                 } else {
-                    // remove the cli, otherwise next time the user tries to login the cached cli is picked up,
-                    // and we don't verify cached cli signatures
-                    Files.delete(cliResult.dst)
-                    throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cliResult.source} was denied by the user")
-                }
-            }
-        }
+                    val acceptsUnsignedBinary = context.ui.showYesNoPopup(
+                        context.i18n.ptrl("Security Warning"),
+                        context.i18n.pnotr("Can't verify the integrity of the Coder CLI pulled from ${cliResult.source}"),
+                        context.i18n.ptrl("Accept"),
+                        context.i18n.ptrl("Abort"),
+                    )
 
-        // we have the cli, and signature is downloaded, let's verify the signature
-        signatureResult = signatureResult as Downloaded
-        gpgVerifier.verifySignature(cliResult.dst, signatureResult.dst).let { result ->
-            when {
-                result.isValid() -> return true
-                else -> {
-                    // remove the cli, otherwise next time the user tries to login the cached cli is picked up,
-                    // and we don't verify cached cli signatures
-                    runCatching { Files.delete(cliResult.dst) }
-                        .onFailure { ex ->
-                            context.logger.warn(ex, "Failed to delete CLI file: ${cliResult.dst}")
-                        }
-
-                    val exception = when {
-                        result.isInvalid() -> {
-                            val reason = (result as Invalid).reason
-                            UnsignedBinaryExecutionDeniedException(
-                                "Signature of ${cliResult.dst} is invalid." + reason?.let { " Reason: $it" }.orEmpty()
-                            )
-                        }
-
-                        result.signatureIsNotFound() -> {
-                            UnsignedBinaryExecutionDeniedException(
-                                "Can't verify signature of ${cliResult.dst} because ${signatureResult.dst} does not exist"
-                            )
-                        }
-
-                        else -> {
-                            UnsignedBinaryExecutionDeniedException((result as Failed).error.message)
-                        }
+                    if (acceptsUnsignedBinary) {
+                        downloader.commit()
+                        return true
+                    } else {
+                        throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cliResult.source} was denied by the user")
                     }
-                    throw exception
                 }
             }
+
+            // we have the cli, and signature is downloaded, let's verify the signature
+            signatureResult = signatureResult as Downloaded
+            gpgVerifier.verifySignature(cliResult.dst, signatureResult.dst).let { result ->
+                when {
+                    result.isValid() -> {
+                        downloader.commit()
+                        return true
+                    }
+
+                    else -> {
+                        val exception = when {
+                            result.isInvalid() -> {
+                                val reason = (result as Invalid).reason
+                                UnsignedBinaryExecutionDeniedException(
+                                    "Signature of ${cliResult.dst} is invalid." + reason?.let { " Reason: $it" }
+                                        .orEmpty()
+                                )
+                            }
+
+                            result.signatureIsNotFound() -> {
+                                UnsignedBinaryExecutionDeniedException(
+                                    "Can't verify signature of ${cliResult.dst} because ${signatureResult.dst} does not exist"
+                                )
+                            }
+
+                            else -> {
+                                UnsignedBinaryExecutionDeniedException((result as Failed).error.message)
+                            }
+                        }
+                        throw exception
+                    }
+                }
+            }
+        } finally {
+            downloader.cleanup()
         }
     }
 
@@ -475,7 +476,7 @@ class CoderCLIManager(
             }
 
             else -> {
-                // An error here most likely means the CLI does not exist or
+                // An error here most likely means the CLI does not exist, or
                 // it executed successfully but output no version which
                 // suggests it is not the right binary.
                 context.logger.info("Unable to determine $localBinaryPath version: ${e.message}")
