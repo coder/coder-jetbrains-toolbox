@@ -15,7 +15,9 @@ sealed class DownloadResult {
 
     fun isSkipped(): Boolean = this is Skipped
 
-    fun isNotFoundOrFailed(): Boolean = this is NotFound || this is Failed
+    fun isNotFound(): Boolean = this is NotFound
+
+    fun isFailed(): Boolean = this is Failed
 
     fun isDownloaded(): Boolean = this is Downloaded
 

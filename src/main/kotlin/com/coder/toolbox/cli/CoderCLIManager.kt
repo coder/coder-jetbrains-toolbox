@@ -3,6 +3,7 @@ package com.coder.toolbox.cli
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.downloader.CoderDownloadApi
 import com.coder.toolbox.cli.downloader.CoderDownloadService
+import com.coder.toolbox.cli.downloader.DownloadResult
 import com.coder.toolbox.cli.downloader.DownloadResult.Downloaded
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
@@ -168,7 +169,8 @@ class CoderCLIManager(
         }.let { result ->
             when {
                 result.isSkipped() -> return false
-                result.isNotFoundOrFailed() -> throw IllegalStateException("Could not find or download Coder CLI")
+                result.isNotFound() -> throw IllegalStateException("Could not find Coder CLI")
+                result.isFailed() -> throw (result as DownloadResult.Failed).error
                 else -> result as Downloaded
             }
         }
