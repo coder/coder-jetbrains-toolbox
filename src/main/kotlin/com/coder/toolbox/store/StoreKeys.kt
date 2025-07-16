@@ -10,7 +10,7 @@ internal const val BINARY_SOURCE = "binarySource"
 
 internal const val BINARY_DIRECTORY = "binaryDirectory"
 
-internal const val ALLOW_UNSIGNED_BINARY_EXEC = "allowUnsignedBinaryExec"
+internal const val FALLBACK_ON_CODER_FOR_SIGNATURES = "signatureFallbackStrategy"
 
 internal const val BINARY_NAME = "binaryName"
 

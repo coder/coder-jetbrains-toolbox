@@ -7,7 +7,6 @@ import com.coder.toolbox.cli.ex.SSHConfigFormatException
 import com.coder.toolbox.sdk.DataGen.Companion.workspace
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.settings.Environment
-import com.coder.toolbox.store.ALLOW_UNSIGNED_BINARY_EXEC
 import com.coder.toolbox.store.BINARY_DIRECTORY
 import com.coder.toolbox.store.BINARY_NAME
 import com.coder.toolbox.store.BINARY_SOURCE
@@ -18,6 +17,7 @@ import com.coder.toolbox.store.DATA_DIRECTORY
 import com.coder.toolbox.store.DISABLE_AUTOSTART
 import com.coder.toolbox.store.ENABLE_BINARY_DIR_FALLBACK
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
+import com.coder.toolbox.store.FALLBACK_ON_CODER_FOR_SIGNATURES
 import com.coder.toolbox.store.HEADER_COMMAND
 import com.coder.toolbox.store.NETWORK_INFO_DIR
 import com.coder.toolbox.store.SSH_CONFIG_OPTIONS
@@ -226,7 +226,7 @@ internal class CoderCLIManagerTest {
                 settingsStore = CoderSettingsStore(
                     pluginTestSettingsStore(
                         DATA_DIRECTORY to tmpdir.resolve("real-cli").toString(),
-                        ALLOW_UNSIGNED_BINARY_EXEC to "true",
+                        FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
                     ),
                     Environment(),
                     context.logger
@@ -257,7 +257,7 @@ internal class CoderCLIManagerTest {
                     pluginTestSettingsStore(
                         BINARY_NAME to "coder.bat",
                         DATA_DIRECTORY to tmpdir.resolve("mock-cli").toString(),
-                        ALLOW_UNSIGNED_BINARY_EXEC to "true",
+                        FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
                     ),
                     Environment(),
                     context.logger,
@@ -279,7 +279,7 @@ internal class CoderCLIManagerTest {
                     pluginTestSettingsStore(
                         BINARY_SOURCE to "/bin/override",
                         DATA_DIRECTORY to tmpdir.resolve("mock-cli").toString(),
-                        ALLOW_UNSIGNED_BINARY_EXEC to "true",
+                        FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
                     ),
                     Environment(),
                     context.logger
@@ -322,7 +322,7 @@ internal class CoderCLIManagerTest {
             context.copy(
                 settingsStore = CoderSettingsStore(
                 pluginTestSettingsStore(
-                    ALLOW_UNSIGNED_BINARY_EXEC to "true",
+                    FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
                     DATA_DIRECTORY to tmpdir.resolve("overwrite-cli").toString(),
                 ),
                 Environment(),
@@ -356,7 +356,7 @@ internal class CoderCLIManagerTest {
         val settings = CoderSettingsStore(
             pluginTestSettingsStore(
                 DATA_DIRECTORY to tmpdir.resolve("clobber-cli").toString(),
-                ALLOW_UNSIGNED_BINARY_EXEC to "true"
+                FALLBACK_ON_CODER_FOR_SIGNATURES to "allow"
             ),
             Environment(),
             context.logger
@@ -869,7 +869,7 @@ internal class CoderCLIManagerTest {
                     ENABLE_BINARY_DIR_FALLBACK to it.enableFallback.toString(),
                     DATA_DIRECTORY to tmpdir.resolve("ensure-data-dir").toString(),
                     BINARY_DIRECTORY to tmpdir.resolve("ensure-bin-dir").toString(),
-                    ALLOW_UNSIGNED_BINARY_EXEC to "true"
+                    FALLBACK_ON_CODER_FOR_SIGNATURES to "allow"
                 ),
                 Environment(),
                 context.logger
@@ -970,7 +970,7 @@ internal class CoderCLIManagerTest {
                         pluginTestSettingsStore(
                             BINARY_NAME to "coder.bat",
                             DATA_DIRECTORY to tmpdir.resolve("features").toString(),
-                            ALLOW_UNSIGNED_BINARY_EXEC to "true"
+                            FALLBACK_ON_CODER_FOR_SIGNATURES to "allow"
                         ),
                         Environment(),
                         context.logger,

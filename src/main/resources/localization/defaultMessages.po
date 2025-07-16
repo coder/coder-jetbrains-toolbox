@@ -79,7 +79,7 @@ msgstr ""
 msgid "Enable downloads"
 msgstr ""
 
-msgid "Allow unsigned binary execution without prompt"
+msgid "Fallback on releases.coder.com when CLI signatures can't be found"
 msgstr ""
 
 msgid "Enable binary directory fallback"

@@ -3,6 +3,7 @@ package com.coder.toolbox.store
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.settings.ReadOnlyCoderSettings
 import com.coder.toolbox.settings.ReadOnlyTLSSettings
+import com.coder.toolbox.settings.SignatureFallbackStrategy
 import com.coder.toolbox.util.Arch
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.expand
@@ -37,8 +38,8 @@ class CoderSettingsStore(
     override val defaultURL: String get() = store[DEFAULT_URL] ?: "https://dev.coder.com"
     override val binarySource: String? get() = store[BINARY_SOURCE]
     override val binaryDirectory: String? get() = store[BINARY_DIRECTORY]
-    override val allowUnsignedBinaryWithoutPrompt: Boolean
-        get() = store[ALLOW_UNSIGNED_BINARY_EXEC]?.toBooleanStrictOrNull() ?: false
+    override val fallbackOnCoderForSignatures: SignatureFallbackStrategy
+        get() = SignatureFallbackStrategy.fromValue(store[FALLBACK_ON_CODER_FOR_SIGNATURES])
     override val defaultCliBinaryNameByOsAndArch: String get() = getCoderCLIForOS(getOS(), getArch())
     override val binaryName: String get() = store[BINARY_NAME] ?: getCoderCLIForOS(getOS(), getArch())
     override val defaultSignatureNameByOsAndArch: String get() = getCoderSignatureForOS(getOS(), getArch())
@@ -161,8 +162,11 @@ class CoderSettingsStore(
         store[ENABLE_DOWNLOADS] = shouldEnableDownloads.toString()
     }
 
-    fun updateAllowUnsignedBinaryExec(allowUnsignedBinaryExec: Boolean) {
-        store[ALLOW_UNSIGNED_BINARY_EXEC] = allowUnsignedBinaryExec.toString()
+    fun updateSignatureFallbackStrategy(fallback: Boolean) {
+        store[FALLBACK_ON_CODER_FOR_SIGNATURES] = when (fallback) {
+            true -> SignatureFallbackStrategy.ALLOW.toString()
+            else -> SignatureFallbackStrategy.FORBIDDEN.toString()
+        }
     }
 
     fun updateBinaryDirectoryFallback(shouldEnableBinDirFallback: Boolean) {

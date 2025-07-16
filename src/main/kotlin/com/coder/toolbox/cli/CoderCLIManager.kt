@@ -14,6 +14,7 @@ import com.coder.toolbox.cli.gpg.VerificationResult.Failed
 import com.coder.toolbox.cli.gpg.VerificationResult.Invalid
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.settings.SignatureFallbackStrategy.ALLOW
 import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.SemVer
@@ -188,10 +189,10 @@ class CoderCLIManager(
                 }
             }
 
-            // if we could not find any signature and the user wants to explicitly
+            // if we could not find any signature (404 or error) and the user wants to explicitly
             // confirm whether we run an unsigned cli
             if (signatureResult.isNotDownloaded()) {
-                if (context.settingsStore.allowUnsignedBinaryWithoutPrompt) {
+                if (context.settingsStore.fallbackOnCoderForSignatures == ALLOW) {
                     context.logger.warn("Running unsigned CLI from ${cliResult.source}")
                     downloader.commit()
                     return true

@@ -32,10 +32,10 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
         TextField(context.i18n.ptrl("Data directory"), settings.dataDirectory ?: "", TextType.General)
     private val enableDownloadsField =
         CheckboxField(settings.enableDownloads, context.i18n.ptrl("Enable downloads"))
-    private val allowUnsignedBinaryExecField =
+    private val signatureFallbackStrategyField =
         CheckboxField(
-            settings.allowUnsignedBinaryWithoutPrompt,
-            context.i18n.ptrl("Allow unsigned binary execution without prompt")
+            settings.fallbackOnCoderForSignatures.isAllowed(),
+            context.i18n.ptrl("Fallback on releases.coder.com when CLI signatures can't be found")
         )
     private val enableBinaryDirectoryFallbackField =
         CheckboxField(
@@ -71,7 +71,7 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
             enableDownloadsField,
             binaryDirectoryField,
             enableBinaryDirectoryFallbackField,
-            allowUnsignedBinaryExecField,
+            signatureFallbackStrategyField,
             dataDirectoryField,
             headerCommandField,
             tlsCertPathField,
@@ -93,7 +93,7 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
                 context.settingsStore.updateBinaryDirectory(binaryDirectoryField.textState.value)
                 context.settingsStore.updateDataDirectory(dataDirectoryField.textState.value)
                 context.settingsStore.updateEnableDownloads(enableDownloadsField.checkedState.value)
-                context.settingsStore.updateAllowUnsignedBinaryExec(allowUnsignedBinaryExecField.checkedState.value)
+                context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
                 context.settingsStore.updateBinaryDirectoryFallback(enableBinaryDirectoryFallbackField.checkedState.value)
                 context.settingsStore.updateHeaderCommand(headerCommandField.textState.value)
                 context.settingsStore.updateCertPath(tlsCertPathField.textState.value)
