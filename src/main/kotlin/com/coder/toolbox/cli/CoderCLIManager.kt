@@ -204,22 +204,22 @@ class CoderCLIManager(
                         } else {
                             throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cliResult.source} was denied by the user")
                         }
-                    } else {
-                        // we could not fetch signatures from releases.coder.com
-                        // so we will ask the user if he wants to continue
-                        val acceptsUnsignedBinary = context.ui.showYesNoPopup(
-                            context.i18n.ptrl("Security Warning"),
-                            context.i18n.pnotr("No signatures were found for ${cliResult.source} and fallback to releases.coder.com is not allowed. Would you like to run it anyway?"),
-                            context.i18n.ptrl("Accept"),
-                            context.i18n.ptrl("Abort"),
-                        )
+                    }
+                } else {
+                    // we are not allowed to fetch signatures from releases.coder.com
+                    // so we will ask the user if he wants to continue
+                    val acceptsUnsignedBinary = context.ui.showYesNoPopup(
+                        context.i18n.ptrl("Security Warning"),
+                        context.i18n.pnotr("No signatures were found for ${cliResult.source} and fallback to releases.coder.com is not allowed. Would you like to run it anyway?"),
+                        context.i18n.ptrl("Accept"),
+                        context.i18n.ptrl("Abort"),
+                    )
 
-                        if (acceptsUnsignedBinary) {
-                            downloader.commit()
-                            return true
-                        } else {
-                            throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cliResult.source} was denied by the user")
-                        }
+                    if (acceptsUnsignedBinary) {
+                        downloader.commit()
+                        return true
+                    } else {
+                        throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cliResult.source} was denied by the user")
                     }
                 }
             }
