@@ -10,6 +10,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -89,17 +90,17 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
     override val actionButtons: StateFlow<List<RunnableActionDescription>> = MutableStateFlow(
         listOf(
             Action(context.i18n.ptrl("Save"), closesPage = true) {
-                context.settingsStore.updateBinarySource(binarySourceField.textState.value)
-                context.settingsStore.updateBinaryDirectory(binaryDirectoryField.textState.value)
-                context.settingsStore.updateDataDirectory(dataDirectoryField.textState.value)
+                context.settingsStore.updateBinarySource(binarySourceField.contentState.value)
+                context.settingsStore.updateBinaryDirectory(binaryDirectoryField.contentState.value)
+                context.settingsStore.updateDataDirectory(dataDirectoryField.contentState.value)
                 context.settingsStore.updateEnableDownloads(enableDownloadsField.checkedState.value)
                 context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
                 context.settingsStore.updateBinaryDirectoryFallback(enableBinaryDirectoryFallbackField.checkedState.value)
-                context.settingsStore.updateHeaderCommand(headerCommandField.textState.value)
-                context.settingsStore.updateCertPath(tlsCertPathField.textState.value)
-                context.settingsStore.updateKeyPath(tlsKeyPathField.textState.value)
-                context.settingsStore.updateCAPath(tlsCAPathField.textState.value)
-                context.settingsStore.updateAltHostname(tlsAlternateHostnameField.textState.value)
+                context.settingsStore.updateHeaderCommand(headerCommandField.contentState.value)
+                context.settingsStore.updateCertPath(tlsCertPathField.contentState.value)
+                context.settingsStore.updateKeyPath(tlsKeyPathField.contentState.value)
+                context.settingsStore.updateCAPath(tlsCAPathField.contentState.value)
+                context.settingsStore.updateAltHostname(tlsAlternateHostnameField.contentState.value)
                 context.settingsStore.updateDisableAutostart(disableAutostartField.checkedState.value)
                 val oldIsSshWildcardConfigEnabled = settings.isSshWildcardConfigEnabled
                 context.settingsStore.updateEnableSshWildcardConfig(enableSshWildCardConfig.checkedState.value)
@@ -113,10 +114,73 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
                         }
                     }
                 }
-                context.settingsStore.updateSshLogDir(sshLogDirField.textState.value)
-                context.settingsStore.updateNetworkInfoDir(networkInfoDirField.textState.value)
-                context.settingsStore.updateSshConfigOptions(sshExtraArgs.textState.value)
+                context.settingsStore.updateSshLogDir(sshLogDirField.contentState.value)
+                context.settingsStore.updateNetworkInfoDir(networkInfoDirField.contentState.value)
+                context.settingsStore.updateSshConfigOptions(sshExtraArgs.contentState.value)
             }
         )
     )
+
+    override fun beforeShow() {
+        // update the value of all fields
+        binarySourceField.contentState.update {
+            settings.binarySource ?: ""
+        }
+        binaryDirectoryField.contentState.update {
+            settings.binaryDirectory ?: ""
+        }
+        dataDirectoryField.contentState.update {
+            settings.dataDirectory ?: ""
+        }
+        enableDownloadsField.checkedState.update {
+            settings.enableDownloads
+        }
+        signatureFallbackStrategyField.checkedState.update {
+            settings.fallbackOnCoderForSignatures.isAllowed()
+        }
+
+        enableBinaryDirectoryFallbackField.checkedState.update {
+            settings.enableBinaryDirectoryFallback
+        }
+
+        headerCommandField.contentState.update {
+            settings.headerCommand ?: ""
+        }
+
+        tlsCertPathField.contentState.update {
+            settings.tls.certPath ?: ""
+        }
+
+        tlsKeyPathField.contentState.update {
+            settings.tls.keyPath ?: ""
+        }
+
+        tlsCAPathField.contentState.update {
+            settings.tls.caPath ?: ""
+        }
+
+        tlsAlternateHostnameField.contentState.update {
+            settings.tls.altHostname ?: ""
+        }
+
+        disableAutostartField.checkedState.update {
+            settings.disableAutostart
+        }
+
+        enableSshWildCardConfig.checkedState.update {
+            settings.isSshWildcardConfigEnabled
+        }
+
+        sshExtraArgs.contentState.update {
+            settings.sshConfigOptions ?: ""
+        }
+
+        sshLogDirField.contentState.update {
+            settings.sshLogDirectory ?: ""
+        }
+
+        networkInfoDirField.contentState.update {
+            settings.networkInfoDir
+        }
+    }
 }
