@@ -148,8 +148,9 @@ class CoderDownloadService(
                 while (source.read(buffer).also { bytesRead = it } != -1) {
                     sink.write(buffer, 0, bytesRead)
                     totalRead += bytesRead
+                    val prettyBuildVersion = buildVersion ?: ""
                     showTextProgress(
-                        "$binaryName $buildVersion - ${totalRead.toHumanReadableSize()} downloaded"
+                        "$binaryName $prettyBuildVersion - ${totalRead.toHumanReadableSize()} downloaded"
                     )
                 }
             }
