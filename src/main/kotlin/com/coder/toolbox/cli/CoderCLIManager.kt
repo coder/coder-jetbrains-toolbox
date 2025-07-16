@@ -183,32 +183,43 @@ class CoderCLIManager(
             }
 
             if (signatureResult.isNotDownloaded()) {
-                context.logger.info("Trying to download signature file from releases.coder.com")
-                signatureResult = withContext(Dispatchers.IO) {
-                    downloader.downloadReleasesSignature(buildVersion, showTextProgress)
-                }
-            }
-
-            // if we could not find any signature (404 or error) and the user wants to explicitly
-            // confirm whether we run an unsigned cli
-            if (signatureResult.isNotDownloaded()) {
                 if (context.settingsStore.fallbackOnCoderForSignatures == ALLOW) {
-                    context.logger.warn("Running unsigned CLI from ${cliResult.source}")
-                    downloader.commit()
-                    return true
-                } else {
-                    val acceptsUnsignedBinary = context.ui.showYesNoPopup(
-                        context.i18n.ptrl("Security Warning"),
-                        context.i18n.pnotr("Can't verify the integrity of the Coder CLI pulled from ${cliResult.source}"),
-                        context.i18n.ptrl("Accept"),
-                        context.i18n.ptrl("Abort"),
-                    )
+                    context.logger.info("Trying to download signature file from releases.coder.com")
+                    signatureResult = withContext(Dispatchers.IO) {
+                        downloader.downloadReleasesSignature(buildVersion, showTextProgress)
+                    }
 
-                    if (acceptsUnsignedBinary) {
-                        downloader.commit()
-                        return true
+                    // if we could still not download it, ask the user if he accepts the risk
+                    if (signatureResult.isNotDownloaded()) {
+                        val acceptsUnsignedBinary = context.ui.showYesNoPopup(
+                            context.i18n.ptrl("Security Warning"),
+                            context.i18n.pnotr("Could not fetch any signatures for ${cliResult.source} from releases.coder.com. Would you like to run it anyway?"),
+                            context.i18n.ptrl("Accept"),
+                            context.i18n.ptrl("Abort"),
+                        )
+
+                        if (acceptsUnsignedBinary) {
+                            downloader.commit()
+                            return true
+                        } else {
+                            throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cliResult.source} was denied by the user")
+                        }
                     } else {
-                        throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cliResult.source} was denied by the user")
+                        // we could not fetch signatures from releases.coder.com
+                        // so we will ask the user if he wants to continue
+                        val acceptsUnsignedBinary = context.ui.showYesNoPopup(
+                            context.i18n.ptrl("Security Warning"),
+                            context.i18n.pnotr("No signatures were found for ${cliResult.source} and fallback to releases.coder.com is not allowed. Would you like to run it anyway?"),
+                            context.i18n.ptrl("Accept"),
+                            context.i18n.ptrl("Abort"),
+                        )
+
+                        if (acceptsUnsignedBinary) {
+                            downloader.commit()
+                            return true
+                        } else {
+                            throw UnsignedBinaryExecutionDeniedException("Running unsigned CLI from ${cliResult.source} was denied by the user")
+                        }
                     }
                 }
             }
