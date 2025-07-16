@@ -141,8 +141,8 @@ class CoderDownloadService(
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         var bytesRead: Int
         var totalRead = 0L
-        // caching this because the settings store recomputes it every time
-        val binaryName = localPath.name
+        // local path is a temporary filename, reporting the progress with the real name
+        val binaryName = localPath.name.removeSuffix(".tmp")
         sourceStream.use { source ->
             outputStream.use { sink ->
                 while (source.read(buffer).also { bytesRead = it } != -1) {
