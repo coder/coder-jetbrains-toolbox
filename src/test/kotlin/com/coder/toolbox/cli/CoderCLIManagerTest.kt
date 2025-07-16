@@ -42,6 +42,7 @@ import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import com.squareup.moshi.JsonEncodingException
 import com.sun.net.httpserver.HttpServer
+import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
@@ -56,6 +57,7 @@ import java.net.URL
 import java.nio.file.AccessDeniedException
 import java.nio.file.Path
 import java.util.UUID
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -68,8 +70,9 @@ private const val VERSION_FOR_PROGRESS_REPORTING = "v2.13.1-devel+de07351b8"
 private val noOpTextProgress: (String) -> Unit = { _ -> }
 
 internal class CoderCLIManagerTest {
+    private val ui = mockk<ToolboxUi>(relaxed = true)
     private val context = CoderToolboxContext(
-        mockk<ToolboxUi>(relaxed = true),
+        ui,
         mockk<EnvironmentUiPageManager>(),
         mockk<EnvironmentStateColorPalette>(),
         mockk<RemoteToolsHelper>(),
@@ -86,6 +89,11 @@ internal class CoderCLIManagerTest {
         mockk<CoderSecretsStore>(),
         mockk<ToolboxProxySettings>()
     )
+
+    @BeforeTest
+    fun setup() {
+        coEvery { ui.showYesNoPopup(any(), any(), any(), any()) } returns true
+    }
 
     /**
      * Return the contents of a script that contains the string.
