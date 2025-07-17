@@ -5,6 +5,7 @@
 ### Added
 
 - support for matching workspace agent in the URI via the agent name
+- support for certificate based authentication
 
 ### Removed
 

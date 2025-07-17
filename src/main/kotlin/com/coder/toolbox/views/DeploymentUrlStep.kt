@@ -57,7 +57,11 @@ class DeploymentUrlStep(
             notify("URL is invalid", e)
             return false
         }
-        CoderCliSetupWizardState.goToNextStep()
+        if (context.settingsStore.requireTokenAuth) {
+            CoderCliSetupWizardState.goToNextStep()
+        } else {
+            CoderCliSetupWizardState.goToLastStep()
+        }
         return true
     }
 
