@@ -180,17 +180,21 @@ class CoderDownloadService(
     }
 
     suspend fun downloadSignature(showTextProgress: (String) -> Unit): DownloadResult {
-        return downloadSignature(remoteBinaryURL, showTextProgress)
+        return downloadSignature(remoteBinaryURL, showTextProgress, getRequestHeaders())
     }
 
-    private suspend fun downloadSignature(url: URL, showTextProgress: (String) -> Unit): DownloadResult {
+    private suspend fun downloadSignature(
+        url: URL,
+        showTextProgress: (String) -> Unit,
+        headers: Map<String, String> = emptyMap()
+    ): DownloadResult {
         val signatureURL = url.toURI().resolve(context.settingsStore.defaultSignatureNameByOsAndArch).toURL()
         val localSignaturePath = cliFinalDst.parent.resolve(context.settingsStore.defaultSignatureNameByOsAndArch)
         context.logger.info("Downloading signature from $signatureURL")
 
         val response = downloadApi.downloadSignature(
             url = signatureURL.toString(),
-            headers = getRequestHeaders()
+            headers = headers
         )
 
         return when (response.code()) {
@@ -216,7 +220,10 @@ class CoderDownloadService(
 
     }
 
-    suspend fun downloadReleasesSignature(buildVersion: String, showTextProgress: (String) -> Unit): DownloadResult {
+    suspend fun downloadReleasesSignature(
+        buildVersion: String,
+        showTextProgress: (String) -> Unit
+    ): DownloadResult {
         val semVer = SemVer.parse(buildVersion)
         return downloadSignature(
             URI.create("https://releases.coder.com/coder-cli/${semVer.major}.${semVer.minor}.${semVer.patch}/").toURL(),
