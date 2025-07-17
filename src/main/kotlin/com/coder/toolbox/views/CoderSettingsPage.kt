@@ -36,7 +36,7 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
     private val signatureFallbackStrategyField =
         CheckboxField(
             settings.fallbackOnCoderForSignatures.isAllowed(),
-            context.i18n.ptrl("Fallback on releases.coder.com when CLI signatures can't be found")
+            context.i18n.ptrl("Verify binary signature using releases.coder.com when CLI signatures are not available from the deployment")
         )
     private val enableBinaryDirectoryFallbackField =
         CheckboxField(

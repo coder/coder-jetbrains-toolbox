@@ -79,7 +79,7 @@ msgstr ""
 msgid "Enable downloads"
 msgstr ""
 
-msgid "Fallback on releases.coder.com when CLI signatures can't be found"
+msgid "Verify binary signature using releases.coder.com when CLI signatures are not available from the deployment"
 msgstr ""
 
 msgid "Enable binary directory fallback"

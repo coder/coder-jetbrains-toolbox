@@ -32,10 +32,8 @@ class DeploymentUrlStep(
 
     private val signatureFallbackStrategyField = CheckboxField(
         context.settingsStore.fallbackOnCoderForSignatures.isAllowed(),
-        context.i18n.ptrl("Fallback on releases.coder.com when CLI signatures can't be found")
+        context.i18n.ptrl("Verify binary signature using releases.coder.com when CLI signatures are not available from the deployment")
     )
-    private val infoLine =
-        LabelField(context.i18n.ptrl("Can be reconfigured later on from the Settings page"), LabelStyleType.Secondary)
 
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
 
@@ -46,7 +44,6 @@ class DeploymentUrlStep(
                     RowGroup.RowField(urlField),
                     RowGroup.RowField(emptyLine),
                     RowGroup.RowField(signatureFallbackStrategyField),
-                    RowGroup.RowField(infoLine),
                     RowGroup.RowField(errorField)
                 )
 
