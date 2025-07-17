@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0 - 2025-07-17
+
 ### Added
 
 - support for matching workspace agent in the URI via the agent name
