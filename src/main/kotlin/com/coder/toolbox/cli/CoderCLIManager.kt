@@ -47,7 +47,6 @@ internal data class Version(
     @Json(name = "version") val version: String,
 )
 
-private const val DOWNLOADING_CODER_CLI = "Downloading Coder CLI..."
 
 /**
  * Do as much as possible to get a valid, up-to-date CLI.
@@ -67,6 +66,11 @@ suspend fun ensureCLI(
     buildVersion: String,
     showTextProgress: (String) -> Unit
 ): CoderCLIManager {
+    fun reportProgress(msg: String) {
+        showTextProgress(msg)
+        context.logger.info(msg)
+    }
+
     val settings = context.settingsStore.readOnly()
     val cli = CoderCLIManager(context, deploymentURL)
 
@@ -77,14 +81,13 @@ suspend fun ensureCLI(
     // the 304 method.
     val cliMatches = cli.matchesVersion(buildVersion)
     if (cliMatches == true) {
-        context.logger.info("Local CLI version matches server version: $buildVersion")
+        reportProgress("Local CLI version matches server version: $buildVersion")
         return cli
     }
 
     // If downloads are enabled download the new version.
     if (settings.enableDownloads) {
-        context.logger.info(DOWNLOADING_CODER_CLI)
-        showTextProgress(DOWNLOADING_CODER_CLI)
+        reportProgress("Downloading Coder CLI...")
         try {
             cli.download(buildVersion, showTextProgress)
             return cli
@@ -102,12 +105,12 @@ suspend fun ensureCLI(
     val dataCLI = CoderCLIManager(context, deploymentURL, true)
     val dataCLIMatches = dataCLI.matchesVersion(buildVersion)
     if (dataCLIMatches == true) {
+        reportProgress("Local CLI version from data directory matches server version: $buildVersion")
         return dataCLI
     }
 
     if (settings.enableDownloads) {
-        context.logger.info(DOWNLOADING_CODER_CLI)
-        showTextProgress(DOWNLOADING_CODER_CLI)
+        reportProgress("Downloading Coder CLI to the data directory...")
         dataCLI.download(buildVersion, showTextProgress)
         return dataCLI
     }
