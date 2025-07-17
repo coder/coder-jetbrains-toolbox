@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.net.URI
+import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -302,31 +303,51 @@ class CoderRemoteProvider(
      * Handle incoming links (like from the dashboard).
      */
     override suspend fun handleUri(uri: URI) {
-        linkHandler.handle(
-            uri, shouldDoAutoSetup(),
-            {
-                coderHeaderPage.isBusyCreatingNewEnvironment.update {
-                    true
+        try {
+            linkHandler.handle(
+                uri, shouldDoAutoSetup(),
+                {
+                    coderHeaderPage.isBusyCreatingNewEnvironment.update {
+                        true
+                    }
+                },
+                {
+                    coderHeaderPage.isBusyCreatingNewEnvironment.update {
+                        false
+                    }
                 }
-            },
-            {
-                coderHeaderPage.isBusyCreatingNewEnvironment.update {
+            ) { restClient, cli ->
+                // stop polling and de-initialize resources
+                close()
+                isInitialized.update {
                     false
                 }
+                // start initialization with the new settings
+                this@CoderRemoteProvider.client = restClient
+                coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
+
+                environments.showLoadingMessage()
+                pollJob = poll(restClient, cli)
+                isInitialized.waitForTrue()
             }
-        ) { restClient, cli ->
-            // stop polling and de-initialize resources
-            close()
-            isInitialized.update {
+        } catch (ex: Exception) {
+            context.logger.error(ex, "")
+            val textError = if (ex is APIResponseException) {
+                if (!ex.reason.isNullOrBlank()) {
+                    ex.reason
+                } else ex.message
+            } else ex.message
+
+            context.ui.showSnackbar(
+                UUID.randomUUID().toString(),
+                context.i18n.ptrl("Error encountered while handling Coder URI"),
+                context.i18n.pnotr(textError ?: ""),
+                context.i18n.ptrl("Dismiss")
+            )
+        } finally {
+            coderHeaderPage.isBusyCreatingNewEnvironment.update {
                 false
             }
-            // start initialization with the new settings
-            this@CoderRemoteProvider.client = restClient
-            coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
-
-            environments.showLoadingMessage()
-            pollJob = poll(restClient, cli)
-            isInitialized.waitForTrue()
         }
     }
 
