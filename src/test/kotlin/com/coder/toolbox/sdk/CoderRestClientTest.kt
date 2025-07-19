@@ -225,7 +225,7 @@ class CoderRestClientTest {
         val client = CoderRestClient(context, URL(url), "token")
         assertEquals(user.username, runBlocking { client.me() }.username)
 
-        val tests = listOf("invalid", null)
+        val tests = listOf("invalid")
         tests.forEach { token ->
             val ex =
                 assertFailsWith(
@@ -236,6 +236,26 @@ class CoderRestClientTest {
         }
 
         srv.stop(0)
+    }
+
+    @Test
+    fun `exception is raised when token is required for authentication and token value is null or empty`() {
+        listOf("", null).forEach { token ->
+            val ex =
+                assertFailsWith(
+                    exceptionClass = IllegalStateException::class,
+                    block = {
+                        runBlocking {
+                            CoderRestClient(
+                                context,
+                                URI.create("https://coder.com").toURL(),
+                                token
+                            ).me()
+                        }
+                    },
+                )
+            assertEquals(ex.message, "Token is required for https://coder.com deployment")
+        }
     }
 
     @Test
