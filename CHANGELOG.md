@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- support for certificate based authentication
+
 ## 0.5.0 - 2025-07-17
 
 ### Added

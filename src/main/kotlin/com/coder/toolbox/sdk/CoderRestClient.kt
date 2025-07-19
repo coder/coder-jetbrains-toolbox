@@ -94,7 +94,10 @@ open class CoderRestClient(
                 .build()
         }
 
-        if (token != null) {
+        if (context.settingsStore.requireTokenAuth) {
+            if (token.isNullOrBlank()) {
+                throw IllegalStateException("Token is required for $url deployment")
+            }
             builder = builder.addInterceptor {
                 it.proceed(
                     it.request().newBuilder().addHeader("Coder-Session-Token", token).build()

@@ -25,7 +25,11 @@ object CoderCliSetupWizardState {
         currentStep = WizardStep.entries.toTypedArray()[(currentStep.ordinal - 1) % WizardStep.entries.size]
     }
 
-    fun resetSteps() {
+    fun goToLastStep() {
+        currentStep = WizardStep.CONNECT
+    }
+
+    fun goToFirstStep() {
         currentStep = WizardStep.URL_REQUEST
     }
 }
