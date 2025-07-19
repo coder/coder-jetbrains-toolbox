@@ -1,9 +1,13 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.settings.SignatureFallbackStrategy
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.jetbrains.toolbox.api.ui.components.CheckboxField
+import com.jetbrains.toolbox.api.ui.components.LabelField
+import com.jetbrains.toolbox.api.ui.components.LabelStyleType
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
@@ -24,12 +28,31 @@ class DeploymentUrlStep(
 ) :
     WizardStep {
     private val urlField = TextField(context.i18n.ptrl("Deployment URL"), "", TextType.General)
+    private val emptyLine = LabelField(context.i18n.pnotr(""), LabelStyleType.Normal)
+
+    private val signatureFallbackStrategyField = CheckboxField(
+        context.settingsStore.fallbackOnCoderForSignatures.isAllowed(),
+        context.i18n.ptrl("Verify binary signature using releases.coder.com when CLI signatures are not available from the deployment")
+    )
+
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
 
-    override val panel: RowGroup = RowGroup(
-        RowGroup.RowField(urlField),
-        RowGroup.RowField(errorField)
-    )
+    override val panel: RowGroup
+        get() {
+            if (context.settingsStore.fallbackOnCoderForSignatures == SignatureFallbackStrategy.NOT_CONFIGURED) {
+                return RowGroup(
+                    RowGroup.RowField(urlField),
+                    RowGroup.RowField(emptyLine),
+                    RowGroup.RowField(signatureFallbackStrategyField),
+                    RowGroup.RowField(errorField)
+                )
+
+            }
+            return RowGroup(
+                RowGroup.RowField(urlField),
+                RowGroup.RowField(errorField)
+            )
+        }
 
     override fun onVisible() {
         errorField.textState.update {
@@ -38,9 +61,14 @@ class DeploymentUrlStep(
         urlField.textState.update {
             context.secrets.lastDeploymentURL
         }
+
+        signatureFallbackStrategyField.checkedState.update {
+            context.settingsStore.fallbackOnCoderForSignatures.isAllowed()
+        }
     }
 
     override fun onNext(): Boolean {
+        context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
         var url = urlField.textState.value
         if (url.isBlank()) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }

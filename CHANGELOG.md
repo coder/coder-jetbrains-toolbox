@@ -4,8 +4,14 @@
 
 ### Added
 
-- support for matching workspace agent in the URI via the agent name
 - support for certificate based authentication
+
+## 0.5.0 - 2025-07-17
+
+### Added
+
+- support for matching workspace agent in the URI via the agent name
+- support for checking if CLI is signed
 
 ### Removed
 

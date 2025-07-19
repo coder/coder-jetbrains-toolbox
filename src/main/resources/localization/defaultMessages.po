@@ -79,6 +79,9 @@ msgstr ""
 msgid "Enable downloads"
 msgstr ""
 
+msgid "Verify binary signature using releases.coder.com when CLI signatures are not available from the deployment"
+msgstr ""
+
 msgid "Enable binary directory fallback"
 msgstr ""
 
@@ -149,4 +152,16 @@ msgid "Setting up Coder"
 msgstr ""
 
 msgid "Loading workspaces..."
+msgstr ""
+
+msgid "Security Warning"
+msgstr ""
+
+msgid "Accept"
+msgstr ""
+
+msgid "Abort"
+msgstr ""
+
+msgid "Run anyway"
 msgstr ""

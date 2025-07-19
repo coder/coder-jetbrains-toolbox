@@ -2,6 +2,7 @@ package com.coder.toolbox.settings
 
 import java.net.URL
 import java.nio.file.Path
+import java.util.Locale.getDefault
 
 /**
  * Read-only interface for accessing Coder settings
@@ -28,6 +29,11 @@ interface ReadOnlyCoderSettings {
     val binaryDirectory: String?
 
     /**
+     * Controls whether we fall back release.coder.com
+     */
+    val fallbackOnCoderForSignatures: SignatureFallbackStrategy
+
+    /**
      * Default CLI binary name based on OS and architecture
      */
     val defaultCliBinaryNameByOsAndArch: String
@@ -36,6 +42,11 @@ interface ReadOnlyCoderSettings {
      * Configurable CLI binary name with extension, dependent on OS and arch
      */
     val binaryName: String
+
+    /**
+     * Default CLI signature name based on OS and architecture
+     */
+    val defaultSignatureNameByOsAndArch: String
 
     /**
      * Where to save plugin data like the Coder binary (if not configured with
@@ -167,4 +178,32 @@ interface ReadOnlyTLSSettings {
      * Coder service does not match the hostname in the TLS certificate.
      */
     val altHostname: String?
+}
+
+enum class SignatureFallbackStrategy {
+    /**
+     * User has not yet decided whether he wants to fallback on releases.coder.com for signatures
+     */
+    NOT_CONFIGURED,
+
+    /**
+     * Can fall back on releases.coder.com for signatures.
+     */
+    ALLOW,
+
+    /**
+     * Can't fall back on releases.coder.com for signatures.
+     */
+    FORBIDDEN;
+
+    fun isAllowed(): Boolean = this == ALLOW
+
+    companion object {
+        fun fromValue(value: String?): SignatureFallbackStrategy = when (value?.lowercase(getDefault())) {
+            "not_configured" -> NOT_CONFIGURED
+            "allow" -> ALLOW
+            "forbidden" -> FORBIDDEN
+            else -> NOT_CONFIGURED
+        }
+    }
 }
