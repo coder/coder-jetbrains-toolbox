@@ -47,7 +47,7 @@ class ConnectStep(
             context.i18n.pnotr("")
         }
 
-        if (CoderCliSetupContext.isNotReadyForAuth()) {
+        if (context.settingsStore.requireTokenAuth && CoderCliSetupContext.isNotReadyForAuth()) {
             errorField.textState.update {
                 context.i18n.pnotr("URL and token were not properly configured. Please go back and provide a proper URL and token!")
             }
