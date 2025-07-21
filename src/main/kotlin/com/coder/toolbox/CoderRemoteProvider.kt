@@ -245,7 +245,7 @@ class CoderRemoteProvider(
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
         client = null
-        CoderCliSetupWizardState.resetSteps()
+        CoderCliSetupWizardState.goToFirstStep()
     }
 
     override val svgIcon: SvgIcon =

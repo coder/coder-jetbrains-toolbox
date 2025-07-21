@@ -64,7 +64,7 @@ open class CoderProtocolHandler(
 
         context.logger.info("Handling $uri...")
         val deploymentURL = resolveDeploymentUrl(params) ?: return
-        val token = resolveToken(params) ?: return
+        val token = if (!context.settingsStore.requireTokenAuth) null else resolveToken(params) ?: return
         val workspaceName = resolveWorkspaceName(params) ?: return
         val restClient = buildRestClient(deploymentURL, token) ?: return
         val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL) ?: return
@@ -128,7 +128,7 @@ open class CoderProtocolHandler(
         return workspace
     }
 
-    private suspend fun buildRestClient(deploymentURL: String, token: String): CoderRestClient? {
+    private suspend fun buildRestClient(deploymentURL: String, token: String?): CoderRestClient? {
         try {
             return authenticate(deploymentURL, token)
         } catch (ex: Exception) {
@@ -140,11 +140,11 @@ open class CoderProtocolHandler(
     /**
      * Returns an authenticated Coder CLI.
      */
-    private suspend fun authenticate(deploymentURL: String, token: String): CoderRestClient {
+    private suspend fun authenticate(deploymentURL: String, token: String?): CoderRestClient {
         val client = CoderRestClient(
             context,
             deploymentURL.toURL(),
-            if (settings.requireTokenAuth) token else null,
+            token,
             PluginManager.pluginInfo.version
         )
         client.initializeSession()

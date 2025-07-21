@@ -47,7 +47,7 @@ class ConnectStep(
             context.i18n.pnotr("")
         }
 
-        if (CoderCliSetupContext.isNotReadyForAuth()) {
+        if (context.settingsStore.requireTokenAuth && CoderCliSetupContext.isNotReadyForAuth()) {
             errorField.textState.update {
                 context.i18n.pnotr("URL and token were not properly configured. Please go back and provide a proper URL and token!")
             }
@@ -67,7 +67,7 @@ class ConnectStep(
             return
         }
 
-        if (!CoderCliSetupContext.hasToken()) {
+        if (context.settingsStore.requireTokenAuth && !CoderCliSetupContext.hasToken()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
@@ -77,7 +77,7 @@ class ConnectStep(
                 val client = CoderRestClient(
                     context,
                     CoderCliSetupContext.url!!,
-                    CoderCliSetupContext.token!!,
+                    if (context.settingsStore.requireTokenAuth) CoderCliSetupContext.token else null,
                     PluginManager.pluginInfo.version,
                 )
                 // allows interleaving with the back/cancel action
@@ -91,17 +91,17 @@ class ConnectStep(
                     statusField.textState.update { (context.i18n.pnotr(progress)) }
                 }
                 // We only need to log in if we are using token-based auth.
-                if (client.token != null) {
+                if (context.settingsStore.requireTokenAuth) {
                     statusField.textState.update { (context.i18n.ptrl("Configuring Coder CLI...")) }
                     // allows interleaving with the back/cancel action
                     yield()
-                    cli.login(client.token)
+                    cli.login(client.token!!)
                 }
                 statusField.textState.update { (context.i18n.ptrl("Successfully configured ${CoderCliSetupContext.url!!.host}...")) }
                 // allows interleaving with the back/cancel action
                 yield()
                 CoderCliSetupContext.reset()
-                CoderCliSetupWizardState.resetSteps()
+                CoderCliSetupWizardState.goToFirstStep()
                 onConnect(client, cli)
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
@@ -127,10 +127,14 @@ class ConnectStep(
         } finally {
             if (shouldAutoLogin.value) {
                 CoderCliSetupContext.reset()
-                CoderCliSetupWizardState.resetSteps()
+                CoderCliSetupWizardState.goToFirstStep()
                 context.secrets.rememberMe = false
             } else {
-                CoderCliSetupWizardState.goToPreviousStep()
+                if (context.settingsStore.requireTokenAuth) {
+                    CoderCliSetupWizardState.goToPreviousStep()
+                } else {
+                    CoderCliSetupWizardState.goToFirstStep()
+                }
             }
         }
     }
