@@ -467,7 +467,7 @@ class CoderCLIManager(
      */
     private fun writeSSHConfig(contents: String?) {
         if (contents != null) {
-            if (!context.settingsStore.sshConfigPath.isNullOrBlank()) {
+            if (context.settingsStore.sshConfigPath.isNotBlank()) {
                 val sshConfPath = Path.of(context.settingsStore.sshConfigPath)
                 sshConfPath.parent.toFile().mkdirs()
                 sshConfPath.toFile().writeText(contents)
@@ -492,9 +492,9 @@ class CoderCLIManager(
                 throw MissingVersionException("No version found in output")
             }
             return SemVer.parse(json.version)
-        } catch (exception: JsonDataException) {
+        } catch (_: JsonDataException) {
             throw MissingVersionException("No version found in output")
-        } catch (exception: EOFException) {
+        } catch (_: EOFException) {
             throw MissingVersionException("No version found in output")
         }
     }
@@ -532,7 +532,7 @@ class CoderCLIManager(
         val buildVersion =
             try {
                 SemVer.parse(rawBuildVersion)
-            } catch (e: InvalidVersionException) {
+            } catch (_: InvalidVersionException) {
                 context.logger.info("Got invalid build version: $rawBuildVersion")
                 return null
             }
