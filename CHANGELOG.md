@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- fix class cast exception during signature verification
+
 ## 0.5.1 - 2025-07-21
 
 ### Added
