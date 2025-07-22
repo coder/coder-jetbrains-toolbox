@@ -250,42 +250,17 @@ class CoderSettingsStore(
     /**
      * Return the name of the binary (with extension) for the provided OS and architecture.
      */
-    private fun getCoderCLIForOS(
-        os: OS?,
-        arch: Arch?,
-    ): String {
+    private fun getCoderCLIForOS(os: OS?, arch: Arch?): String {
         logger.debug("Resolving binary for $os $arch")
-        return buildCoderFileName(os, arch)
-    }
 
-    /**
-     * Return the name of the signature file (.asc) for the provided OS and architecture.
-     */
-    private fun getCoderSignatureForOS(
-        os: OS?,
-        arch: Arch?,
-    ): String {
-        logger.debug("Resolving signature for $os $arch")
-        return buildCoderFileName(os, arch, true)
-    }
-
-    /**
-     * Build the coder file name based on OS, architecture, and whether it's a signature file.
-     */
-    private fun buildCoderFileName(
-        os: OS?,
-        arch: Arch?,
-        isSignature: Boolean = false
-    ): String {
-        if (os == null) {
-            logger.error("Could not resolve client OS and architecture, defaulting to WINDOWS AMD64")
-            return if (isSignature) "coder-windows-amd64.asc" else "coder-windows-amd64.exe"
-        }
-
-        val osName = when (os) {
-            OS.WINDOWS -> "windows"
-            OS.LINUX -> "linux"
-            OS.MAC -> "darwin"
+        val (osName, extension) = when (os) {
+            OS.WINDOWS -> "windows" to ".exe"
+            OS.LINUX -> "linux" to ""
+            OS.MAC -> "darwin" to ""
+            null -> {
+                logger.error("Could not resolve client OS and architecture, defaulting to WINDOWS AMD64")
+                return "coder-windows-amd64.exe"
+            }
         }
 
         val archName = when (arch) {
@@ -295,12 +270,15 @@ class CoderSettingsStore(
             else -> "amd64" // default fallback
         }
 
-        val extension = if (isSignature) ".asc" else when (os) {
-            OS.WINDOWS -> ".exe"
-            OS.LINUX, OS.MAC -> ""
-        }
-
         return "coder-$osName-$archName$extension"
+    }
+
+    /**
+     * Return the name of the signature file (.asc) for the provided OS and architecture.
+     */
+    private fun getCoderSignatureForOS(os: OS?, arch: Arch?): String {
+        logger.debug("Resolving signature for $os $arch")
+        return "${getCoderCLIForOS(os, arch)}.asc"
     }
 
     /**

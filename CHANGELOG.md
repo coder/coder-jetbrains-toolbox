@@ -5,6 +5,7 @@
 ### Fixed
 
 - fix class cast exception during signature verification
+- the correct CLI signature for Windows is now downloaded
 
 ## 0.5.1 - 2025-07-21
 
