@@ -15,6 +15,7 @@ import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
+import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
@@ -271,7 +272,12 @@ open class CoderRestClient(
      * @throws [APIResponseException].
      */
     suspend fun startWorkspace(workspace: Workspace): WorkspaceBuild {
-        val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.START)
+        val buildRequest = CreateWorkspaceBuildRequest(
+            null,
+            WorkspaceTransition.START,
+            null,
+            WorkspaceBuildReason.JETBRAINS_CONNECTION
+        )
         val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
             throw APIResponseException(
