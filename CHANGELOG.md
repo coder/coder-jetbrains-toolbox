@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- improved workflow when network connection is flaky
+
 ## 0.5.2 - 2025-07-22
 
 ### Fixed

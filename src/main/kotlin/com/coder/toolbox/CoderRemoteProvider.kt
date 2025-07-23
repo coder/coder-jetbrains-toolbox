@@ -166,17 +166,17 @@ class CoderRemoteProvider(
                     context.logger.error(ex, "workspace polling error encountered, trying to auto-login")
                     if (ex is APIResponseException && ex.isTokenExpired) {
                         WorkspaceConnectionManager.shouldEstablishWorkspaceConnections = true
+                        close()
+                        // force auto-login
+                        firstRun = true
+                        context.envPageManager.showPluginEnvironmentsPage()
+                        break
                     }
-                    close()
-                    // force auto-login
-                    firstRun = true
-                    context.envPageManager.showPluginEnvironmentsPage()
-                    break
                 }
             }
 
             // TODO: Listening on a web socket might be better?
-            select<Unit> {
+            select {
                 onTimeout(POLL_INTERVAL) {
                     context.logger.trace("workspace poller waked up by the $POLL_INTERVAL timeout")
                 }
