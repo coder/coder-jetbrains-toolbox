@@ -128,7 +128,6 @@ class ConnectStep(
             if (shouldAutoLogin.value) {
                 CoderCliSetupContext.reset()
                 CoderCliSetupWizardState.goToFirstStep()
-                context.secrets.rememberMe = false
             } else {
                 if (context.settingsStore.requireTokenAuth) {
                     CoderCliSetupWizardState.goToPreviousStep()

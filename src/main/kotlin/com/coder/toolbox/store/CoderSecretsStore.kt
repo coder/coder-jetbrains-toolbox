@@ -24,9 +24,8 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
     var lastToken: String
         get() = get("last-token")
         set(value) = set("last-token", value)
-    var rememberMe: Boolean
-        get() = get("remember-me").toBoolean()
-        set(value) = set("remember-me", value.toString())
+    val canAutoLogin: Boolean
+        get() = lastDeploymentURL.isNotBlank() && lastToken.isNotBlank()
 
     fun tokenFor(url: URL): String? = store[url.host]
 
