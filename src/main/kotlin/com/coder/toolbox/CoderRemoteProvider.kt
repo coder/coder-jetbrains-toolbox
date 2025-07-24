@@ -160,8 +160,7 @@ class CoderRemoteProvider(
             } catch (ex: Exception) {
                 val elapsed = lastPollTime.elapsedNow()
                 if (elapsed > POLL_INTERVAL * 2) {
-                    context.logger.info("wake-up from an OS sleep was detected, going to re-initialize the http client...")
-                    client.setupSession()
+                    context.logger.info("wake-up from an OS sleep was detected")
                 } else {
                     context.logger.error(ex, "workspace polling error encountered, trying to auto-login")
                     if (ex is APIResponseException && ex.isTokenExpired) {
@@ -175,7 +174,6 @@ class CoderRemoteProvider(
                 }
             }
 
-            // TODO: Listening on a web socket might be better?
             select {
                 onTimeout(POLL_INTERVAL) {
                     context.logger.trace("workspace poller waked up by the $POLL_INTERVAL timeout")
