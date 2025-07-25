@@ -146,6 +146,11 @@ interface ReadOnlyCoderSettings {
      * Return the URL and token from the config, if they exist.
      */
     fun readConfig(dir: Path): Pair<String?, String?>
+
+    /**
+     * Returns whether the SSH connection should be automatically established.
+     */
+    fun shouldAutoConnect(workspaceId: String): Boolean
 }
 
 /**

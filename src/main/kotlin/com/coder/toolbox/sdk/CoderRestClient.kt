@@ -60,7 +60,7 @@ open class CoderRestClient(
         setupSession()
     }
 
-    fun setupSession() {
+    private fun setupSession() {
         moshi =
             Moshi.Builder()
                 .add(ArchConverter())

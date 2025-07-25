@@ -80,6 +80,8 @@ class CoderRemoteProvider(
         )
     )
 
+    private val errorBuffer = mutableListOf<Throwable>()
+
     /**
      * With the provided client, start polling for workspaces.  Every time a new
      * workspace is added, reconfigure SSH using the provided cli (including the
@@ -160,23 +162,20 @@ class CoderRemoteProvider(
             } catch (ex: Exception) {
                 val elapsed = lastPollTime.elapsedNow()
                 if (elapsed > POLL_INTERVAL * 2) {
-                    context.logger.info("wake-up from an OS sleep was detected, going to re-initialize the http client...")
-                    client.setupSession()
+                    context.logger.info("wake-up from an OS sleep was detected")
                 } else {
-                    context.logger.error(ex, "workspace polling error encountered, trying to auto-login")
+                    context.logger.error(ex, "workspace polling error encountered")
                     if (ex is APIResponseException && ex.isTokenExpired) {
                         WorkspaceConnectionManager.shouldEstablishWorkspaceConnections = true
+                        close()
+                        context.envPageManager.showPluginEnvironmentsPage()
+                        errorBuffer.add(ex)
+                        break
                     }
-                    close()
-                    // force auto-login
-                    firstRun = true
-                    context.envPageManager.showPluginEnvironmentsPage()
-                    break
                 }
             }
 
-            // TODO: Listening on a web socket might be better?
-            select<Unit> {
+            select {
                 onTimeout(POLL_INTERVAL) {
                     context.logger.trace("workspace poller waked up by the $POLL_INTERVAL timeout")
                 }
@@ -196,9 +195,6 @@ class CoderRemoteProvider(
      * first page.
      */
     private fun logout() {
-        // Keep the URL and token to make it easy to log back in, but set
-        // rememberMe to false so we do not try to automatically log in.
-        context.secrets.rememberMe = false
         WorkspaceConnectionManager.reset()
         close()
     }
@@ -360,22 +356,17 @@ class CoderRemoteProvider(
     override fun getOverrideUiPage(): UiPage? {
         // Show the setup page if we have not configured the client yet.
         if (client == null) {
-            val errorBuffer = mutableListOf<Throwable>()
             // When coming back to the application, initializeSession immediately.
-            val autoSetup = shouldDoAutoSetup()
-            context.secrets.lastToken.let { lastToken ->
-                context.secrets.lastDeploymentURL.let { lastDeploymentURL ->
-                    if (autoSetup && lastDeploymentURL.isNotBlank() && (lastToken.isNotBlank() || !settings.requireTokenAuth)) {
-                        try {
-                            CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
-                            return CoderCliSetupWizardPage(context, settingsPage, visibilityState, true, ::onConnect)
-                        } catch (ex: Exception) {
-                            errorBuffer.add(ex)
-                        }
-                    }
+            if (shouldDoAutoSetup()) {
+                try {
+                    CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
+                    return CoderCliSetupWizardPage(context, settingsPage, visibilityState, true, ::onConnect)
+                } catch (ex: Exception) {
+                    errorBuffer.add(ex)
+                } finally {
+                    firstRun = false
                 }
             }
-            firstRun = false
 
             // Login flow.
             val setupWizardPage =
@@ -384,21 +375,24 @@ class CoderRemoteProvider(
             errorBuffer.forEach {
                 setupWizardPage.notify("Error encountered", it)
             }
+            errorBuffer.clear()
             // and now reset the errors, otherwise we show it every time on the screen
             return setupWizardPage
         }
         return null
     }
 
-    private fun shouldDoAutoSetup(): Boolean = firstRun && context.secrets.rememberMe == true
+    /**
+     * Auto-login only on first the firs run if there is a url & token configured or the auth
+     * should be done via certificates.
+     */
+    private fun shouldDoAutoSetup(): Boolean = firstRun && (context.secrets.canAutoLogin || !settings.requireTokenAuth)
 
     private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
         context.secrets.lastDeploymentURL = client.url.toString()
         context.secrets.lastToken = client.token ?: ""
         context.secrets.storeTokenFor(client.url, context.secrets.lastToken)
-        // Currently we always remember, but this could be made an option.
-        context.secrets.rememberMe = true
         this.client = client
         pollJob?.cancel()
         environments.showLoadingMessage()

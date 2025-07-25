@@ -68,6 +68,13 @@ class CoderRemoteEnvironment(
     private val proxyCommandHandle = SshCommandProcessHandle(context)
     private var pollJob: Job? = null
 
+    init {
+        if (context.settingsStore.shouldAutoConnect(id)) {
+            context.logger.info("resuming SSH connection to $id — last session was still active.")
+            startSshConnection()
+        }
+    }
+
     fun asPairOfWorkspaceAndAgent(): Pair<Workspace, WorkspaceAgent> = Pair(workspace, agent)
 
     private fun getAvailableActions(): List<ActionDescription> {
@@ -158,6 +165,7 @@ class CoderRemoteEnvironment(
     override fun beforeConnection() {
         context.logger.info("Connecting to $id...")
         isConnected.update { true }
+        context.settingsStore.updateAutoConnect(this.id, true)
         pollJob = pollNetworkMetrics()
     }
 
@@ -180,12 +188,9 @@ class CoderRemoteEnvironment(
             }
             context.logger.debug("Loading metrics from ${metricsFile.absolutePath} for $id")
             try {
-                val metrics = networkMetricsMarshaller.fromJson(metricsFile.readText())
-                if (metrics == null) {
-                    return@launch
-                }
+                val metrics = networkMetricsMarshaller.fromJson(metricsFile.readText()) ?: return@launch
                 context.logger.debug("$id metrics: $metrics")
-                additionalEnvironmentInformation.put(context.i18n.ptrl("Network Status"), metrics.toPretty())
+                additionalEnvironmentInformation[context.i18n.ptrl("Network Status")] = metrics.toPretty()
             } catch (e: Exception) {
                 context.logger.error(
                     e,
@@ -203,6 +208,10 @@ class CoderRemoteEnvironment(
         pollJob?.cancel()
         this.connectionRequest.update { false }
         isConnected.update { false }
+        if (isManual) {
+            // if the user manually disconnects the ssh connection we should not connect automatically
+            context.settingsStore.updateAutoConnect(this.id, false)
+        }
         context.logger.info("Disconnected from $id")
     }
 

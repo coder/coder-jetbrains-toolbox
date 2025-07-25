@@ -142,6 +142,10 @@ class CoderSettingsStore(
                 }
     }
 
+    override fun shouldAutoConnect(workspaceId: String): Boolean {
+        return store["$SSH_AUTO_CONNECT_PREFIX$workspaceId"]?.toBooleanStrictOrNull() ?: false
+    }
+
     // a readonly cast
     fun readOnly(): ReadOnlyCoderSettings = this
 
@@ -211,6 +215,10 @@ class CoderSettingsStore(
 
     fun updateSshConfigOptions(options: String) {
         store[SSH_CONFIG_OPTIONS] = options
+    }
+
+    fun updateAutoConnect(workspaceId: String, autoConnect: Boolean) {
+        store["$SSH_AUTO_CONNECT_PREFIX$workspaceId"] = autoConnect.toString()
     }
 
     private fun getDefaultGlobalDataDir(): Path {
