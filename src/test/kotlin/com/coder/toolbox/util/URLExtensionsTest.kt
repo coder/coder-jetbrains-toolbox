@@ -60,4 +60,96 @@ internal class URLExtensionsTest {
             )
         }
     }
+
+    @Test
+    fun `valid http URL should return Valid`() {
+        val result = "http://coder.com".validateStrictWebUrl()
+        assertEquals(WebUrlValidationResult.Valid, result)
+    }
+
+    @Test
+    fun `valid https URL with path and query should return Valid`() {
+        val result = "https://coder.com/bin/coder-linux-amd64?query=1".validateStrictWebUrl()
+        assertEquals(WebUrlValidationResult.Valid, result)
+    }
+
+    @Test
+    fun `relative URL should return Invalid with appropriate message`() {
+        val url = "/bin/coder-linux-amd64"
+        val result = url.validateStrictWebUrl()
+        assertEquals(
+            WebUrlValidationResult.Invalid("$url is relative, it must be absolute"),
+            result
+        )
+    }
+
+    @Test
+    fun `opaque URI like mailto should return Invalid`() {
+        val url = "mailto:user@coder.com"
+        val result = url.validateStrictWebUrl()
+        assertEquals(
+            WebUrlValidationResult.Invalid("$url is opaque, instead of hierarchical"),
+            result
+        )
+    }
+
+    @Test
+    fun `unsupported scheme like ftp should return Invalid`() {
+        val url = "ftp://coder.com"
+        val result = url.validateStrictWebUrl()
+        assertEquals(
+            WebUrlValidationResult.Invalid("Scheme for $url must be either http or https"),
+            result
+        )
+    }
+
+    @Test
+    fun `http URL with missing authority should return Invalid`() {
+        val url = "http:///bin/coder-linux-amd64"
+        val result = url.validateStrictWebUrl()
+        assertEquals(
+            WebUrlValidationResult.Invalid("$url does not have a hostname"),
+            result
+        )
+    }
+
+    @Test
+    fun `malformed URI should return Invalid with parsing error message`() {
+        val url = "http://[invalid-uri]"
+        val result = url.validateStrictWebUrl()
+        assertEquals(
+            WebUrlValidationResult.Invalid("Malformed IPv6 address at index 8: $url"),
+            result
+        )
+    }
+
+    @Test
+    fun `URI without colon should return Invalid as URI is not absolute`() {
+        val url = "http//coder.com"
+        val result = url.validateStrictWebUrl()
+        assertEquals(
+            WebUrlValidationResult.Invalid("http//coder.com is relative, it must be absolute"),
+            result
+        )
+    }
+
+    @Test
+    fun `URI without double forward slashes should return Invalid because the URI is not hierarchical`() {
+        val url = "http:coder.com"
+        val result = url.validateStrictWebUrl()
+        assertEquals(
+            WebUrlValidationResult.Invalid("http:coder.com is opaque, instead of hierarchical"),
+            result
+        )
+    }
+
+    @Test
+    fun `URI without a single forward slash should return Invalid because the URI does not have a hostname`() {
+        val url = "https:/coder.com"
+        val result = url.validateStrictWebUrl()
+        assertEquals(
+            WebUrlValidationResult.Invalid("https:/coder.com does not have a hostname"),
+            result
+        )
+    }
 }

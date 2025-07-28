@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- URL validation is stricter in the connection screen and URI protocol handler
+
 ## 0.6.0 - 2025-07-25
 
 ### Changed

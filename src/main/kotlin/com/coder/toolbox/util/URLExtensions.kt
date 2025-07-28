@@ -1,10 +1,30 @@
 package com.coder.toolbox.util
 
+import com.coder.toolbox.util.WebUrlValidationResult.Invalid
+import com.coder.toolbox.util.WebUrlValidationResult.Valid
 import java.net.IDN
 import java.net.URI
 import java.net.URL
 
 fun String.toURL(): URL = URI.create(this).toURL()
+
+fun String.validateStrictWebUrl(): WebUrlValidationResult = try {
+    val uri = URI(this)
+
+    when {
+        uri.isOpaque -> Invalid("$this is opaque, instead of hierarchical")
+        !uri.isAbsolute -> Invalid("$this is relative, it must be absolute")
+        uri.scheme?.lowercase() !in setOf("http", "https") ->
+            Invalid("Scheme for $this must be either http or https")
+
+        uri.authority.isNullOrBlank() ->
+            Invalid("$this does not have a hostname")
+
+        else -> Valid
+    }
+} catch (e: Exception) {
+    Invalid(e.message ?: "$this could not be parsed as a URI reference")
+}
 
 fun URL.withPath(path: String): URL = URL(
     this.protocol,
@@ -30,3 +50,8 @@ fun URI.toQueryParameters(): Map<String, String> = (this.query ?: "")
             parts[0] to ""
         }
     }
+
+sealed class WebUrlValidationResult {
+    object Valid : WebUrlValidationResult()
+    data class Invalid(val reason: String) : WebUrlValidationResult()
+}
