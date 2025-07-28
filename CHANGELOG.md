@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- the http client has relaxed syntax rules when deserializing JSON responses
+
 ## 0.6.0 - 2025-07-25
 
 ### Changed

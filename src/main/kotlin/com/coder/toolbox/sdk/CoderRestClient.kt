@@ -74,10 +74,10 @@ open class CoderRestClient(
         var builder = OkHttpClient.Builder()
 
         if (context.proxySettings.getProxy() != null) {
-            context.logger.debug("proxy: ${context.proxySettings.getProxy()}")
+            context.logger.info("proxy: ${context.proxySettings.getProxy()}")
             builder.proxy(context.proxySettings.getProxy())
         } else if (context.proxySettings.getProxySelector() != null) {
-            context.logger.debug("proxy selector: ${context.proxySettings.getProxySelector()}")
+            context.logger.info("proxy selector: ${context.proxySettings.getProxySelector()}")
             builder.proxySelector(context.proxySettings.getProxySelector()!!)
         }
 
@@ -133,7 +133,7 @@ open class CoderRestClient(
 
         retroRestClient =
             Retrofit.Builder().baseUrl(url.toString()).client(httpClient)
-                .addConverterFactory(MoshiConverterFactory.create(moshi))
+                .addConverterFactory(MoshiConverterFactory.create(moshi).asLenient())
                 .build().create(CoderV2RestFacade::class.java)
     }
 
