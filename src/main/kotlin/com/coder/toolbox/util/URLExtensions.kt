@@ -12,18 +12,31 @@ fun String.validateStrictWebUrl(): WebUrlValidationResult = try {
     val uri = URI(this)
 
     when {
-        uri.isOpaque -> Invalid("$this is opaque, instead of hierarchical")
-        !uri.isAbsolute -> Invalid("$this is relative, it must be absolute")
+        uri.isOpaque -> Invalid(
+            "The URL \"$this\" is invalid because it is not in the standard format. " +
+                    "Please enter a full web address like \"https://example.com\""
+        )
+
+        !uri.isAbsolute -> Invalid(
+            "The URL \"$this\" is missing a scheme (like https://). " +
+                    "Please enter a full web address like \"https://example.com\""
+        )
         uri.scheme?.lowercase() !in setOf("http", "https") ->
-            Invalid("Scheme for $this must be either http or https")
-
+            Invalid(
+                "The URL \"$this\" must start with http:// or https://, not \"${uri.scheme}\""
+            )
         uri.authority.isNullOrBlank() ->
-            Invalid("$this does not have a hostname")
-
+            Invalid(
+                "The URL \"$this\" does not include a valid website name. " +
+                        "Please enter a full web address like \"https://example.com\""
+            )
         else -> Valid
     }
-} catch (e: Exception) {
-    Invalid(e.message ?: "$this could not be parsed as a URI reference")
+} catch (_: Exception) {
+    Invalid(
+        "The input \"$this\" is not a valid web address. " +
+                "Please enter a full web address like \"https://example.com\""
+    )
 }
 
 fun URL.withPath(path: String): URL = URL(

@@ -78,7 +78,7 @@ internal class URLExtensionsTest {
         val url = "/bin/coder-linux-amd64"
         val result = url.validateStrictWebUrl()
         assertEquals(
-            WebUrlValidationResult.Invalid("$url is relative, it must be absolute"),
+            WebUrlValidationResult.Invalid("The URL \"/bin/coder-linux-amd64\" is missing a scheme (like https://). Please enter a full web address like \"https://example.com\""),
             result
         )
     }
@@ -88,7 +88,7 @@ internal class URLExtensionsTest {
         val url = "mailto:user@coder.com"
         val result = url.validateStrictWebUrl()
         assertEquals(
-            WebUrlValidationResult.Invalid("$url is opaque, instead of hierarchical"),
+            WebUrlValidationResult.Invalid("The URL \"mailto:user@coder.com\" is invalid because it is not in the standard format. Please enter a full web address like \"https://example.com\""),
             result
         )
     }
@@ -98,7 +98,7 @@ internal class URLExtensionsTest {
         val url = "ftp://coder.com"
         val result = url.validateStrictWebUrl()
         assertEquals(
-            WebUrlValidationResult.Invalid("Scheme for $url must be either http or https"),
+            WebUrlValidationResult.Invalid("The URL \"ftp://coder.com\" must start with http:// or https://, not \"ftp\""),
             result
         )
     }
@@ -108,7 +108,7 @@ internal class URLExtensionsTest {
         val url = "http:///bin/coder-linux-amd64"
         val result = url.validateStrictWebUrl()
         assertEquals(
-            WebUrlValidationResult.Invalid("$url does not have a hostname"),
+            WebUrlValidationResult.Invalid("The URL \"http:///bin/coder-linux-amd64\" does not include a valid website name. Please enter a full web address like \"https://example.com\""),
             result
         )
     }
@@ -118,7 +118,7 @@ internal class URLExtensionsTest {
         val url = "http://[invalid-uri]"
         val result = url.validateStrictWebUrl()
         assertEquals(
-            WebUrlValidationResult.Invalid("Malformed IPv6 address at index 8: $url"),
+            WebUrlValidationResult.Invalid("The input \"http://[invalid-uri]\" is not a valid web address. Please enter a full web address like \"https://example.com\""),
             result
         )
     }
@@ -128,7 +128,7 @@ internal class URLExtensionsTest {
         val url = "http//coder.com"
         val result = url.validateStrictWebUrl()
         assertEquals(
-            WebUrlValidationResult.Invalid("http//coder.com is relative, it must be absolute"),
+            WebUrlValidationResult.Invalid("The URL \"http//coder.com\" is missing a scheme (like https://). Please enter a full web address like \"https://example.com\""),
             result
         )
     }
@@ -138,7 +138,7 @@ internal class URLExtensionsTest {
         val url = "http:coder.com"
         val result = url.validateStrictWebUrl()
         assertEquals(
-            WebUrlValidationResult.Invalid("http:coder.com is opaque, instead of hierarchical"),
+            WebUrlValidationResult.Invalid("The URL \"http:coder.com\" is invalid because it is not in the standard format. Please enter a full web address like \"https://example.com\""),
             result
         )
     }
@@ -148,7 +148,7 @@ internal class URLExtensionsTest {
         val url = "https:/coder.com"
         val result = url.validateStrictWebUrl()
         assertEquals(
-            WebUrlValidationResult.Invalid("https:/coder.com does not have a hostname"),
+            WebUrlValidationResult.Invalid("The URL \"https:/coder.com\" does not include a valid website name. Please enter a full web address like \"https://example.com\""),
             result
         )
     }
