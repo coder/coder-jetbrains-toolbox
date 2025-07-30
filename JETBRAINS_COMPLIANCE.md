@@ -39,8 +39,6 @@ This configuration includes JetBrains-specific rules that check for:
 - **ForbiddenImport**: Detects potentially bundled libraries
 - **Standard code quality rules**: Complexity, naming, performance, etc.
 
-
-
 ## CI/CD Integration
 
 The GitHub Actions workflow `.github/workflows/jetbrains-compliance.yml` runs compliance checks on every PR and push.
@@ -54,8 +52,6 @@ The GitHub Actions workflow `.github/workflows/jetbrains-compliance.yml` runs co
 # View HTML report
 open build/reports/detekt/detekt.html
 ```
-
-
 
 ## Understanding Results
 
