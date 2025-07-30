@@ -2,7 +2,9 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.settings.SignatureFallbackStrategy
+import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.coder.toolbox.util.toURL
+import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
@@ -69,15 +71,10 @@ class DeploymentUrlStep(
 
     override fun onNext(): Boolean {
         context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
-        var url = urlField.textState.value
+        val url = urlField.textState.value
         if (url.isBlank()) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return false
-        }
-        url = if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            "https://$url"
-        } else {
-            url
         }
         try {
             CoderCliSetupContext.url = validateRawUrl(url)
@@ -98,6 +95,10 @@ class DeploymentUrlStep(
      */
     private fun validateRawUrl(url: String): URL {
         try {
+            val result = url.validateStrictWebUrl()
+            if (result is Invalid) {
+                throw MalformedURLException(result.reason)
+            }
             return url.toURL()
         } catch (e: Exception) {
             throw MalformedURLException(e.message)

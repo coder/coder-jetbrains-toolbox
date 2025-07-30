@@ -9,6 +9,7 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
@@ -105,6 +106,11 @@ open class CoderProtocolHandler(
         val deploymentURL = params.url() ?: askUrl()
         if (deploymentURL.isNullOrBlank()) {
             context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$URL\" is missing from URI")
+            return null
+        }
+        val validationResult = deploymentURL.validateStrictWebUrl()
+        if (validationResult is Invalid) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
             return null
         }
         return deploymentURL
