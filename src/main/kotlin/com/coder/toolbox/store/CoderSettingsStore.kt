@@ -38,6 +38,8 @@ class CoderSettingsStore(
     override val defaultURL: String get() = store[DEFAULT_URL] ?: "https://dev.coder.com"
     override val binarySource: String? get() = store[BINARY_SOURCE]
     override val binaryDirectory: String? get() = store[BINARY_DIRECTORY]
+    override val disableSignatureVerification: Boolean
+        get() = store[DISABLE_SIGNATURE_VALIDATION]?.toBooleanStrictOrNull() ?: false
     override val fallbackOnCoderForSignatures: SignatureFallbackStrategy
         get() = SignatureFallbackStrategy.fromValue(store[FALLBACK_ON_CODER_FOR_SIGNATURES])
     override val defaultCliBinaryNameByOsAndArch: String get() = getCoderCLIForOS(getOS(), getArch())
@@ -164,6 +166,10 @@ class CoderSettingsStore(
 
     fun updateEnableDownloads(shouldEnableDownloads: Boolean) {
         store[ENABLE_DOWNLOADS] = shouldEnableDownloads.toString()
+    }
+
+    fun updateDisableSignatureVerification(shouldDisableSignatureVerification: Boolean) {
+        store[DISABLE_SIGNATURE_VALIDATION] = shouldDisableSignatureVerification.toString()
     }
 
     fun updateSignatureFallbackStrategy(fallback: Boolean) {
