@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- support for skipping CLI signature verification
+
 ### Changed
 
 - URL validation is stricter in the connection screen and URI protocol handler
