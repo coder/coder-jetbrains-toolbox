@@ -10,6 +10,8 @@ internal const val BINARY_SOURCE = "binarySource"
 
 internal const val BINARY_DIRECTORY = "binaryDirectory"
 
+internal const val DISABLE_SIGNATURE_VALIDATION = "disableSignatureValidation"
+
 internal const val FALLBACK_ON_CODER_FOR_SIGNATURES = "signatureFallbackStrategy"
 
 internal const val BINARY_NAME = "binaryName"

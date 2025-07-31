@@ -6,6 +6,7 @@ import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.UiField
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +21,7 @@ import kotlinx.coroutines.launch
  * TODO@JB: There is no scroll, and our settings do not fit.  As a consequence,
  *          I have not been able to test this page.
  */
-class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<Boolean>) :
+class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConfig: Channel<Boolean>) :
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
     private val settings = context.settingsStore.readOnly()
 
@@ -33,6 +34,11 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
         TextField(context.i18n.ptrl("Data directory"), settings.dataDirectory ?: "", TextType.General)
     private val enableDownloadsField =
         CheckboxField(settings.enableDownloads, context.i18n.ptrl("Enable downloads"))
+
+    private val disableSignatureVerificationField = CheckboxField(
+        settings.disableSignatureVerification,
+        context.i18n.ptrl("Disable Coder CLI signature verification")
+    )
     private val signatureFallbackStrategyField =
         CheckboxField(
             settings.fallbackOnCoderForSignatures.isAllowed(),
@@ -65,13 +71,14 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
     private val networkInfoDirField =
         TextField(context.i18n.ptrl("SSH network metrics directory"), settings.networkInfoDir, TextType.General)
 
-
+    private lateinit var visibilityUpdateJob: Job
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
         listOf(
             binarySourceField,
             enableDownloadsField,
             binaryDirectoryField,
             enableBinaryDirectoryFallbackField,
+            disableSignatureVerificationField,
             signatureFallbackStrategyField,
             dataDirectoryField,
             headerCommandField,
@@ -94,6 +101,7 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
                 context.settingsStore.updateBinaryDirectory(binaryDirectoryField.contentState.value)
                 context.settingsStore.updateDataDirectory(dataDirectoryField.contentState.value)
                 context.settingsStore.updateEnableDownloads(enableDownloadsField.checkedState.value)
+                context.settingsStore.updateDisableSignatureVerification(disableSignatureVerificationField.checkedState.value)
                 context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
                 context.settingsStore.updateBinaryDirectoryFallback(enableBinaryDirectoryFallbackField.checkedState.value)
                 context.settingsStore.updateHeaderCommand(headerCommandField.contentState.value)
@@ -182,5 +190,19 @@ class CoderSettingsPage(context: CoderToolboxContext, triggerSshConfig: Channel<
         networkInfoDirField.contentState.update {
             settings.networkInfoDir
         }
+
+        visibilityUpdateJob = context.cs.launch {
+            disableSignatureVerificationField.checkedState.collect { state ->
+                signatureFallbackStrategyField.visibility.update {
+                    // the fallback checkbox should not be visible
+                    // if signature verification is disabled
+                    !state
+                }
+            }
+        }
+    }
+
+    override fun afterHide() {
+        visibilityUpdateJob.cancel()
     }
 }

@@ -1,7 +1,6 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.settings.SignatureFallbackStrategy
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
@@ -41,7 +40,7 @@ class DeploymentUrlStep(
 
     override val panel: RowGroup
         get() {
-            if (context.settingsStore.fallbackOnCoderForSignatures == SignatureFallbackStrategy.NOT_CONFIGURED) {
+            if (!context.settingsStore.disableSignatureVerification) {
                 return RowGroup(
                     RowGroup.RowField(urlField),
                     RowGroup.RowField(emptyLine),
