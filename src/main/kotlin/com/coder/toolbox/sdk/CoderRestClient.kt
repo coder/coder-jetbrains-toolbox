@@ -3,6 +3,7 @@ package com.coder.toolbox.sdk
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.convertors.ArchConverter
 import com.coder.toolbox.sdk.convertors.InstantConverter
+import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.sdk.convertors.OSConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
@@ -133,7 +134,12 @@ open class CoderRestClient(
 
         retroRestClient =
             Retrofit.Builder().baseUrl(url.toString()).client(httpClient)
-                .addConverterFactory(MoshiConverterFactory.create(moshi).asLenient())
+                .addConverterFactory(
+                    LoggingConverterFactory.wrap(
+                        context,
+                        MoshiConverterFactory.create(moshi).asLenient()
+                    )
+                )
                 .build().create(CoderV2RestFacade::class.java)
     }
 
