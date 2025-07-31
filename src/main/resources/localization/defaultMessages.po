@@ -165,3 +165,6 @@ msgstr ""
 
 msgid "Run anyway"
 msgstr ""
+
+msgid "Disable Coder CLI signature verification"
+msgstr ""

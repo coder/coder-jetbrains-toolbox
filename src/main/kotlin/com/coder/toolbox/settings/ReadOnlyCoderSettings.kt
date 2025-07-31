@@ -29,7 +29,12 @@ interface ReadOnlyCoderSettings {
     val binaryDirectory: String?
 
     /**
-     * Controls whether we fall back release.coder.com
+     * Controls whether we verify the cli signature
+     */
+    val disableSignatureVerification: Boolean
+
+    /**
+     * Controls whether we fall back on release.coder.com for signatures if signature validation is enabled
      */
     val fallbackOnCoderForSignatures: SignatureFallbackStrategy
 
