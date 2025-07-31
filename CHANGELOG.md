@@ -9,6 +9,7 @@
 ### Changed
 
 - URL validation is stricter in the connection screen and URI protocol handler
+- the http client has relaxed syntax rules when deserializing JSON responses
 
 ## 0.6.0 - 2025-07-25
 
