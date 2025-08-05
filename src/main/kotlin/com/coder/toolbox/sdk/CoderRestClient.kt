@@ -7,6 +7,7 @@ import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.sdk.convertors.OSConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.sdk.interceptors.LoggingInterceptor
 import com.coder.toolbox.sdk.v2.CoderV2RestFacade
 import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
 import com.coder.toolbox.sdk.v2.models.BuildInfo
@@ -130,6 +131,7 @@ open class CoderRestClient(
                     }
                     it.proceed(request)
                 }
+                .addInterceptor(LoggingInterceptor(context))
                 .build()
 
         retroRestClient =

@@ -10,6 +10,7 @@
 
 - URL validation is stricter in the connection screen and URI protocol handler
 - the http client has relaxed syntax rules when deserializing JSON responses
+- support for verbose logging a sanitized version of the REST API request and responses
 
 ## 0.6.0 - 2025-07-25
 
