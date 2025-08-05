@@ -1,8 +1,14 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.settings.HttpLoggingVerbosity.BASIC
+import com.coder.toolbox.settings.HttpLoggingVerbosity.BODY
+import com.coder.toolbox.settings.HttpLoggingVerbosity.HEADERS
+import com.coder.toolbox.settings.HttpLoggingVerbosity.NONE
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
+import com.jetbrains.toolbox.api.ui.components.ComboBoxField
+import com.jetbrains.toolbox.api.ui.components.ComboBoxField.LabelledValue
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.UiField
@@ -44,6 +50,18 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
             settings.fallbackOnCoderForSignatures.isAllowed(),
             context.i18n.ptrl("Verify binary signature using releases.coder.com when CLI signatures are not available from the deployment")
         )
+
+    private val httpLoggingField = ComboBoxField(
+        ComboBoxField.Label(context.i18n.ptrl("HTTP logging level:")),
+        settings.httpClientLogLevel,
+        listOf(
+            LabelledValue(context.i18n.ptrl("None"), NONE, listOf("" to "No logs")),
+            LabelledValue(context.i18n.ptrl("Basic"), BASIC, listOf("" to "Method, URL and status")),
+            LabelledValue(context.i18n.ptrl("Header"), HEADERS, listOf("" to " Basic + sanitized headers")),
+            LabelledValue(context.i18n.ptrl("Body"), BODY, listOf("" to "Headers + body content")),
+        )
+    )
+
     private val enableBinaryDirectoryFallbackField =
         CheckboxField(
             settings.enableBinaryDirectoryFallback,
@@ -80,6 +98,7 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
             enableBinaryDirectoryFallbackField,
             disableSignatureVerificationField,
             signatureFallbackStrategyField,
+            httpLoggingField,
             dataDirectoryField,
             headerCommandField,
             tlsCertPathField,
@@ -103,6 +122,7 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
                 context.settingsStore.updateEnableDownloads(enableDownloadsField.checkedState.value)
                 context.settingsStore.updateDisableSignatureVerification(disableSignatureVerificationField.checkedState.value)
                 context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
+                context.settingsStore.updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
                 context.settingsStore.updateBinaryDirectoryFallback(enableBinaryDirectoryFallbackField.checkedState.value)
                 context.settingsStore.updateHeaderCommand(headerCommandField.contentState.value)
                 context.settingsStore.updateCertPath(tlsCertPathField.contentState.value)

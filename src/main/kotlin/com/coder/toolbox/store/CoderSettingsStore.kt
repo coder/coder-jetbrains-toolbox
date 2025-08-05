@@ -182,6 +182,11 @@ class CoderSettingsStore(
         }
     }
 
+    fun updateHttpClientLogLevel(level: HttpLoggingVerbosity?) {
+        if (level == null) return
+        store[HTTP_CLIENT_LOG_LEVEL] = level.toString()
+    }
+
     fun updateBinaryDirectoryFallback(shouldEnableBinDirFallback: Boolean) {
         store[ENABLE_BINARY_DIR_FALLBACK] = shouldEnableBinDirFallback.toString()
     }
