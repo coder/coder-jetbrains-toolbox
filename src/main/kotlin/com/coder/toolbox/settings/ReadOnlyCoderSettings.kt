@@ -39,6 +39,11 @@ interface ReadOnlyCoderSettings {
     val fallbackOnCoderForSignatures: SignatureFallbackStrategy
 
     /**
+     * Controls the logging for the rest client.
+     */
+    val httpClientLogLevel: HttpLoggingVerbosity
+
+    /**
      * Default CLI binary name based on OS and architecture
      */
     val defaultCliBinaryNameByOsAndArch: String
@@ -214,6 +219,34 @@ enum class SignatureFallbackStrategy {
             "allow" -> ALLOW
             "forbidden" -> FORBIDDEN
             else -> NOT_CONFIGURED
+        }
+    }
+}
+
+enum class HttpLoggingVerbosity {
+    NONE,
+
+    /**
+     * Logs URL, method, and status
+     */
+    BASIC,
+
+    /**
+     * Logs BASIC + sanitized headers
+     */
+    HEADERS,
+
+    /**
+     * Logs HEADERS + body content
+     */
+    BODY;
+
+    companion object {
+        fun fromValue(value: String?): HttpLoggingVerbosity = when (value?.lowercase(getDefault())) {
+            "basic" -> BASIC
+            "headers" -> HEADERS
+            "body" -> BODY
+            else -> NONE
         }
     }
 }
