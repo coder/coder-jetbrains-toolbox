@@ -139,7 +139,7 @@ open class CoderRestClient(
                 .addConverterFactory(
                     LoggingConverterFactory.wrap(
                         context,
-                        MoshiConverterFactory.create(moshi).asLenient()
+                        MoshiConverterFactory.create(moshi)
                     )
                 )
                 .build().create(CoderV2RestFacade::class.java)
