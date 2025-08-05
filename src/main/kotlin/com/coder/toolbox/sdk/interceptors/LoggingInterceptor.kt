@@ -5,139 +5,116 @@ import com.coder.toolbox.settings.HttpLoggingVerbosity
 import okhttp3.Headers
 import okhttp3.Interceptor
 import okhttp3.MediaType
+import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okio.Buffer
 import java.nio.charset.StandardCharsets
 
+private val SENSITIVE_HEADERS = setOf("Coder-Session-Token", "Proxy-Authorization")
+
 class LoggingInterceptor(private val context: CoderToolboxContext) : Interceptor {
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val logLevel = context.settingsStore.httpClientLogLevel
         if (logLevel == HttpLoggingVerbosity.NONE) {
             return chain.proceed(chain.request())
         }
+
         val request = chain.request()
-        val requestLog = StringBuilder()
-        requestLog.append("request --> ${request.method} ${request.url}\n")
-        if (logLevel == HttpLoggingVerbosity.HEADERS) {
-            requestLog.append(request.headers.toSanitizedString())
-        }
-        if (logLevel == HttpLoggingVerbosity.BODY) {
-            request.body.toPrintableString()?.let {
-                requestLog.append(it)
-            }
-        }
-        context.logger.info(requestLog.toString())
+        logRequest(request, logLevel)
 
         val response = chain.proceed(request)
-        val responseLog = StringBuilder()
-        responseLog.append("response <-- ${response.code} ${response.message} ${request.url}\n")
-        if (logLevel == HttpLoggingVerbosity.HEADERS) {
-            responseLog.append(response.headers.toSanitizedString())
-        }
-        if (logLevel == HttpLoggingVerbosity.BODY) {
-            response.body.toPrintableString()?.let {
-                responseLog.append(it)
-            }
-        }
+        logResponse(response, request, logLevel)
 
-        context.logger.info(responseLog.toString())
         return response
     }
 
-    private fun Headers.toSanitizedString(): String {
-        val result = StringBuilder()
-        this.forEach {
-            if (it.first == "Coder-Session-Token" || it.first == "Proxy-Authorization") {
-                result.append("${it.first}: <redacted>\n")
-            } else {
-                result.append("${it.first}: ${it.second}\n")
+    private fun logRequest(request: Request, logLevel: HttpLoggingVerbosity) {
+        val log = buildString {
+            append("request --> ${request.method} ${request.url}")
+
+            if (logLevel >= HttpLoggingVerbosity.HEADERS) {
+                append("\n${request.headers.sanitized()}")
+            }
+
+            if (logLevel == HttpLoggingVerbosity.BODY) {
+                request.body?.let { body ->
+                    append("\n${body.toPrintableString()}")
+                }
             }
         }
-        return result.toString()
+
+        context.logger.info(log)
     }
 
-    /**
-     * Converts a RequestBody to a printable string representation.
-     * Handles different content types appropriately.
-     *
-     * @return String representation of the body, or metadata if not readable
-     */
-    fun RequestBody?.toPrintableString(): String? {
-        if (this == null) {
-            return null
+    private fun logResponse(response: Response, request: Request, logLevel: HttpLoggingVerbosity) {
+        val log = buildString {
+            append("response <-- ${response.code} ${response.message} ${request.url}")
+
+            if (logLevel >= HttpLoggingVerbosity.HEADERS) {
+                append("\n${response.headers.sanitized()}")
+            }
+
+            if (logLevel == HttpLoggingVerbosity.BODY) {
+                response.body?.let { body ->
+                    append("\n${body.toPrintableString()}")
+                }
+            }
         }
 
-        if (!contentType().isPrintable()) {
-            return "[Binary request body: ${contentLength().formatBytes()}, Content-Type: ${contentType()}]\n"
-        }
+        context.logger.info(log)
+    }
+}
 
-        return try {
-            val buffer = Buffer()
-            writeTo(buffer)
+// Extension functions for cleaner code
+private fun Headers.sanitized(): String = buildString {
+    this@sanitized.forEach { (name, value) ->
+        val displayValue = if (name in SENSITIVE_HEADERS) "<redacted>" else value
+        append("$name: $displayValue\n")
+    }
+}
 
-            val charset = contentType()?.charset() ?: StandardCharsets.UTF_8
-            buffer.readString(charset)
-        } catch (e: Exception) {
-            "[Error reading request body: ${e.message}]\n"
-        }
+private fun RequestBody.toPrintableString(): String {
+    if (!contentType().isPrintable()) {
+        return "[Binary body: ${contentLength().formatBytes()}, ${contentType()}]"
     }
 
-    /**
-     * Converts a ResponseBody to a printable string representation.
-     * Handles different content types appropriately.
-     *
-     * @return String representation of the body, or metadata if not readable
-     */
-    fun ResponseBody?.toPrintableString(): String? {
-        if (this == null) {
-            return null
-        }
+    return try {
+        val buffer = Buffer()
+        writeTo(buffer)
+        buffer.readString(contentType()?.charset() ?: StandardCharsets.UTF_8)
+    } catch (e: Exception) {
+        "[Error reading body: ${e.message}]"
+    }
+}
 
-        if (!contentType().isPrintable()) {
-            return "[Binary response body: ${contentLength().formatBytes()}, Content-Type: ${contentType()}]\n"
-        }
-
-        return try {
-            val source = source()
-            source.request(Long.MAX_VALUE)
-            val charset = contentType()?.charset() ?: StandardCharsets.UTF_8
-            source.buffer.clone().readString(charset)
-        } catch (e: Exception) {
-            "[Error reading response body: ${e.message}]\n"
-        }
+private fun ResponseBody.toPrintableString(): String {
+    if (!contentType().isPrintable()) {
+        return "[Binary body: ${contentLength().formatBytes()}, ${contentType()}]"
     }
 
-    /**
-     * Checks if a MediaType represents printable/readable content
-     */
-    private fun MediaType?.isPrintable(): Boolean {
-        if (this == null) return false
-
-        return when {
-            // Text types
-            type == "text" -> true
-
-            // JSON variants
-            subtype == "json" -> true
-            subtype.endsWith("+json") -> true
-
-            // Default to non-printable for safety
-            else -> false
-        }
+    return try {
+        val source = source()
+        source.request(Long.MAX_VALUE)
+        source.buffer.clone().readString(contentType()?.charset() ?: StandardCharsets.UTF_8)
+    } catch (e: Exception) {
+        "[Error reading body: ${e.message}]"
     }
+}
 
-    /**
-     * Formats byte count in human-readable format
-     */
-    private fun Long.formatBytes(): String {
-        return when {
-            this < 0 -> "unknown size"
-            this < 1024 -> "${this}B"
-            this < 1024 * 1024 -> "${this / 1024}KB"
-            this < 1024 * 1024 * 1024 -> "${this / (1024 * 1024)}MB"
-            else -> "${this / (1024 * 1024 * 1024)}GB"
-        }
-    }
+private fun MediaType?.isPrintable(): Boolean = when {
+    this == null -> false
+    type == "text" -> true
+    subtype == "json" || subtype.endsWith("+json") -> true
+    else -> false
+}
+
+private fun Long.formatBytes(): String = when {
+    this < 0 -> "unknown"
+    this < 1024 -> "${this}B"
+    this < 1024 * 1024 -> "${this / 1024}KB"
+    this < 1024 * 1024 * 1024 -> "${this / (1024 * 1024)}MB"
+    else -> "${this / (1024 * 1024 * 1024)}GB"
 }
