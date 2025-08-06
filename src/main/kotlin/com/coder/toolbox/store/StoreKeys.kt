@@ -14,6 +14,8 @@ internal const val DISABLE_SIGNATURE_VALIDATION = "disableSignatureValidation"
 
 internal const val FALLBACK_ON_CODER_FOR_SIGNATURES = "signatureFallbackStrategy"
 
+internal const val HTTP_CLIENT_LOG_LEVEL = "httpClientLogLevel"
+
 internal const val BINARY_NAME = "binaryName"
 
 internal const val DATA_DIRECTORY = "dataDirectory"

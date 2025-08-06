@@ -3,9 +3,11 @@ package com.coder.toolbox.sdk
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.convertors.ArchConverter
 import com.coder.toolbox.sdk.convertors.InstantConverter
+import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.sdk.convertors.OSConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.sdk.interceptors.LoggingInterceptor
 import com.coder.toolbox.sdk.v2.CoderV2RestFacade
 import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
 import com.coder.toolbox.sdk.v2.models.BuildInfo
@@ -74,10 +76,10 @@ open class CoderRestClient(
         var builder = OkHttpClient.Builder()
 
         if (context.proxySettings.getProxy() != null) {
-            context.logger.debug("proxy: ${context.proxySettings.getProxy()}")
+            context.logger.info("proxy: ${context.proxySettings.getProxy()}")
             builder.proxy(context.proxySettings.getProxy())
         } else if (context.proxySettings.getProxySelector() != null) {
-            context.logger.debug("proxy selector: ${context.proxySettings.getProxySelector()}")
+            context.logger.info("proxy selector: ${context.proxySettings.getProxySelector()}")
             builder.proxySelector(context.proxySettings.getProxySelector()!!)
         }
 
@@ -129,11 +131,17 @@ open class CoderRestClient(
                     }
                     it.proceed(request)
                 }
+                .addInterceptor(LoggingInterceptor(context))
                 .build()
 
         retroRestClient =
             Retrofit.Builder().baseUrl(url.toString()).client(httpClient)
-                .addConverterFactory(MoshiConverterFactory.create(moshi))
+                .addConverterFactory(
+                    LoggingConverterFactory.wrap(
+                        context,
+                        MoshiConverterFactory.create(moshi)
+                    )
+                )
                 .build().create(CoderV2RestFacade::class.java)
     }
 

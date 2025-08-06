@@ -1,6 +1,7 @@
 package com.coder.toolbox.store
 
 import com.coder.toolbox.settings.Environment
+import com.coder.toolbox.settings.HttpLoggingVerbosity
 import com.coder.toolbox.settings.ReadOnlyCoderSettings
 import com.coder.toolbox.settings.ReadOnlyTLSSettings
 import com.coder.toolbox.settings.SignatureFallbackStrategy
@@ -42,6 +43,8 @@ class CoderSettingsStore(
         get() = store[DISABLE_SIGNATURE_VALIDATION]?.toBooleanStrictOrNull() ?: false
     override val fallbackOnCoderForSignatures: SignatureFallbackStrategy
         get() = SignatureFallbackStrategy.fromValue(store[FALLBACK_ON_CODER_FOR_SIGNATURES])
+    override val httpClientLogLevel: HttpLoggingVerbosity
+        get() = HttpLoggingVerbosity.fromValue(store[HTTP_CLIENT_LOG_LEVEL])
     override val defaultCliBinaryNameByOsAndArch: String get() = getCoderCLIForOS(getOS(), getArch())
     override val binaryName: String get() = store[BINARY_NAME] ?: getCoderCLIForOS(getOS(), getArch())
     override val defaultSignatureNameByOsAndArch: String get() = getCoderSignatureForOS(getOS(), getArch())
@@ -177,6 +180,11 @@ class CoderSettingsStore(
             true -> SignatureFallbackStrategy.ALLOW.toString()
             else -> SignatureFallbackStrategy.FORBIDDEN.toString()
         }
+    }
+
+    fun updateHttpClientLogLevel(level: HttpLoggingVerbosity?) {
+        if (level == null) return
+        store[HTTP_CLIENT_LOG_LEVEL] = level.toString()
     }
 
     fun updateBinaryDirectoryFallback(shouldEnableBinDirFallback: Boolean) {

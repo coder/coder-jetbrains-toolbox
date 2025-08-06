@@ -168,3 +168,15 @@ msgstr ""
 
 msgid "Disable Coder CLI signature verification"
 msgstr ""
+
+msgid "None"
+msgstr ""
+
+msgid "Basic"
+msgstr ""
+
+msgid "Headers"
+msgstr ""
+
+msgid "Body"
+msgstr ""
