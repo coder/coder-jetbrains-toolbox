@@ -257,6 +257,64 @@ via Toolbox App Menu > About > Show log files.
 Alternatively, you can generate a ZIP file using the Workspace action menu, available either on the main
 Workspaces page in Coder or within the individual workspace view, under the option labeled _Collect logs_.
 
+### HTTP Request Logging
+
+The Coder Toolbox plugin includes comprehensive HTTP request logging capabilities to help diagnose API communication
+issues with Coder deployments.
+This feature allows you to monitor all HTTP requests and responses made by the plugin.
+
+#### Configuring HTTP Logging
+
+You can configure HTTP logging verbosity through the Coder Settings page:
+
+1. Navigate to the Coder Workspaces page
+2. Click on the deployment action menu (three dots)
+3. Select "Settings"
+4. Find the "HTTP logging level" dropdown
+
+#### Available Logging Levels
+
+The plugin supports four levels of HTTP logging verbosity:
+
+- **None**: No HTTP request/response logging (default)
+- **Basic**: Logs HTTP method, URL, and response status code
+- **Headers**: Logs basic information plus sanitized request and response headers
+- **Body**: Logs headers plus request and response body content
+
+#### Log Output Format
+
+HTTP logs follow this format:
+
+```
+request --> GET https://your-coder-deployment.com/api/v2/users/me
+User-Agent: Coder Toolbox/1.0.0 (darwin; amd64)
+Coder-Session-Token: <redacted>
+
+response <-- 200 https://your-coder-deployment.com/api/v2/users/me
+Content-Type: application/json
+Content-Length: 245
+
+{"id":"12345678-1234-1234-1234-123456789012","username":"coder","email":"coder@example.com"}
+```
+
+#### Use Cases
+
+HTTP logging is particularly useful for:
+
+- **API Debugging**: Diagnosing issues with Coder API communication
+- **Authentication Problems**: Troubleshooting token or certificate authentication issues
+- **Network Issues**: Identifying connectivity problems with Coder deployments
+- **Performance Analysis**: Monitoring request/response times and payload sizes
+
+#### Troubleshooting with HTTP Logs
+
+When reporting issues, include HTTP logs to help diagnose:
+
+1. **Authentication Failures**: Check for 401/403 responses and token headers
+2. **Network Connectivity**: Look for connection timeouts or DNS resolution issues
+3. **API Compatibility**: Verify request/response formats match expected API versions
+4. **Proxy Issues**: Monitor proxy authentication and routing problems
+
 ## Coder Settings
 
 The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data
