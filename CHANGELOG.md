@@ -11,6 +11,10 @@
 - URL validation is stricter in the connection screen and URI protocol handler
 - support for verbose logging a sanitized version of the REST API request and responses
 
+### Fixed
+
+- remote IDE reconnects automatically after plugin upgrade
+
 ## 0.6.0 - 2025-07-25
 
 ### Changed
