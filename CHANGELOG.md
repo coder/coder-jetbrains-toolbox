@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.1 - 2025-08-11
+
 ### Added
 
 - support for skipping CLI signature verification
