@@ -51,6 +51,13 @@ class CoderDownloadService(
 
         return when (response.code()) {
             HTTP_OK -> {
+                val contentType = response.headers()["Content-Type"]?.lowercase()
+                if (contentType?.startsWith("application/octet-stream") != true) {
+                    throw ResponseException(
+                        "Invalid content type '$contentType' when downloading CLI from $remoteBinaryURL. Expected application/octet-stream.",
+                        response.code()
+                    )
+                }
                 context.logger.info("Downloading binary to temporary $cliTempDst")
                 response.saveToDisk(cliTempDst, showTextProgress, buildVersion)?.makeExecutable()
                 DownloadResult.Downloaded(remoteBinaryURL, cliTempDst)
