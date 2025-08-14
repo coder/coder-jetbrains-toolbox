@@ -54,8 +54,8 @@ class CoderRemoteProvider(
 
     private val settings = context.settingsStore.readOnly()
 
-    // Create our services from the Toolbox ones.
     private val triggerSshConfig = Channel<Boolean>(Channel.CONFLATED)
+    private val triggerProviderVisible = Channel<Boolean>(Channel.CONFLATED)
     private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig)
     private val dialogUi = DialogUi(context)
 
@@ -177,12 +177,17 @@ class CoderRemoteProvider(
 
             select {
                 onTimeout(POLL_INTERVAL) {
-                    context.logger.trace("workspace poller waked up by the $POLL_INTERVAL timeout")
+                    context.logger.debug("workspace poller waked up by the $POLL_INTERVAL timeout")
                 }
                 triggerSshConfig.onReceive { shouldTrigger ->
                     if (shouldTrigger) {
-                        context.logger.trace("workspace poller waked up because it should reconfigure the ssh configurations")
+                        context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
                         cli.configSsh(lastEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
+                    }
+                }
+                triggerProviderVisible.onReceive { isCoderProviderVisible ->
+                    if (isCoderProviderVisible) {
+                        context.logger.debug("workspace poller waked up by Coder Toolbox which is currently visible, fetching latest workspace statuses")
                     }
                 }
             }
@@ -292,6 +297,11 @@ class CoderRemoteProvider(
     override fun setVisible(visibility: ProviderVisibilityState) {
         visibilityState.update {
             visibility
+        }
+        if (visibility.providerVisible) {
+            context.cs.launch {
+                triggerProviderVisible.send(true)
+            }
         }
     }
 

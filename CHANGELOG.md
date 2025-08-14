@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- workspaces status is now refresh every time Coder Toolbox becomes visible
+
 ## 0.6.2 - 2025-08-14
 
 ### Changed
