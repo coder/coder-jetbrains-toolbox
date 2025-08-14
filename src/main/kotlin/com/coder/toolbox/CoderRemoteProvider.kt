@@ -177,17 +177,17 @@ class CoderRemoteProvider(
 
             select {
                 onTimeout(POLL_INTERVAL) {
-                    context.logger.trace("workspace poller waked up by the $POLL_INTERVAL timeout")
+                    context.logger.debug("workspace poller waked up by the $POLL_INTERVAL timeout")
                 }
                 triggerSshConfig.onReceive { shouldTrigger ->
                     if (shouldTrigger) {
-                        context.logger.trace("workspace poller waked up because it should reconfigure the ssh configurations")
+                        context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
                         cli.configSsh(lastEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
                     }
                 }
                 triggerProviderVisible.onReceive { isCoderProviderVisible ->
                     if (isCoderProviderVisible) {
-                        context.logger.info("workspace poller waked up, Coder Toolbox is currently visible, fetching latest workspace statuses")
+                        context.logger.debug("workspace poller waked up, Coder Toolbox is currently visible, fetching latest workspace statuses")
                     }
                 }
             }
