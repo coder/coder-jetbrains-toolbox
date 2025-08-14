@@ -187,7 +187,7 @@ class CoderRemoteProvider(
                 }
                 triggerProviderVisible.onReceive { isCoderProviderVisible ->
                     if (isCoderProviderVisible) {
-                        context.logger.debug("workspace poller waked up, Coder Toolbox is currently visible, fetching latest workspace statuses")
+                        context.logger.debug("workspace poller waked up by Coder Toolbox which is currently visible, fetching latest workspace statuses")
                     }
                 }
             }
