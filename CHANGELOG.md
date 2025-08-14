@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.2 - 2025-08-14
+
 ### Changed
 
 - content-type is now enforced when downloading the CLI to accept only binary responses
