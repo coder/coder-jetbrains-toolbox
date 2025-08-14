@@ -137,6 +137,7 @@ internal class CoderCLIManagerTest {
             }
 
             val body = response.toByteArray()
+            exchange.responseHeaders["Content-Type"] = "application/octet-stream"
             exchange.sendResponseHeaders(code, if (code == HttpURLConnection.HTTP_OK) body.size.toLong() else -1)
             exchange.responseBody.write(body)
             exchange.close()
@@ -197,11 +198,11 @@ internal class CoderCLIManagerTest {
         val ccm = CoderCLIManager(
             context.copy(
                 settingsStore = CoderSettingsStore(
-                pluginTestSettingsStore(
-                    DATA_DIRECTORY to tmpdir.resolve("cli-dir-fail-to-write").toString(),
-                ),
-                Environment(),
-                context.logger
+                    pluginTestSettingsStore(
+                        DATA_DIRECTORY to tmpdir.resolve("cli-dir-fail-to-write").toString(),
+                    ),
+                    Environment(),
+                    context.logger
                 )
             ),
             url
@@ -307,11 +308,11 @@ internal class CoderCLIManagerTest {
         val ccm = CoderCLIManager(
             context.copy(
                 settingsStore = CoderSettingsStore(
-                pluginTestSettingsStore(
-                    DATA_DIRECTORY to tmpdir.resolve("does-not-exist").toString(),
-                ),
-                Environment(),
-                context.logger
+                    pluginTestSettingsStore(
+                        DATA_DIRECTORY to tmpdir.resolve("does-not-exist").toString(),
+                    ),
+                    Environment(),
+                    context.logger
                 )
             ),
             URL("https://foo")
@@ -329,12 +330,12 @@ internal class CoderCLIManagerTest {
         val ccm = CoderCLIManager(
             context.copy(
                 settingsStore = CoderSettingsStore(
-                pluginTestSettingsStore(
-                    FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
-                    DATA_DIRECTORY to tmpdir.resolve("overwrite-cli").toString(),
-                ),
-                Environment(),
-                context.logger
+                    pluginTestSettingsStore(
+                        FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
+                        DATA_DIRECTORY to tmpdir.resolve("overwrite-cli").toString(),
+                    ),
+                    Environment(),
+                    context.logger
                 )
             ),
             url
