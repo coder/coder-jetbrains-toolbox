@@ -1,13 +1,10 @@
 package com.coder.toolbox.sdk
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.sdk.interceptors.LoggingInterceptor
+import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.coderSocketFactory
 import com.coder.toolbox.util.coderTrustManagers
-import com.coder.toolbox.util.getArch
-import com.coder.toolbox.util.getHeaders
-import com.coder.toolbox.util.getOS
 import com.jetbrains.toolbox.api.remoteDev.connection.ProxyAuth
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
@@ -53,36 +50,16 @@ object CoderHttpClientBuilder {
             if (token.isNullOrBlank()) {
                 throw IllegalStateException("Token is required for $url deployment")
             }
-            builder = builder.addInterceptor {
-                it.proceed(
-                    it.request().newBuilder().addHeader("Coder-Session-Token", token).build()
-                )
-            }
+            builder = builder.addInterceptor(Interceptors.tokenAuth(token))
         }
 
         return builder
             .sslSocketFactory(socketFactory, trustManagers[0] as X509TrustManager)
             .hostnameVerifier(CoderHostnameVerifier(settings.tls.altHostname))
             .retryOnConnectionFailure(true)
-            .addInterceptor {
-                it.proceed(
-                    it.request().newBuilder().addHeader(
-                        "User-Agent",
-                        "Coder Toolbox/$pluginVersion (${getOS()}; ${getArch()})",
-                    ).build(),
-                )
-            }
-            .addInterceptor {
-                var request = it.request()
-                val headers = getHeaders(url, settings.headerCommand)
-                if (headers.isNotEmpty()) {
-                    val reqBuilder = request.newBuilder()
-                    headers.forEach { h -> reqBuilder.addHeader(h.key, h.value) }
-                    request = reqBuilder.build()
-                }
-                it.proceed(request)
-            }
-            .addInterceptor(LoggingInterceptor(context))
+            .addInterceptor(Interceptors.userAgent(pluginVersion))
+            .addInterceptor(Interceptors.externalHeaders(context, url))
+            .addInterceptor(Interceptors.logging(context))
             .build()
     }
 }
