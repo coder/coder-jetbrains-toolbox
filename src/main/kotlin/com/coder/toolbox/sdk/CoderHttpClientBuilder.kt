@@ -1,22 +1,19 @@
 package com.coder.toolbox.sdk
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.coderSocketFactory
 import com.coder.toolbox.util.coderTrustManagers
 import com.jetbrains.toolbox.api.remoteDev.connection.ProxyAuth
 import okhttp3.Credentials
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
-import java.net.URL
 import javax.net.ssl.X509TrustManager
 
 object CoderHttpClientBuilder {
     fun build(
         context: CoderToolboxContext,
-        pluginVersion: String,
-        url: URL,
-        token: String?,
+        interceptors: List<Interceptor>
     ): OkHttpClient {
         val settings = context.settingsStore.readOnly()
 
@@ -46,20 +43,14 @@ object CoderHttpClientBuilder {
                 .build()
         }
 
-        if (context.settingsStore.requireTokenAuth) {
-            if (token.isNullOrBlank()) {
-                throw IllegalStateException("Token is required for $url deployment")
-            }
-            builder = builder.addInterceptor(Interceptors.tokenAuth(token))
-        }
-
-        return builder
-            .sslSocketFactory(socketFactory, trustManagers[0] as X509TrustManager)
+        builder.sslSocketFactory(socketFactory, trustManagers[0] as X509TrustManager)
             .hostnameVerifier(CoderHostnameVerifier(settings.tls.altHostname))
             .retryOnConnectionFailure(true)
-            .addInterceptor(Interceptors.userAgent(pluginVersion))
-            .addInterceptor(Interceptors.externalHeaders(context, url))
-            .addInterceptor(Interceptors.logging(context))
-            .build()
+
+        interceptors.forEach { interceptor ->
+            builder.addInterceptor(interceptor)
+
+        }
+        return builder.build()
     }
 }

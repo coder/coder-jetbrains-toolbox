@@ -7,6 +7,7 @@ import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.sdk.convertors.OSConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.sdk.v2.CoderV2RestFacade
 import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
 import com.coder.toolbox.sdk.v2.models.BuildInfo
@@ -59,12 +60,21 @@ open class CoderRestClient(
                 .add(OSConverter())
                 .add(UUIDConverter())
                 .build()
+        val interceptors = buildList {
+            if (context.settingsStore.requireTokenAuth) {
+                if (token.isNullOrBlank()) {
+                    throw IllegalStateException("Token is required for $url deployment")
+                }
+                add(Interceptors.tokenAuth(token))
+            }
+            add((Interceptors.userAgent(pluginVersion)))
+            add(Interceptors.externalHeaders(context, url))
+            add(Interceptors.logging(context))
+        }
 
         httpClient = CoderHttpClientBuilder.build(
             context,
-            pluginVersion,
-            url,
-            token
+            interceptors
         )
 
         retroRestClient =
