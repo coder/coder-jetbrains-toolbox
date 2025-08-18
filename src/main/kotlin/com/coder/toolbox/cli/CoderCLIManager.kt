@@ -12,14 +12,14 @@ import com.coder.toolbox.cli.gpg.GPGVerifier
 import com.coder.toolbox.cli.gpg.VerificationResult
 import com.coder.toolbox.cli.gpg.VerificationResult.Failed
 import com.coder.toolbox.cli.gpg.VerificationResult.Invalid
+import com.coder.toolbox.plugin.PluginManager
+import com.coder.toolbox.sdk.CoderHttpClientBuilder
+import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.settings.SignatureFallbackStrategy.ALLOW
-import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.SemVer
-import com.coder.toolbox.util.coderSocketFactory
-import com.coder.toolbox.util.coderTrustManagers
 import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.escapeSubcommand
 import com.coder.toolbox.util.safeHost
@@ -29,7 +29,6 @@ import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import org.zeroturnaround.exec.ProcessExecutor
 import retrofit2.Retrofit
 import java.io.EOFException
@@ -37,7 +36,6 @@ import java.io.FileNotFoundException
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
-import javax.net.ssl.X509TrustManager
 
 /**
  * Version output from the CLI's version command.
@@ -148,13 +146,14 @@ class CoderCLIManager(
     val coderConfigPath: Path = context.settingsStore.dataDir(deploymentURL).resolve("config")
 
     private fun createDownloadService(): CoderDownloadService {
-        val okHttpClient = OkHttpClient.Builder()
-            .sslSocketFactory(
-                coderSocketFactory(context.settingsStore.tls),
-                coderTrustManagers(context.settingsStore.tls.caPath)[0] as X509TrustManager
-            )
-            .hostnameVerifier(CoderHostnameVerifier(context.settingsStore.tls.altHostname))
-            .build()
+        val interceptors = buildList {
+            add((Interceptors.userAgent(PluginManager.pluginInfo.version)))
+            add(Interceptors.logging(context))
+        }
+        val okHttpClient = CoderHttpClientBuilder.build(
+            context,
+            interceptors
+        )
 
         val retrofit = Retrofit.Builder()
             .baseUrl(deploymentURL.toString())

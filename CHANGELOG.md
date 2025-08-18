@@ -6,6 +6,10 @@
 
 - workspaces status is now refresh every time Coder Toolbox becomes visible
 
+### Fixed
+
+- support for downloading the CLI when proxy is configured
+
 ## 0.6.2 - 2025-08-14
 
 ### Changed
