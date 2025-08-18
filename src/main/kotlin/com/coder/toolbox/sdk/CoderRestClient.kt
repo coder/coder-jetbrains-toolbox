@@ -7,7 +7,6 @@ import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.sdk.convertors.OSConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
-import com.coder.toolbox.sdk.interceptors.LoggingInterceptor
 import com.coder.toolbox.sdk.v2.CoderV2RestFacade
 import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
 import com.coder.toolbox.sdk.v2.models.BuildInfo
@@ -21,15 +20,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
-import com.coder.toolbox.util.CoderHostnameVerifier
-import com.coder.toolbox.util.coderSocketFactory
-import com.coder.toolbox.util.coderTrustManagers
-import com.coder.toolbox.util.getArch
-import com.coder.toolbox.util.getHeaders
-import com.coder.toolbox.util.getOS
-import com.jetbrains.toolbox.api.remoteDev.connection.ProxyAuth
 import com.squareup.moshi.Moshi
-import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import retrofit2.Response
 import retrofit2.Retrofit
@@ -37,7 +28,6 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
-import javax.net.ssl.X509TrustManager
 
 /**
  * An HTTP client that can make requests to the Coder API.
@@ -50,7 +40,6 @@ open class CoderRestClient(
     val token: String?,
     private val pluginVersion: String = "development",
 ) {
-    private val settings = context.settingsStore.readOnly()
     private lateinit var moshi: Moshi
     private lateinit var httpClient: OkHttpClient
     private lateinit var retroRestClient: CoderV2RestFacade
@@ -71,68 +60,12 @@ open class CoderRestClient(
                 .add(UUIDConverter())
                 .build()
 
-        val socketFactory = coderSocketFactory(settings.tls)
-        val trustManagers = coderTrustManagers(settings.tls.caPath)
-        var builder = OkHttpClient.Builder()
-
-        if (context.proxySettings.getProxy() != null) {
-            context.logger.info("proxy: ${context.proxySettings.getProxy()}")
-            builder.proxy(context.proxySettings.getProxy())
-        } else if (context.proxySettings.getProxySelector() != null) {
-            context.logger.info("proxy selector: ${context.proxySettings.getProxySelector()}")
-            builder.proxySelector(context.proxySettings.getProxySelector()!!)
-        }
-
-        // Note: This handles only HTTP/HTTPS proxy authentication.
-        // SOCKS5 proxy authentication is currently not supported due to limitations described in:
-        // https://youtrack.jetbrains.com/issue/TBX-14532/Missing-proxy-authentication-settings#focus=Comments-27-12265861.0-0
-        builder.proxyAuthenticator { _, response ->
-            val proxyAuth = context.proxySettings.getProxyAuth()
-            if (proxyAuth == null || proxyAuth !is ProxyAuth.Basic) {
-                return@proxyAuthenticator null
-            }
-            val credentials = Credentials.basic(proxyAuth.username, proxyAuth.password)
-            response.request.newBuilder()
-                .header("Proxy-Authorization", credentials)
-                .build()
-        }
-
-        if (context.settingsStore.requireTokenAuth) {
-            if (token.isNullOrBlank()) {
-                throw IllegalStateException("Token is required for $url deployment")
-            }
-            builder = builder.addInterceptor {
-                it.proceed(
-                    it.request().newBuilder().addHeader("Coder-Session-Token", token).build()
-                )
-            }
-        }
-
-        httpClient =
-            builder
-                .sslSocketFactory(socketFactory, trustManagers[0] as X509TrustManager)
-                .hostnameVerifier(CoderHostnameVerifier(settings.tls.altHostname))
-                .retryOnConnectionFailure(true)
-                .addInterceptor {
-                    it.proceed(
-                        it.request().newBuilder().addHeader(
-                            "User-Agent",
-                            "Coder Toolbox/$pluginVersion (${getOS()}; ${getArch()})",
-                        ).build(),
-                    )
-                }
-                .addInterceptor {
-                    var request = it.request()
-                    val headers = getHeaders(url, settings.headerCommand)
-                    if (headers.isNotEmpty()) {
-                        val reqBuilder = request.newBuilder()
-                        headers.forEach { h -> reqBuilder.addHeader(h.key, h.value) }
-                        request = reqBuilder.build()
-                    }
-                    it.proceed(request)
-                }
-                .addInterceptor(LoggingInterceptor(context))
-                .build()
+        httpClient = CoderHttpClientBuilder.build(
+            context,
+            pluginVersion,
+            url,
+            token
+        )
 
         retroRestClient =
             Retrofit.Builder().baseUrl(url.toString()).client(httpClient)
