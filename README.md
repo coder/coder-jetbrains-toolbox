@@ -220,6 +220,27 @@ mitmweb --ssl-insecure --set stream_large_bodies="10m" --mode socks5
 >
 in: https://youtrack.jetbrains.com/issue/TBX-14532/Missing-proxy-authentication-settings#focus=Comments-27-12265861.0-0
 
+### Mitmproxy returns 502 Bad Gateway to the client
+
+When running traffic through mitmproxy, you may encounter 502 Bad Gateway errors that mention HTTP/2 protocol error: *
+*Received header value surrounded by whitespace**.
+This happens because some upstream servers (including dev.coder.com) send back headers such as Content-Security-Policy
+with leading or trailing spaces.
+While browsers and many HTTP clients accept these headers, mitmproxy enforces the stricter HTTP/2 and HTTP/1.1 RFCs,
+which forbid whitespace around header values.
+As a result, mitmproxy rejects the response and surfaces a 502 to the client.
+
+The workaround is to disable HTTP/2 in mitmproxy and force HTTP/1.1 on both the client and upstream sides. This avoids
+the strict header validation path and allows
+mitmproxy to pass responses through unchanged. You can do this by starting mitmproxy with:
+
+```bash
+mitmproxy --set http2=false --set upstream_http_version=HTTP/1.1
+```
+
+This ensures coder toolbox http client ↔ mitmproxy ↔ server connections all run over HTTP/1.1, preventing the whitespace
+error.
+
 ## Debugging and Reporting issues
 
 Enabling debug logging is essential for diagnosing issues with the Toolbox plugin, especially when SSH

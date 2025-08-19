@@ -35,6 +35,7 @@ import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
+import com.jetbrains.toolbox.api.remoteDev.connection.ProxyAuth
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
@@ -52,6 +53,8 @@ import org.zeroturnaround.exec.InvalidExitValueException
 import org.zeroturnaround.exec.ProcessInitException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.ProxySelector
 import java.net.URI
 import java.net.URL
 import java.nio.file.AccessDeniedException
@@ -87,8 +90,17 @@ internal class CoderCLIManagerTest {
             mockk<Logger>(relaxed = true)
         ),
         mockk<CoderSecretsStore>(),
-        mockk<ToolboxProxySettings>()
-    )
+        object : ToolboxProxySettings {
+            override fun getProxy(): Proxy? = null
+            override fun getProxySelector(): ProxySelector? = null
+            override fun getProxyAuth(): ProxyAuth? = null
+
+            override fun addProxyChangeListener(listener: Runnable) {
+            }
+
+            override fun removeProxyChangeListener(listener: Runnable) {
+            }
+        })
 
     @BeforeTest
     fun setup() {
@@ -547,11 +559,10 @@ internal class CoderCLIManagerTest {
                     context.logger,
                 )
 
-            val ccm =
-                CoderCLIManager(
-                    context.copy(settingsStore = settings),
-                    it.url ?: URI.create("https://test.coder.invalid").toURL()
-                )
+            val ccm = CoderCLIManager(
+                context.copy(settingsStore = settings),
+                it.url ?: URI.create("https://test.coder.invalid").toURL()
+            )
 
             val sshConfigPath = Path.of(settings.sshConfigPath)
             // Input is the configuration that we start with, if any.
