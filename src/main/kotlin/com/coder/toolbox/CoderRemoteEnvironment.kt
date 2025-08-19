@@ -277,8 +277,8 @@ class CoderRemoteEnvironment(
             override val cancelButtonText: String = "Cancel"
             override val confirmButtonText: String = "Delete"
             override val message: String =
-                if (wsRawStatus.canStop()) "Workspace will be closed and all the information will be lost, including all files, unsaved changes, historical info and usage data."
-                else "All the information in this workspace will be lost, including all files, unsaved changes, historical info and usage data."
+                if (wsRawStatus.canStop()) "This will close the workspace and remove all its information, including files, unsaved changes, history, and usage data."
+                else "This will remove all information from the workspace, including files, unsaved changes, history, and usage data."
             override val title: String = if (wsRawStatus.canStop()) "Delete running workspace?" else "Delete workspace?"
         }
     }

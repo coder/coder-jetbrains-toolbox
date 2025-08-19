@@ -5,6 +5,7 @@
 ### Changed
 
 - workspaces status is now refresh every time Coder Toolbox becomes visible
+- improved workspace delete confirmation dialog
 
 ### Fixed
 
