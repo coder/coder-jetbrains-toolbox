@@ -58,12 +58,14 @@ abstract class CoderPage(
 class Action(
     description: LocalizableString,
     closesPage: Boolean = false,
+    highlightInRed: Boolean = false,
     enabled: () -> Boolean = { true },
     private val actionBlock: () -> Unit,
 ) : RunnableActionDescription {
     override val label: LocalizableString = description
     override val shouldClosePage: Boolean = closesPage
     override val isEnabled: Boolean = enabled()
+    override val isDangerous: Boolean = highlightInRed
     override fun run() {
         actionBlock()
     }

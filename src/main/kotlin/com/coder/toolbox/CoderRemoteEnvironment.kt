@@ -145,7 +145,7 @@ class CoderRemoteEnvironment(
             })
         }
         actions.add(CoderDelimiter(context.i18n.pnotr("")))
-        actions.add(Action(context.i18n.ptrl("Delete workspace")) {
+        actions.add(Action(context.i18n.ptrl("Delete workspace"), highlightInRed = true) {
             context.cs.launch {
                 val confirmation = context.ui.showTextInputPopup(
                     if (wsRawStatus.canStop()) context.i18n.ptrl("Delete running workspace?") else context.i18n.ptrl("Delete workspace?"),
