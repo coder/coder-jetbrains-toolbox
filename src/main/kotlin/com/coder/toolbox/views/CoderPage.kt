@@ -4,6 +4,7 @@ import com.coder.toolbox.CoderToolboxContext
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.localization.LocalizableString
+import com.jetbrains.toolbox.api.ui.actions.ActionDelimiter
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,3 +68,5 @@ class Action(
         actionBlock()
     }
 }
+
+class CoderDelimiter(override val label: LocalizableString) : ActionDelimiter

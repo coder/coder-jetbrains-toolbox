@@ -11,6 +11,7 @@ import com.coder.toolbox.util.waitForTrue
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderCliSetupWizardPage
+import com.coder.toolbox.views.CoderDelimiter
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.NewEnvironmentPage
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
@@ -21,7 +22,6 @@ import com.jetbrains.toolbox.api.core.util.LoadableState
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
-import com.jetbrains.toolbox.api.ui.actions.ActionDelimiter
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -417,5 +417,3 @@ class CoderRemoteProvider(
         }
     }
 }
-
-private class CoderDelimiter(override val label: LocalizableString) : ActionDelimiter
