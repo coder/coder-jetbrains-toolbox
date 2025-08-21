@@ -147,10 +147,14 @@ class CoderRemoteEnvironment(
         actions.add(CoderDelimiter(context.i18n.pnotr("")))
         actions.add(Action(context.i18n.ptrl("Delete workspace"), highlightInRed = true) {
             context.cs.launch {
+                var dialogText =
+                    if (wsRawStatus.canStop()) "This will close the workspace and remove all its information, including files, unsaved changes, history, and usage data."
+                    else "This will remove all information from the workspace, including files, unsaved changes, history, and usage data."
+                dialogText += "\n\nType \"${workspace.name}\" below to confirm:"
+
                 val confirmation = context.ui.showTextInputPopup(
                     if (wsRawStatus.canStop()) context.i18n.ptrl("Delete running workspace?") else context.i18n.ptrl("Delete workspace?"),
-                    if (wsRawStatus.canStop()) context.i18n.ptrl("This will close the workspace and remove all its information, including files, unsaved changes, history, and usage data.")
-                    else context.i18n.ptrl("This will remove all information from the workspace, including files, unsaved changes, history, and usage data."),
+                    context.i18n.pnotr(dialogText),
                     context.i18n.ptrl("Workspace name"),
                     TextType.General,
                     context.i18n.ptrl("OK"),

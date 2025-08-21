@@ -187,11 +187,5 @@ msgstr ""
 msgid "Delete running workspace?"
 msgstr ""
 
-msgid "This will close the workspace and remove all its information, including files, unsaved changes, history, and usage data."
-msgstr ""
-
-msgid "This will remove all information from the workspace, including files, unsaved changes, history, and usage data."
-msgstr ""
-
 msgid "Workspace name"
 msgstr ""
