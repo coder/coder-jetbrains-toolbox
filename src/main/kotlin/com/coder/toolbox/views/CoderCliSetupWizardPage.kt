@@ -4,8 +4,6 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
-import com.coder.toolbox.util.toURL
-import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
@@ -48,13 +46,6 @@ class CoderCliSetupWizardPage(
     override val actionButtons: MutableStateFlow<List<RunnableActionDescription>> = MutableStateFlow(emptyList())
 
     private val errorBuffer = mutableListOf<Throwable>()
-
-    init {
-        if (shouldAutoSetup.value) {
-            CoderCliSetupContext.url = context.secrets.lastDeploymentURL.toURL()
-            CoderCliSetupContext.token = context.secrets.lastToken
-        }
-    }
 
     override fun beforeShow() {
         displaySteps()

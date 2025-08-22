@@ -43,7 +43,9 @@ internal class CoderProtocolHandlerTest {
     private val protocolHandler = CoderProtocolHandler(
         context,
         DialogUi(context),
-        MutableStateFlow(false)
+        MutableStateFlow(false),
+        visibilityState,
+        isInitialized
     )
 
     private val agents =

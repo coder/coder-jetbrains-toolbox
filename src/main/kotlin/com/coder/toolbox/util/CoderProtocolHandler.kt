@@ -10,10 +10,17 @@ import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
+import com.coder.toolbox.views.CoderCliSetupWizardPage
+import com.coder.toolbox.views.CoderSettingsPage
+import com.coder.toolbox.views.state.CoderCliSetupContext
+import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.coder.toolbox.views.state.WizardStep
+import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.withTimeout
@@ -25,12 +32,13 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
 
 private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
-private val noOpTextProgress: (String) -> Unit = { _ -> }
 
 @Suppress("UnstableApiUsage")
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
     private val dialogUi: DialogUi,
+    private val settingsPage: CoderSettingsPage,
+    private val visibilityState: MutableStateFlow<ProviderVisibilityState>,
     private val isInitialized: StateFlow<Boolean>,
 ) {
     private val settings = context.settingsStore.readOnly()
@@ -45,8 +53,6 @@ open class CoderProtocolHandler(
     suspend fun handle(
         uri: URI,
         shouldWaitForAutoLogin: Boolean,
-        markAsBusy: () -> Unit,
-        unmarkAsBusy: () -> Unit,
         reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
         val params = uri.toQueryParameters()
@@ -58,7 +64,6 @@ open class CoderProtocolHandler(
         // this switches to the main plugin screen, even
         // if last opened provider was not Coder
         context.envPageManager.showPluginEnvironmentsPage()
-        markAsBusy()
         if (shouldWaitForAutoLogin) {
             isInitialized.waitForTrue()
         }
@@ -67,13 +72,16 @@ open class CoderProtocolHandler(
         val deploymentURL = resolveDeploymentUrl(params) ?: return
         val token = if (!context.settingsStore.requireTokenAuth) null else resolveToken(params) ?: return
         val workspaceName = resolveWorkspaceName(params) ?: return
-        val restClient = buildRestClient(deploymentURL, token) ?: return
-        val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL) ?: return
 
-        val cli = configureCli(deploymentURL, restClient)
-
-        var agent: WorkspaceAgent
-        try {
+        suspend fun onConnect(
+            restClient: CoderRestClient,
+            cli: CoderCLIManager
+        ) {
+            val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL)
+            if (workspace == null) {
+                context.envPageManager.showPluginEnvironmentsPage()
+                return
+            }
             reInitialize(restClient, cli)
             context.envPageManager.showPluginEnvironmentsPage()
             if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
@@ -81,25 +89,30 @@ open class CoderProtocolHandler(
             // errors like: no agent available while workspace is starting or stopping
             // we also need to retrieve the workspace again to have the latest resources (ex: agent)
             // attached to the workspace.
-            agent = resolveAgent(
+            val agent: WorkspaceAgent = resolveAgent(
                 params,
                 restClient.workspace(workspace.id)
             ) ?: return
             if (!ensureAgentIsReady(workspace, agent)) return
-        } finally {
-            unmarkAsBusy()
-        }
-        delay(2.seconds)
-        val environmentId = "${workspace.name}.${agent.name}"
-        context.showEnvironmentPage(environmentId)
+            delay(2.seconds)
+            val environmentId = "${workspace.name}.${agent.name}"
+            context.showEnvironmentPage(environmentId)
 
-        val productCode = params.ideProductCode()
-        val buildNumber = params.ideBuildNumber()
-        val projectFolder = params.projectFolder()
+            val productCode = params.ideProductCode()
+            val buildNumber = params.ideBuildNumber()
+            val projectFolder = params.projectFolder()
 
-        if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
-            launchIde(environmentId, productCode, buildNumber, projectFolder)
+            if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
+                launchIde(environmentId, productCode, buildNumber, projectFolder)
+            }
         }
+
+        CoderCliSetupContext.apply {
+            url = deploymentURL.toURL()
+            CoderCliSetupContext.token = token
+        }
+        CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
+        context.ui.showUiPage(CoderCliSetupWizardPage(context, settingsPage, visibilityState, true, ::onConnect))
     }
 
     private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
@@ -308,13 +321,14 @@ open class CoderProtocolHandler(
 
     private suspend fun configureCli(
         deploymentURL: String,
-        restClient: CoderRestClient
+        restClient: CoderRestClient,
+        progressReporter: (String) -> Unit
     ): CoderCLIManager {
         val cli = ensureCLI(
             context,
             deploymentURL.toURL(),
             restClient.buildInfo().version,
-            noOpTextProgress
+            progressReporter
         )
 
         // We only need to log in if we are using token-based auth.

@@ -7,12 +7,14 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
+import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.waitForTrue
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderCliSetupWizardPage
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.NewEnvironmentPage
+import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
@@ -35,7 +37,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.net.URI
-import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -66,18 +67,17 @@ class CoderRemoteProvider(
     private var firstRun = true
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
     private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
-    private val linkHandler = CoderProtocolHandler(context, dialogUi, isInitialized)
-
-    override val loadingEnvironmentsDescription: LocalizableString = context.i18n.ptrl("Loading workspaces...")
-    override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
-        LoadableState.Loading
-    )
-
     private val visibilityState = MutableStateFlow(
         ProviderVisibilityState(
             applicationVisible = false,
             providerVisible = false
         )
+    )
+    private val linkHandler = CoderProtocolHandler(context, dialogUi, settingsPage, visibilityState, isInitialized)
+
+    override val loadingEnvironmentsDescription: LocalizableString = context.i18n.ptrl("Loading workspaces...")
+    override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
+        LoadableState.Loading
     )
 
     private val errorBuffer = mutableListOf<Throwable>()
@@ -311,17 +311,8 @@ class CoderRemoteProvider(
     override suspend fun handleUri(uri: URI) {
         try {
             linkHandler.handle(
-                uri, shouldDoAutoSetup(),
-                {
-                    coderHeaderPage.isBusyCreatingNewEnvironment.update {
-                        true
-                    }
-                },
-                {
-                    coderHeaderPage.isBusyCreatingNewEnvironment.update {
-                        false
-                    }
-                }
+                uri,
+                shouldDoAutoSetup()
             ) { restClient, cli ->
                 // stop polling and de-initialize resources
                 close()
@@ -337,23 +328,16 @@ class CoderRemoteProvider(
                 isInitialized.waitForTrue()
             }
         } catch (ex: Exception) {
-            context.logger.error(ex, "")
             val textError = if (ex is APIResponseException) {
                 if (!ex.reason.isNullOrBlank()) {
                     ex.reason
                 } else ex.message
             } else ex.message
-
-            context.ui.showSnackbar(
-                UUID.randomUUID().toString(),
-                context.i18n.ptrl("Error encountered while handling Coder URI"),
-                context.i18n.pnotr(textError ?: ""),
-                context.i18n.ptrl("Dismiss")
+            context.logAndShowError(
+                "Error encountered while handling Coder URI",
+                textError ?: ""
             )
-        } finally {
-            coderHeaderPage.isBusyCreatingNewEnvironment.update {
-                false
-            }
+            context.envPageManager.showPluginEnvironmentsPage()
         }
     }
 
@@ -369,6 +353,10 @@ class CoderRemoteProvider(
             // When coming back to the application, initializeSession immediately.
             if (shouldDoAutoSetup()) {
                 try {
+                    CoderCliSetupContext.apply {
+                        url = context.secrets.lastDeploymentURL.toURL()
+                        token = context.secrets.lastToken
+                    }
                     CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
                     return CoderCliSetupWizardPage(context, settingsPage, visibilityState, true, ::onConnect)
                 } catch (ex: Exception) {
