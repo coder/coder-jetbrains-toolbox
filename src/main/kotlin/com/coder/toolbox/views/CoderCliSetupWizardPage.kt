@@ -19,6 +19,7 @@ class CoderCliSetupWizardPage(
     private val settingsPage: CoderSettingsPage,
     private val visibilityState: MutableStateFlow<ProviderVisibilityState>,
     initialAutoSetup: Boolean = false,
+    jumpToMainPageOnError: Boolean = false,
     onConnect: suspend (
         client: CoderRestClient,
         cli: CoderCLIManager,
@@ -33,7 +34,8 @@ class CoderCliSetupWizardPage(
     private val tokenStep = TokenStep(context)
     private val connectStep = ConnectStep(
         context,
-        shouldAutoSetup,
+        shouldAutoLogin = shouldAutoSetup,
+        jumpToMainPageOnError,
         this::notify,
         this::displaySteps,
         onConnect

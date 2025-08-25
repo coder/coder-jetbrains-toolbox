@@ -358,7 +358,12 @@ class CoderRemoteProvider(
                         token = context.secrets.lastToken
                     }
                     CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
-                    return CoderCliSetupWizardPage(context, settingsPage, visibilityState, true, ::onConnect)
+                    return CoderCliSetupWizardPage(
+                        context, settingsPage, visibilityState,
+                        initialAutoSetup = true,
+                        jumpToMainPageOnError = false,
+                        onConnect = ::onConnect
+                    )
                 } catch (ex: Exception) {
                     errorBuffer.add(ex)
                 } finally {

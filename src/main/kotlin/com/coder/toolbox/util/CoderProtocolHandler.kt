@@ -112,7 +112,13 @@ open class CoderProtocolHandler(
             CoderCliSetupContext.token = token
         }
         CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
-        context.ui.showUiPage(CoderCliSetupWizardPage(context, settingsPage, visibilityState, true, ::onConnect))
+        context.ui.showUiPage(
+            CoderCliSetupWizardPage(
+                context, settingsPage, visibilityState, true,
+                jumpToMainPageOnError = true,
+                onConnect = ::onConnect
+            )
+        )
     }
 
     private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
@@ -467,12 +473,6 @@ open class CoderProtocolHandler(
             context.i18n.ptrl("Enter the full URL of your Coder deployment")
         )
     }
-}
-
-
-private fun CoderToolboxContext.popupPluginMainPage() {
-    this.ui.showWindow()
-    this.envPageManager.showPluginEnvironmentsPage(true)
 }
 
 private suspend fun CoderToolboxContext.showEnvironmentPage(envId: String) {

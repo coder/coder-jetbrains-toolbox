@@ -88,4 +88,9 @@ data class CoderToolboxContext(
             i18n.ptrl("OK")
         )
     }
+
+    fun popupPluginMainPage() {
+        this.ui.showWindow()
+        this.envPageManager.showPluginEnvironmentsPage(true)
+    }
 }
