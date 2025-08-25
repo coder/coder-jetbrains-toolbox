@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.3 - 2025-08-25
+
 ### Added
 
 - progress reporting while handling URIs
