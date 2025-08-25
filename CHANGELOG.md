@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- progress reporting while handling URIs
+
 ### Changed
 
 - workspaces status is now refresh every time Coder Toolbox becomes visible

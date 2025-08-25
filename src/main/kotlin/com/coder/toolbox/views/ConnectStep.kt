@@ -25,6 +25,7 @@ private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
 class ConnectStep(
     private val context: CoderToolboxContext,
     private val shouldAutoLogin: StateFlow<Boolean>,
+    private val jumpToMainPageOnError: Boolean,
     private val notify: (String, Throwable) -> Unit,
     private val refreshWizard: () -> Unit,
     private val onConnect: suspend (
@@ -127,7 +128,11 @@ class ConnectStep(
         } finally {
             if (shouldAutoLogin.value) {
                 CoderCliSetupContext.reset()
-                CoderCliSetupWizardState.goToFirstStep()
+                if (jumpToMainPageOnError) {
+                    context.popupPluginMainPage()
+                } else {
+                    CoderCliSetupWizardState.goToFirstStep()
+                }
             } else {
                 if (context.settingsStore.requireTokenAuth) {
                     CoderCliSetupWizardState.goToPreviousStep()

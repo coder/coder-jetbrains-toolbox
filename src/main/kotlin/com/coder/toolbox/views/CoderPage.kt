@@ -1,6 +1,5 @@
 package com.coder.toolbox.views
 
-import com.coder.toolbox.CoderToolboxContext
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.localization.LocalizableString
@@ -42,12 +41,6 @@ abstract class CoderPage(
         )
     } else {
         SvgIcon(byteArrayOf(), type = IconType.Masked)
-    }
-
-    override val isBusyCreatingNewEnvironment: MutableStateFlow<Boolean> = MutableStateFlow(false)
-
-    companion object {
-        fun emptyPage(ctx: CoderToolboxContext): UiPage = UiPage(ctx.i18n.pnotr(""))
     }
 }
 
