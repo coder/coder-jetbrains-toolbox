@@ -180,3 +180,12 @@ msgstr ""
 
 msgid "Body"
 msgstr ""
+
+msgid "Delete workspace"
+msgstr ""
+
+msgid "Delete running workspace?"
+msgstr ""
+
+msgid "Workspace name"
+msgstr ""
