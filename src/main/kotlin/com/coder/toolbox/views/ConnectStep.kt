@@ -85,7 +85,7 @@ class ConnectStep(
                 // allows interleaving with the back/cancel action
                 yield()
                 client.initializeSession()
-                statusField.textState.update { (context.i18n.ptrl("Checking Coder CLI...")) }
+                logAndReportProgress("Checking Coder CLI...")
                 val cli = ensureCLI(
                     context, client.url,
                     client.buildVersion
@@ -94,12 +94,12 @@ class ConnectStep(
                 }
                 // We only need to log in if we are using token-based auth.
                 if (context.settingsStore.requireTokenAuth) {
-                    statusField.textState.update { (context.i18n.ptrl("Configuring Coder CLI...")) }
+                    logAndReportProgress("Configuring Coder CLI...")
                     // allows interleaving with the back/cancel action
                     yield()
                     cli.login(client.token!!)
                 }
-                statusField.textState.update { (context.i18n.ptrl("Successfully configured ${CoderCliSetupContext.url!!.host}...")) }
+                logAndReportProgress("Successfully configured ${CoderCliSetupContext.url!!.host}...")
                 // allows interleaving with the back/cancel action
                 yield()
                 CoderCliSetupContext.reset()
@@ -117,6 +117,11 @@ class ConnectStep(
                 refreshWizard()
             }
         }
+    }
+
+    private fun logAndReportProgress(msg: String) {
+        context.logger.info(msg)
+        statusField.textState.update { context.i18n.pnotr(msg) }
     }
 
     override fun onNext(): Boolean {
