@@ -17,6 +17,7 @@ import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
@@ -354,7 +355,7 @@ open class CoderProtocolHandler(
         buildNumber: String,
         projectFolder: String?
     ) {
-        context.cs.launch {
+        context.cs.launch(CoroutineName("Launch Remote IDE")) {
             val selectedIde = selectAndInstallRemoteIde(productCode, buildNumber, environmentId) ?: return@launch
             context.logger.info("$productCode-$buildNumber is already on $environmentId. Going to launch JBClient")
             installJBClient(selectedIde, environmentId).join()
@@ -422,10 +423,11 @@ open class CoderProtocolHandler(
         return "$productCode-$buildNumber"
     }
 
-    private fun installJBClient(selectedIde: String, environmentId: String): Job = context.cs.launch {
-        context.logger.info("Downloading and installing JBClient counterpart to $selectedIde locally")
-        context.jbClientOrchestrator.prepareClient(environmentId, selectedIde)
-    }
+    private fun installJBClient(selectedIde: String, environmentId: String): Job =
+        context.cs.launch(CoroutineName("JBClient Installer")) {
+            context.logger.info("Downloading and installing JBClient counterpart to $selectedIde locally")
+            context.jbClientOrchestrator.prepareClient(environmentId, selectedIde)
+        }
 
     private fun launchJBClient(selectedIde: String, environmentId: String, projectFolder: String?) {
         context.logger.info("Launching $selectedIde on $environmentId")

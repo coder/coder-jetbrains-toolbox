@@ -9,6 +9,7 @@ import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -140,7 +141,7 @@ class CoderCliSetupWizardPage(
             } else ex.message
         } else ex.message
 
-        context.cs.launch {
+        context.cs.launch(CoroutineName("Coder Setup Visual Error Reporting")) {
             context.ui.showSnackbar(
                 UUID.randomUUID().toString(),
                 context.i18n.ptrl("Error encountered while setting up Coder"),

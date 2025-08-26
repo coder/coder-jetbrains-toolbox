@@ -10,6 +10,7 @@ import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -73,7 +74,7 @@ class ConnectStep(
             return
         }
         signInJob?.cancel()
-        signInJob = context.cs.launch {
+        signInJob = context.cs.launch(CoroutineName("Http and CLI Setup")) {
             try {
                 val client = CoderRestClient(
                     context,

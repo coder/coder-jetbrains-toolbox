@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- improved diagnose support
+
 ## 0.6.3 - 2025-08-25
 
 ### Added
