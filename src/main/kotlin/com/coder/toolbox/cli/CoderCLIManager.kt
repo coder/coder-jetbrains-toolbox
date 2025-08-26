@@ -315,6 +315,7 @@ class CoderCLIManager(
     ) {
         context.logger.info("Configuring SSH config at ${context.settingsStore.sshConfigPath}")
         writeSSHConfig(modifySSHConfig(readSSHConfig(), wsWithAgents, feats))
+        context.logger.info("Finished configuring SSH config")
     }
 
     /**
