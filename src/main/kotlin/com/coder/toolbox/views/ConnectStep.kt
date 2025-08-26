@@ -76,6 +76,7 @@ class ConnectStep(
         signInJob?.cancel()
         signInJob = context.cs.launch(CoroutineName("Http and CLI Setup")) {
             try {
+                context.logger.info("Setting up the HTTP client...")
                 val client = CoderRestClient(
                     context,
                     CoderCliSetupContext.url!!,
@@ -104,6 +105,7 @@ class ConnectStep(
                 yield()
                 CoderCliSetupContext.reset()
                 CoderCliSetupWizardState.goToFirstStep()
+                context.logger.info("Connection setup done, initializing the workspace poller...")
                 onConnect(client, cli)
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
@@ -130,6 +132,7 @@ class ConnectStep(
 
     override fun onBack() {
         try {
+            context.logger.info("Back button was pressed, cancelling in-progress connection setup...")
             signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
         } finally {
             if (shouldAutoLogin.value) {
