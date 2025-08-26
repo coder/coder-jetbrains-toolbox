@@ -11,6 +11,7 @@
 ### Changed
 
 - workspaces status is now refresh every time Coder Toolbox becomes visible
+- workspaces can no longer be removed by accident - users are now required to input the workspace name.
 
 ### Fixed
 

@@ -3,6 +3,7 @@ package com.coder.toolbox.views
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.localization.LocalizableString
+import com.jetbrains.toolbox.api.ui.actions.ActionDelimiter
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,13 +51,17 @@ abstract class CoderPage(
 class Action(
     description: LocalizableString,
     closesPage: Boolean = false,
+    highlightInRed: Boolean = false,
     enabled: () -> Boolean = { true },
     private val actionBlock: () -> Unit,
 ) : RunnableActionDescription {
     override val label: LocalizableString = description
     override val shouldClosePage: Boolean = closesPage
     override val isEnabled: Boolean = enabled()
+    override val isDangerous: Boolean = highlightInRed
     override fun run() {
         actionBlock()
     }
 }
+
+class CoderDelimiter(override val label: LocalizableString) : ActionDelimiter
