@@ -110,12 +110,12 @@ class ConnectStep(
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
                     notify("Connection to ${CoderCliSetupContext.url!!.host} was configured", ex)
-                    onBack()
+                    handleNavigation()
                     refreshWizard()
                 }
             } catch (ex: Exception) {
                 notify("Failed to configure ${CoderCliSetupContext.url!!.host}", ex)
-                onBack()
+                handleNavigation()
                 refreshWizard()
             }
         }
@@ -124,6 +124,26 @@ class ConnectStep(
     private fun logAndReportProgress(msg: String) {
         context.logger.info(msg)
         statusField.textState.update { context.i18n.pnotr(msg) }
+    }
+
+    /**
+     * Handle navigation logic for both errors and back button
+     */
+    private fun handleNavigation() {
+        if (shouldAutoLogin.value) {
+            CoderCliSetupContext.reset()
+            if (jumpToMainPageOnError) {
+                context.popupPluginMainPage()
+            } else {
+                CoderCliSetupWizardState.goToFirstStep()
+            }
+        } else {
+            if (context.settingsStore.requireTokenAuth) {
+                CoderCliSetupWizardState.goToPreviousStep()
+            } else {
+                CoderCliSetupWizardState.goToFirstStep()
+            }
+        }
     }
 
     override fun onNext(): Boolean {
@@ -135,20 +155,7 @@ class ConnectStep(
             context.logger.info("Back button was pressed, cancelling in-progress connection setup...")
             signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
         } finally {
-            if (shouldAutoLogin.value) {
-                CoderCliSetupContext.reset()
-                if (jumpToMainPageOnError) {
-                    context.popupPluginMainPage()
-                } else {
-                    CoderCliSetupWizardState.goToFirstStep()
-                }
-            } else {
-                if (context.settingsStore.requireTokenAuth) {
-                    CoderCliSetupWizardState.goToPreviousStep()
-                } else {
-                    CoderCliSetupWizardState.goToFirstStep()
-                }
-            }
+            handleNavigation()
         }
     }
 }
