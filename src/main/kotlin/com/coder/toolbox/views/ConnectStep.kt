@@ -10,13 +10,13 @@ import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
-import java.util.concurrent.CancellationException
 
 private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
 
