@@ -10,12 +10,13 @@ import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
-import java.util.concurrent.CancellationException
 
 private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
 
@@ -73,8 +74,9 @@ class ConnectStep(
             return
         }
         signInJob?.cancel()
-        signInJob = context.cs.launch {
+        signInJob = context.cs.launch(CoroutineName("Http and CLI Setup")) {
             try {
+                context.logger.info("Setting up the HTTP client...")
                 val client = CoderRestClient(
                     context,
                     CoderCliSetupContext.url!!,
@@ -84,7 +86,7 @@ class ConnectStep(
                 // allows interleaving with the back/cancel action
                 yield()
                 client.initializeSession()
-                statusField.textState.update { (context.i18n.ptrl("Checking Coder CLI...")) }
+                logAndReportProgress("Checking Coder CLI...")
                 val cli = ensureCLI(
                     context, client.url,
                     client.buildVersion
@@ -93,27 +95,53 @@ class ConnectStep(
                 }
                 // We only need to log in if we are using token-based auth.
                 if (context.settingsStore.requireTokenAuth) {
-                    statusField.textState.update { (context.i18n.ptrl("Configuring Coder CLI...")) }
+                    logAndReportProgress("Configuring Coder CLI...")
                     // allows interleaving with the back/cancel action
                     yield()
                     cli.login(client.token!!)
                 }
-                statusField.textState.update { (context.i18n.ptrl("Successfully configured ${CoderCliSetupContext.url!!.host}...")) }
+                logAndReportProgress("Successfully configured ${CoderCliSetupContext.url!!.host}...")
                 // allows interleaving with the back/cancel action
                 yield()
                 CoderCliSetupContext.reset()
                 CoderCliSetupWizardState.goToFirstStep()
+                context.logger.info("Connection setup done, initializing the workspace poller...")
                 onConnect(client, cli)
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
                     notify("Connection to ${CoderCliSetupContext.url!!.host} was configured", ex)
-                    onBack()
+                    handleNavigation()
                     refreshWizard()
                 }
             } catch (ex: Exception) {
                 notify("Failed to configure ${CoderCliSetupContext.url!!.host}", ex)
-                onBack()
+                handleNavigation()
                 refreshWizard()
+            }
+        }
+    }
+
+    private fun logAndReportProgress(msg: String) {
+        context.logger.info(msg)
+        statusField.textState.update { context.i18n.pnotr(msg) }
+    }
+
+    /**
+     * Handle navigation logic for both errors and back button
+     */
+    private fun handleNavigation() {
+        if (shouldAutoLogin.value) {
+            CoderCliSetupContext.reset()
+            if (jumpToMainPageOnError) {
+                context.popupPluginMainPage()
+            } else {
+                CoderCliSetupWizardState.goToFirstStep()
+            }
+        } else {
+            if (context.settingsStore.requireTokenAuth) {
+                CoderCliSetupWizardState.goToPreviousStep()
+            } else {
+                CoderCliSetupWizardState.goToFirstStep()
             }
         }
     }
@@ -124,22 +152,10 @@ class ConnectStep(
 
     override fun onBack() {
         try {
+            context.logger.info("Back button was pressed, cancelling in-progress connection setup...")
             signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
         } finally {
-            if (shouldAutoLogin.value) {
-                CoderCliSetupContext.reset()
-                if (jumpToMainPageOnError) {
-                    context.popupPluginMainPage()
-                } else {
-                    CoderCliSetupWizardState.goToFirstStep()
-                }
-            } else {
-                if (context.settingsStore.requireTokenAuth) {
-                    CoderCliSetupWizardState.goToPreviousStep()
-                } else {
-                    CoderCliSetupWizardState.goToFirstStep()
-                }
-            }
+            handleNavigation()
         }
     }
 }

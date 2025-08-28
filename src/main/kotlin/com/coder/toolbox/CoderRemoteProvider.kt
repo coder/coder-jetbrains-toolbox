@@ -26,6 +26,7 @@ import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
 import com.jetbrains.toolbox.api.ui.actions.ActionDelimiter
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -87,113 +88,114 @@ class CoderRemoteProvider(
      * workspace is added, reconfigure SSH using the provided cli (including the
      * first time).
      */
-    private fun poll(client: CoderRestClient, cli: CoderCLIManager): Job = context.cs.launch {
-        var lastPollTime = TimeSource.Monotonic.markNow()
-        while (isActive) {
-            try {
-                context.logger.debug("Fetching workspace agents from ${client.url}")
-                val resolvedEnvironments = client.workspaces().flatMap { ws ->
-                    // Agents are not included in workspaces that are off
-                    // so fetch them separately.
-                    when (ws.latestBuild.status) {
-                        WorkspaceStatus.RUNNING -> ws.latestBuild.resources
-                        else -> emptyList()
-                    }.ifEmpty {
-                        client.resources(ws)
-                    }.flatMap { resource ->
-                        resource.agents?.distinctBy {
-                            // There can be duplicates with coder_agent_instance.
-                            // TODO: Can we just choose one or do they hold
-                            //       different information?
-                            it.name
-                        }?.map { agent ->
-                            // If we have an environment already, update that.
-                            val env = CoderRemoteEnvironment(context, client, cli, ws, agent)
-                            lastEnvironments.firstOrNull { it == env }?.let {
-                                it.update(ws, agent)
-                                it
-                            } ?: env
-                        } ?: emptyList()
+    private fun poll(client: CoderRestClient, cli: CoderCLIManager): Job =
+        context.cs.launch(CoroutineName("Workspace Poller")) {
+            var lastPollTime = TimeSource.Monotonic.markNow()
+            while (isActive) {
+                try {
+                    context.logger.debug("Fetching workspace agents from ${client.url}")
+                    val resolvedEnvironments = client.workspaces().flatMap { ws ->
+                        // Agents are not included in workspaces that are off
+                        // so fetch them separately.
+                        when (ws.latestBuild.status) {
+                            WorkspaceStatus.RUNNING -> ws.latestBuild.resources
+                            else -> emptyList()
+                        }.ifEmpty {
+                            client.resources(ws)
+                        }.flatMap { resource ->
+                            resource.agents?.distinctBy {
+                                // There can be duplicates with coder_agent_instance.
+                                // TODO: Can we just choose one or do they hold
+                                //       different information?
+                                it.name
+                            }?.map { agent ->
+                                // If we have an environment already, update that.
+                                val env = CoderRemoteEnvironment(context, client, cli, ws, agent)
+                                lastEnvironments.firstOrNull { it == env }?.let {
+                                    it.update(ws, agent)
+                                    it
+                                } ?: env
+                            } ?: emptyList()
+                        }
+                    }.toSet()
+
+                    // In case we logged out while running the query.
+                    if (!isActive) {
+                        return@launch
                     }
-                }.toSet()
 
-                // In case we logged out while running the query.
-                if (!isActive) {
-                    return@launch
-                }
-
-                // Reconfigure if environments changed.
-                if (lastEnvironments.size != resolvedEnvironments.size || lastEnvironments != resolvedEnvironments) {
-                    context.logger.info("Workspaces have changed, reconfiguring CLI: $resolvedEnvironments")
-                    cli.configSsh(resolvedEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
-                }
-
-                environments.update {
-                    LoadableState.Value(resolvedEnvironments.toList())
-                }
-                if (!isInitialized.value) {
-                    context.logger.info("Environments for ${client.url} are now initialized")
-                    isInitialized.update {
-                        true
+                    // Reconfigure if environments changed.
+                    if (lastEnvironments.size != resolvedEnvironments.size || lastEnvironments != resolvedEnvironments) {
+                        context.logger.info("Workspaces have changed, reconfiguring CLI: $resolvedEnvironments")
+                        cli.configSsh(resolvedEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
                     }
-                }
-                lastEnvironments.apply {
-                    clear()
-                    addAll(resolvedEnvironments.sortedBy { it.id })
-                }
 
-                if (WorkspaceConnectionManager.shouldEstablishWorkspaceConnections) {
-                    WorkspaceConnectionManager.allConnected().forEach { wsId ->
-                        val env = lastEnvironments.firstOrNull() { it.id == wsId }
-                        if (env != null && !env.isConnected()) {
-                            context.logger.info("Establishing lost SSH connection for workspace with id $wsId")
-                            if (!env.startSshConnection()) {
-                                context.logger.info("Can't establish lost SSH connection for workspace with id $wsId")
-                            }
+                    environments.update {
+                        LoadableState.Value(resolvedEnvironments.toList())
+                    }
+                    if (!isInitialized.value) {
+                        context.logger.info("Environments for ${client.url} are now initialized")
+                        isInitialized.update {
+                            true
                         }
                     }
-                    WorkspaceConnectionManager.reset()
+                    lastEnvironments.apply {
+                        clear()
+                        addAll(resolvedEnvironments.sortedBy { it.id })
+                    }
+
+                    if (WorkspaceConnectionManager.shouldEstablishWorkspaceConnections) {
+                        WorkspaceConnectionManager.allConnected().forEach { wsId ->
+                            val env = lastEnvironments.firstOrNull() { it.id == wsId }
+                            if (env != null && !env.isConnected()) {
+                                context.logger.info("Establishing lost SSH connection for workspace with id $wsId")
+                                if (!env.startSshConnection()) {
+                                    context.logger.info("Can't establish lost SSH connection for workspace with id $wsId")
+                                }
+                            }
+                        }
+                        WorkspaceConnectionManager.reset()
+                    }
+
+                    WorkspaceConnectionManager.collectStatuses(lastEnvironments)
+                } catch (_: CancellationException) {
+                    context.logger.debug("${client.url} polling loop canceled")
+                    break
+                } catch (ex: Exception) {
+                    val elapsed = lastPollTime.elapsedNow()
+                    if (elapsed > POLL_INTERVAL * 2) {
+                        context.logger.info("wake-up from an OS sleep was detected")
+                    } else {
+                        context.logger.error(ex, "workspace polling error encountered")
+                        if (ex is APIResponseException && ex.isTokenExpired) {
+                            WorkspaceConnectionManager.shouldEstablishWorkspaceConnections = true
+                            close()
+                            context.envPageManager.showPluginEnvironmentsPage()
+                            errorBuffer.add(ex)
+                            break
+                        }
+                    }
                 }
 
-                WorkspaceConnectionManager.collectStatuses(lastEnvironments)
-            } catch (_: CancellationException) {
-                context.logger.debug("${client.url} polling loop canceled")
-                break
-            } catch (ex: Exception) {
-                val elapsed = lastPollTime.elapsedNow()
-                if (elapsed > POLL_INTERVAL * 2) {
-                    context.logger.info("wake-up from an OS sleep was detected")
-                } else {
-                    context.logger.error(ex, "workspace polling error encountered")
-                    if (ex is APIResponseException && ex.isTokenExpired) {
-                        WorkspaceConnectionManager.shouldEstablishWorkspaceConnections = true
-                        close()
-                        context.envPageManager.showPluginEnvironmentsPage()
-                        errorBuffer.add(ex)
-                        break
+                select {
+                    onTimeout(POLL_INTERVAL) {
+                        context.logger.debug("workspace poller waked up by the $POLL_INTERVAL timeout")
+                    }
+                    triggerSshConfig.onReceive { shouldTrigger ->
+                        if (shouldTrigger) {
+                            context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
+                            cli.configSsh(lastEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
+                        }
+                    }
+                    triggerProviderVisible.onReceive { isCoderProviderVisible ->
+                        if (isCoderProviderVisible) {
+                            context.logger.debug("workspace poller waked up by Coder Toolbox which is currently visible, fetching latest workspace statuses")
+                        }
                     }
                 }
+                lastPollTime = TimeSource.Monotonic.markNow()
             }
-
-            select {
-                onTimeout(POLL_INTERVAL) {
-                    context.logger.debug("workspace poller waked up by the $POLL_INTERVAL timeout")
-                }
-                triggerSshConfig.onReceive { shouldTrigger ->
-                    if (shouldTrigger) {
-                        context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
-                        cli.configSsh(lastEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
-                    }
-                }
-                triggerProviderVisible.onReceive { isCoderProviderVisible ->
-                    if (isCoderProviderVisible) {
-                        context.logger.debug("workspace poller waked up by Coder Toolbox which is currently visible, fetching latest workspace statuses")
-                    }
-                }
-            }
-            lastPollTime = TimeSource.Monotonic.markNow()
         }
-    }
 
     /**
      * Stop polling, clear the client and environments, then go back to the
@@ -221,7 +223,7 @@ class CoderRemoteProvider(
     override val additionalPluginActions: StateFlow<List<ActionDescription>> = MutableStateFlow(
         listOf(
             Action(context.i18n.ptrl("Create workspace")) {
-                context.cs.launch {
+                context.cs.launch(CoroutineName("Create Workspace Action")) {
                     context.desktop.browse(client?.url?.withPath("/templates").toString()) {
                         context.ui.showErrorInfoPopup(it)
                     }
@@ -299,7 +301,7 @@ class CoderRemoteProvider(
             visibility
         }
         if (visibility.providerVisible) {
-            context.cs.launch {
+            context.cs.launch(CoroutineName("Notify Plugin Visibility")) {
                 triggerProviderVisible.send(true)
             }
         }
@@ -396,11 +398,17 @@ class CoderRemoteProvider(
         context.secrets.lastDeploymentURL = client.url.toString()
         context.secrets.lastToken = client.token ?: ""
         context.secrets.storeTokenFor(client.url, context.secrets.lastToken)
+        context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
         this.client = client
-        pollJob?.cancel()
+        pollJob?.let {
+            it.cancel()
+            context.logger.info("Workspace poll job with reference ${pollJob} was canceled")
+        }
         environments.showLoadingMessage()
         coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
+        context.logger.info("Displaying ${client.url} in the UI")
         pollJob = poll(client, cli)
+        context.logger.info("Workspace poll job created with reference $pollJob")
         context.envPageManager.showPluginEnvironmentsPage()
     }
 

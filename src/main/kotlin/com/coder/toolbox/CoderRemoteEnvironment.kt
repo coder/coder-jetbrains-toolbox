@@ -24,6 +24,7 @@ import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
 import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.squareup.moshi.Moshi
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,7 +82,7 @@ class CoderRemoteEnvironment(
         val actions = mutableListOf<Action>()
         if (wsRawStatus.canStop()) {
             actions.add(Action(context.i18n.ptrl("Open web terminal")) {
-                context.cs.launch {
+                context.cs.launch(CoroutineName("Open Web Terminal Action")) {
                     context.desktop.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
                         context.ui.showErrorInfoPopup(it)
                     }
@@ -90,7 +91,7 @@ class CoderRemoteEnvironment(
         }
         actions.add(
             Action(context.i18n.ptrl("Open in dashboard")) {
-                context.cs.launch {
+                context.cs.launch(CoroutineName("Open in Dashboard Action")) {
                     context.desktop.browse(
                         client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()
                     ) {
@@ -100,7 +101,7 @@ class CoderRemoteEnvironment(
             })
 
         actions.add(Action(context.i18n.ptrl("View template")) {
-            context.cs.launch {
+            context.cs.launch(CoroutineName("View Template Action")) {
                 context.desktop.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
                     context.ui.showErrorInfoPopup(it)
                 }
@@ -110,14 +111,14 @@ class CoderRemoteEnvironment(
         if (wsRawStatus.canStart()) {
             if (workspace.outdated) {
                 actions.add(Action(context.i18n.ptrl("Update and start")) {
-                    context.cs.launch {
+                    context.cs.launch(CoroutineName("Update and Start Action")) {
                         val build = client.updateWorkspace(workspace)
                         update(workspace.copy(latestBuild = build), agent)
                     }
                 })
             } else {
                 actions.add(Action(context.i18n.ptrl("Start")) {
-                    context.cs.launch {
+                    context.cs.launch(CoroutineName("Start Action")) {
                         val build = client.startWorkspace(workspace)
                         update(workspace.copy(latestBuild = build), agent)
 
@@ -128,14 +129,14 @@ class CoderRemoteEnvironment(
         if (wsRawStatus.canStop()) {
             if (workspace.outdated) {
                 actions.add(Action(context.i18n.ptrl("Update and restart")) {
-                    context.cs.launch {
+                    context.cs.launch(CoroutineName("Update and Restart Action")) {
                         val build = client.updateWorkspace(workspace)
                         update(workspace.copy(latestBuild = build), agent)
                     }
                 })
             }
             actions.add(Action(context.i18n.ptrl("Stop")) {
-                context.cs.launch {
+                context.cs.launch(CoroutineName("Stop Action")) {
                     tryStopSshConnection()
 
                     val build = client.stopWorkspace(workspace)
@@ -169,7 +170,7 @@ class CoderRemoteEnvironment(
         pollJob = pollNetworkMetrics()
     }
 
-    private fun pollNetworkMetrics(): Job = context.cs.launch {
+    private fun pollNetworkMetrics(): Job = context.cs.launch(CoroutineName("Network Metrics Poller")) {
         context.logger.info("Starting the network metrics poll job for $id")
         while (isActive) {
             context.logger.debug("Searching SSH command's PID for workspace $id...")
@@ -227,7 +228,7 @@ class CoderRemoteEnvironment(
         actionsList.update {
             getAvailableActions()
         }
-        context.cs.launch {
+        context.cs.launch(CoroutineName("Workspace Status Updater")) {
             state.update {
                 wsRawStatus.toRemoteEnvironmentState(context)
             }
@@ -262,7 +263,7 @@ class CoderRemoteEnvironment(
      */
     fun startSshConnection(): Boolean {
         if (wsRawStatus.ready() && !isConnected.value) {
-            context.cs.launch {
+            context.cs.launch(CoroutineName("SSH Connection Trigger")) {
                 connectionRequest.update {
                     true
                 }
@@ -284,7 +285,7 @@ class CoderRemoteEnvironment(
     }
 
     override val deleteActionFlow: StateFlow<(() -> Unit)?> = MutableStateFlow {
-        context.cs.launch {
+        context.cs.launch(CoroutineName("Delete Workspace Action")) {
             try {
                 client.removeWorkspace(workspace)
                 // mark the env as deleting otherwise we will have to
@@ -293,7 +294,7 @@ class CoderRemoteEnvironment(
                     WorkspaceAndAgentStatus.DELETING.toRemoteEnvironmentState(context)
                 }
 
-                context.cs.launch {
+                context.cs.launch(CoroutineName("Workspace Deletion Poller")) {
                     withTimeout(5.minutes) {
                         var workspaceStillExists = true
                         while (context.cs.isActive && workspaceStillExists) {
