@@ -400,13 +400,15 @@ class CoderRemoteProvider(
         context.secrets.storeTokenFor(client.url, context.secrets.lastToken)
         context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
         this.client = client
-        pollJob?.cancel()
-        context.logger.info("Previous poll job was canceled")
+        pollJob?.let {
+            it.cancel()
+            context.logger.info("Workspace poll job with reference ${pollJob} was canceled")
+        }
         environments.showLoadingMessage()
         coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
         context.logger.info("Displaying ${client.url} in the UI")
         pollJob = poll(client, cli)
-        context.logger.info("Workspace poller job created with reference $pollJob")
+        context.logger.info("Workspace poll job created with reference $pollJob")
         context.envPageManager.showPluginEnvironmentsPage()
     }
 
