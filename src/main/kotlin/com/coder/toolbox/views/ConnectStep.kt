@@ -73,6 +73,9 @@ class ConnectStep(
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
+        // Capture the host name early for error reporting
+        val hostName = CoderCliSetupContext.url!!.host
+
         signInJob?.cancel()
         signInJob = context.cs.launch(CoroutineName("Http and CLI Setup")) {
             try {
@@ -100,21 +103,23 @@ class ConnectStep(
                     yield()
                     cli.login(client.token!!)
                 }
-                logAndReportProgress("Successfully configured ${CoderCliSetupContext.url!!.host}...")
+                logAndReportProgress("Successfully configured ${hostName}...")
                 // allows interleaving with the back/cancel action
                 yield()
-                CoderCliSetupContext.reset()
-                CoderCliSetupWizardState.goToFirstStep()
                 context.logger.info("Connection setup done, initializing the workspace poller...")
                 onConnect(client, cli)
+
+                CoderCliSetupContext.reset()
+                CoderCliSetupWizardState.goToFirstStep()
+                context.envPageManager.showPluginEnvironmentsPage()
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
-                    notify("Connection to ${CoderCliSetupContext.url!!.host} was configured", ex)
+                    notify("Connection to $hostName was configured", ex)
                     handleNavigation()
                     refreshWizard()
                 }
             } catch (ex: Exception) {
-                notify("Failed to configure ${CoderCliSetupContext.url!!.host}", ex)
+                notify("Failed to configure $hostName", ex)
                 handleNavigation()
                 refreshWizard()
             }

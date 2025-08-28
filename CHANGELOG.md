@@ -6,6 +6,10 @@
 
 - improved diagnose support
 
+### Fixed
+
+- NPE during error reporting
+
 ## 0.6.3 - 2025-08-25
 
 ### Added
