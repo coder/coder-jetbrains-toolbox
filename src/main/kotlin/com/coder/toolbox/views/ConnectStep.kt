@@ -7,6 +7,7 @@ import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
@@ -27,17 +28,15 @@ class ConnectStep(
     private val context: CoderToolboxContext,
     private val shouldAutoLogin: StateFlow<Boolean>,
     private val jumpToMainPageOnError: Boolean,
-    private val notify: (String, Throwable) -> Unit,
+    visibilityState: StateFlow<ProviderVisibilityState>,
     private val refreshWizard: () -> Unit,
-    private val onConnect: suspend (
-        client: CoderRestClient,
-        cli: CoderCLIManager,
-    ) -> Unit,
+    private val onConnect: suspend (client: CoderRestClient, cli: CoderCLIManager) -> Unit,
 ) : WizardStep {
     private var signInJob: Job? = null
 
     private val statusField = LabelField(context.i18n.pnotr(""))
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
+    private val errorReporter = ErrorReporter.create(context, visibilityState, this.javaClass)
 
     override val panel: RowGroup = RowGroup(
         RowGroup.RowField(statusField),
@@ -45,6 +44,7 @@ class ConnectStep(
     )
 
     override fun onVisible() {
+        errorReporter.flush()
         errorField.textState.update {
             context.i18n.pnotr("")
         }
@@ -73,6 +73,9 @@ class ConnectStep(
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
+        // Capture the host name early for error reporting
+        val hostName = CoderCliSetupContext.url!!.host
+
         signInJob?.cancel()
         signInJob = context.cs.launch(CoroutineName("Http and CLI Setup")) {
             try {
@@ -100,21 +103,23 @@ class ConnectStep(
                     yield()
                     cli.login(client.token!!)
                 }
-                logAndReportProgress("Successfully configured ${CoderCliSetupContext.url!!.host}...")
+                logAndReportProgress("Successfully configured ${hostName}...")
                 // allows interleaving with the back/cancel action
                 yield()
-                CoderCliSetupContext.reset()
-                CoderCliSetupWizardState.goToFirstStep()
                 context.logger.info("Connection setup done, initializing the workspace poller...")
                 onConnect(client, cli)
+
+                CoderCliSetupContext.reset()
+                CoderCliSetupWizardState.goToFirstStep()
+                context.envPageManager.showPluginEnvironmentsPage()
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
-                    notify("Connection to ${CoderCliSetupContext.url!!.host} was configured", ex)
+                    errorReporter.report("Connection to $hostName was configured", ex)
                     handleNavigation()
                     refreshWizard()
                 }
             } catch (ex: Exception) {
-                notify("Failed to configure ${CoderCliSetupContext.url!!.host}", ex)
+                errorReporter.report("Failed to configure $hostName", ex)
                 handleNavigation()
                 refreshWizard()
             }

@@ -409,7 +409,6 @@ class CoderRemoteProvider(
         context.logger.info("Displaying ${client.url} in the UI")
         pollJob = poll(client, cli)
         context.logger.info("Workspace poll job created with reference $pollJob")
-        context.envPageManager.showPluginEnvironmentsPage()
     }
 
     private fun MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>>.showLoadingMessage() {

@@ -6,6 +6,7 @@ import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.LabelStyleType
@@ -13,6 +14,7 @@ import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import java.net.MalformedURLException
 import java.net.URL
@@ -25,9 +27,11 @@ import java.net.URL
  */
 class DeploymentUrlStep(
     private val context: CoderToolboxContext,
-    private val notify: (String, Throwable) -> Unit
+    visibilityState: StateFlow<ProviderVisibilityState>,
 ) :
     WizardStep {
+    private val errorReporter = ErrorReporter.create(context, visibilityState, this.javaClass)
+
     private val urlField = TextField(context.i18n.ptrl("Deployment URL"), "", TextType.General)
     private val emptyLine = LabelField(context.i18n.pnotr(""), LabelStyleType.Normal)
 
@@ -66,6 +70,7 @@ class DeploymentUrlStep(
         signatureFallbackStrategyField.checkedState.update {
             context.settingsStore.fallbackOnCoderForSignatures.isAllowed()
         }
+        errorReporter.flush()
     }
 
     override fun onNext(): Boolean {
@@ -78,7 +83,7 @@ class DeploymentUrlStep(
         try {
             CoderCliSetupContext.url = validateRawUrl(url)
         } catch (e: MalformedURLException) {
-            notify("URL is invalid", e)
+            errorReporter.report("URL is invalid", e)
             return false
         }
         if (context.settingsStore.requireTokenAuth) {
