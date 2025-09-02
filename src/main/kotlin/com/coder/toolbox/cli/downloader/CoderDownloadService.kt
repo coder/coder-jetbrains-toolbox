@@ -25,6 +25,18 @@ import java.util.zip.GZIPInputStream
 import kotlin.io.path.name
 import kotlin.io.path.notExists
 
+private val SUPPORTED_BIN_MIME_TYPES = listOf(
+    "application/octet-stream",
+    "application/exe",
+    "application/dos-exe",
+    "application/msdos-windows",
+    "application/x-exe",
+    "application/x-msdownload",
+    "application/x-winexe",
+    "application/x-msdos-program",
+    "application/x-msdos-executable",
+    "application/vnd.microsoft.portable-executable"
+)
 /**
  * Handles the download steps of Coder CLI
  */
@@ -52,7 +64,7 @@ class CoderDownloadService(
         return when (response.code()) {
             HTTP_OK -> {
                 val contentType = response.headers()["Content-Type"]?.lowercase()
-                if (contentType?.startsWith("application/octet-stream") != true) {
+                if (contentType !in SUPPORTED_BIN_MIME_TYPES) {
                     throw ResponseException(
                         "Invalid content type '$contentType' when downloading CLI from $remoteBinaryURL. Expected application/octet-stream.",
                         response.code()

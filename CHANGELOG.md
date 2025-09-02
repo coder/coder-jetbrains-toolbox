@@ -9,6 +9,7 @@
 ### Fixed
 
 - NPE during error reporting
+- relaxed `Content-Type` checks while downloading the CLI
 
 ## 0.6.3 - 2025-08-25
 
