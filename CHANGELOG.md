@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- token is no longer required when authentication is done via certificates
+
 ## 0.6.4 - 2025-09-03
 
 ### Added

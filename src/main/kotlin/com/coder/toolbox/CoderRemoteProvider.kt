@@ -396,9 +396,13 @@ class CoderRemoteProvider(
     private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
         context.secrets.lastDeploymentURL = client.url.toString()
-        context.secrets.lastToken = client.token ?: ""
-        context.secrets.storeTokenFor(client.url, context.secrets.lastToken)
-        context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
+        if (context.settingsStore.requireTokenAuth) {
+            context.secrets.lastToken = client.token ?: ""
+            context.secrets.storeTokenFor(client.url, context.secrets.lastToken)
+            context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
+        } else {
+            context.logger.info("Deployment URL was stored and will be available for automatic connection")
+        }
         this.client = client
         pollJob?.let {
             it.cancel()
