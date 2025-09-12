@@ -7,6 +7,8 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
+import com.coder.toolbox.util.friendlyName
+import com.coder.toolbox.util.name
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.waitForTrue
 import com.coder.toolbox.util.withPath
@@ -89,7 +91,7 @@ class CoderRemoteProvider(
      * first time).
      */
     private fun poll(client: CoderRestClient, cli: CoderCLIManager): Job =
-        context.cs.launch(CoroutineName("Workspace Poller")) {
+        context.cs.launch(CoroutineName("Workspace Poller - ${friendlyName()}")) {
             var lastPollTime = TimeSource.Monotonic.markNow()
             while (isActive) {
                 try {
@@ -242,7 +244,10 @@ class CoderRemoteProvider(
      * Also called as part of our own logout.
      */
     override fun close() {
-        pollJob?.cancel()
+        pollJob?.let {
+            it.cancel()
+            context.logger.info("Cancelled workspace poll job ${pollJob.name()}")
+        }
         client?.close()
         lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
@@ -327,6 +332,7 @@ class CoderRemoteProvider(
 
                 environments.showLoadingMessage()
                 pollJob = poll(restClient, cli)
+                context.logger.info("Workspace poll job with name ${pollJob.name()} was created while handling URI $uri")
                 isInitialized.waitForTrue()
             }
         } catch (ex: Exception) {
@@ -406,13 +412,13 @@ class CoderRemoteProvider(
         this.client = client
         pollJob?.let {
             it.cancel()
-            context.logger.info("Workspace poll job with reference ${pollJob} was canceled")
+            context.logger.info("Cancelled workspace poll job ${pollJob.name()} in order to start a new one")
         }
         environments.showLoadingMessage()
         coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
         context.logger.info("Displaying ${client.url} in the UI")
         pollJob = poll(client, cli)
-        context.logger.info("Workspace poll job created with reference $pollJob")
+        context.logger.info("Workspace poll job with name ${pollJob.name()} was created")
     }
 
     private fun MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>>.showLoadingMessage() {
