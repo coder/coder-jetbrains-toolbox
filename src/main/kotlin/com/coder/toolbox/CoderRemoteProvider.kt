@@ -242,7 +242,10 @@ class CoderRemoteProvider(
      * Also called as part of our own logout.
      */
     override fun close() {
-        pollJob?.cancel()
+        pollJob?.let {
+            it.cancel()
+            context.logger.info("Cancelled workspace poll job ${pollJob.toString()}")
+        }
         client?.close()
         lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
@@ -327,6 +330,7 @@ class CoderRemoteProvider(
 
                 environments.showLoadingMessage()
                 pollJob = poll(restClient, cli)
+                context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI $uri")
                 isInitialized.waitForTrue()
             }
         } catch (ex: Exception) {
@@ -396,19 +400,23 @@ class CoderRemoteProvider(
     private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
         context.secrets.lastDeploymentURL = client.url.toString()
-        context.secrets.lastToken = client.token ?: ""
-        context.secrets.storeTokenFor(client.url, context.secrets.lastToken)
-        context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
+        if (context.settingsStore.requireTokenAuth) {
+            context.secrets.lastToken = client.token ?: ""
+            context.secrets.storeTokenFor(client.url, context.secrets.lastToken)
+            context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
+        } else {
+            context.logger.info("Deployment URL was stored and will be available for automatic connection")
+        }
         this.client = client
         pollJob?.let {
             it.cancel()
-            context.logger.info("Workspace poll job with reference ${pollJob} was canceled")
+            context.logger.info("Cancelled workspace poll job ${pollJob.toString()} in order to start a new one")
         }
         environments.showLoadingMessage()
         coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
         context.logger.info("Displaying ${client.url} in the UI")
         pollJob = poll(client, cli)
-        context.logger.info("Workspace poll job created with reference $pollJob")
+        context.logger.info("Workspace poll job with name ${pollJob.toString()} was created")
     }
 
     private fun MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>>.showLoadingMessage() {
