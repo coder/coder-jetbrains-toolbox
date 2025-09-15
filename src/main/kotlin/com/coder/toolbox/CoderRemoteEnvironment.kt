@@ -81,68 +81,61 @@ class CoderRemoteEnvironment(
     private fun getAvailableActions(): List<ActionDescription> {
         val actions = mutableListOf<Action>()
         if (wsRawStatus.canStop()) {
-            actions.add(Action(context.i18n.ptrl("Open web terminal")) {
-                context.cs.launch(CoroutineName("Open Web Terminal Action")) {
-                    context.desktop.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
-                        context.ui.showErrorInfoPopup(it)
-                    }
-                }
-            })
-        }
-        actions.add(
-            Action(context.i18n.ptrl("Open in dashboard")) {
-                context.cs.launch(CoroutineName("Open in Dashboard Action")) {
-                    context.desktop.browse(
-                        client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()
-                    ) {
-                        context.ui.showErrorInfoPopup(it)
-                    }
-                }
-            })
-
-        actions.add(Action(context.i18n.ptrl("View template")) {
-            context.cs.launch(CoroutineName("View Template Action")) {
-                context.desktop.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
+            actions.add(Action(context, "Open web terminal") {
+                context.desktop.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
                     context.ui.showErrorInfoPopup(it)
                 }
             }
-        })
+            )
+        }
+        actions.add(
+            Action(context, "Open in dashboard") {
+                context.desktop.browse(
+                    client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()
+                ) {
+                    context.ui.showErrorInfoPopup(it)
+                }
+            }
+        )
+
+        actions.add(Action(context, "View template") {
+            context.desktop.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
+                context.ui.showErrorInfoPopup(it)
+            }
+        }
+        )
 
         if (wsRawStatus.canStart()) {
             if (workspace.outdated) {
-                actions.add(Action(context.i18n.ptrl("Update and start")) {
-                    context.cs.launch(CoroutineName("Update and Start Action")) {
-                        val build = client.updateWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
-                    }
-                })
+                actions.add(Action(context, "Update and start") {
+                    val build = client.updateWorkspace(workspace)
+                    update(workspace.copy(latestBuild = build), agent)
+                }
+                )
             } else {
-                actions.add(Action(context.i18n.ptrl("Start")) {
-                    context.cs.launch(CoroutineName("Start Action")) {
-                        val build = client.startWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
+                actions.add(Action(context, "Start") {
+                    val build = client.startWorkspace(workspace)
+                    update(workspace.copy(latestBuild = build), agent)
 
-                    }
-                })
+                }
+                )
             }
         }
         if (wsRawStatus.canStop()) {
             if (workspace.outdated) {
-                actions.add(Action(context.i18n.ptrl("Update and restart")) {
-                    context.cs.launch(CoroutineName("Update and Restart Action")) {
-                        val build = client.updateWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
-                    }
-                })
-            }
-            actions.add(Action(context.i18n.ptrl("Stop")) {
-                context.cs.launch(CoroutineName("Stop Action")) {
-                    tryStopSshConnection()
-
-                    val build = client.stopWorkspace(workspace)
+                actions.add(Action(context, "Update and restart") {
+                    val build = client.updateWorkspace(workspace)
                     update(workspace.copy(latestBuild = build), agent)
                 }
-            })
+                )
+            }
+            actions.add(Action(context, "Stop") {
+                tryStopSshConnection()
+
+                val build = client.stopWorkspace(workspace)
+                update(workspace.copy(latestBuild = build), agent)
+            }
+            )
         }
         return actions
     }

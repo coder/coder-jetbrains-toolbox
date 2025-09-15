@@ -222,15 +222,13 @@ class CoderRemoteProvider(
 
     override val additionalPluginActions: StateFlow<List<ActionDescription>> = MutableStateFlow(
         listOf(
-            Action(context.i18n.ptrl("Create workspace")) {
-                context.cs.launch(CoroutineName("Create Workspace Action")) {
-                    context.desktop.browse(client?.url?.withPath("/templates").toString()) {
-                        context.ui.showErrorInfoPopup(it)
-                    }
+            Action(context, "Create workspace") {
+                context.desktop.browse(client?.url?.withPath("/templates").toString()) {
+                    context.ui.showErrorInfoPopup(it)
                 }
             },
             CoderDelimiter(context.i18n.pnotr("")),
-            Action(context.i18n.ptrl("Settings")) {
+            Action(context, "Settings") {
                 context.ui.showUiPage(settingsPage)
             },
         )

@@ -5,6 +5,7 @@
 ### Fixed
 
 - token is no longer required when authentication is done via certificates
+- errors while running actions are now reported
 
 ## 0.6.4 - 2025-09-03
 
