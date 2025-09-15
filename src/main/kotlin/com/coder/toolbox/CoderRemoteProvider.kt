@@ -202,8 +202,10 @@ class CoderRemoteProvider(
      * first page.
      */
     private fun logout() {
+        context.logger.info("Logging out ${client?.me?.username}...")
         WorkspaceConnectionManager.reset()
         close()
+        context.logger.info("User ${client?.me?.username} logged out successfully")
     }
 
     /**
@@ -244,12 +246,16 @@ class CoderRemoteProvider(
             it.cancel()
             context.logger.info("Cancelled workspace poll job ${pollJob.toString()}")
         }
-        client?.close()
+        client?.let {
+            it.close()
+            context.logger.info("REST API client closed and resources released")
+        }
+        client = null
         lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
-        client = null
         CoderCliSetupWizardState.goToFirstStep()
+        context.logger.info("Coder plugin is now closed")
     }
 
     override val svgIcon: SvgIcon =
@@ -317,12 +323,12 @@ class CoderRemoteProvider(
                 uri,
                 shouldDoAutoSetup()
             ) { restClient, cli ->
-                // stop polling and de-initialize resources
+                context.logger.info("Stopping workspace polling and de-initializing resources")
                 close()
                 isInitialized.update {
                     false
                 }
-                // start initialization with the new settings
+                context.logger.info("Starting initialization with the new settings")
                 this@CoderRemoteProvider.client = restClient
                 coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
 
