@@ -24,9 +24,9 @@ class CoderCliSetupWizardPage(
     ) -> Unit,
 ) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
     private val shouldAutoSetup = MutableStateFlow(initialAutoSetup)
-    private val settingsAction = Action(context.i18n.ptrl("Settings"), actionBlock = {
+    private val settingsAction = Action(context, "Settings") {
         context.ui.showUiPage(settingsPage)
-    })
+    }
 
     private val deploymentUrlStep = DeploymentUrlStep(context, visibilityState)
     private val tokenStep = TokenStep(context)
@@ -60,7 +60,7 @@ class CoderCliSetupWizardPage(
                 }
                 actionButtons.update {
                     listOf(
-                        Action(context.i18n.ptrl("Next"), closesPage = false, actionBlock = {
+                        Action(context, "Next", closesPage = false, actionBlock = {
                             if (deploymentUrlStep.onNext()) {
                                 displaySteps()
                             }
@@ -77,13 +77,13 @@ class CoderCliSetupWizardPage(
                 }
                 actionButtons.update {
                     listOf(
-                        Action(context.i18n.ptrl("Connect"), closesPage = false, actionBlock = {
+                        Action(context, "Connect", closesPage = false, actionBlock = {
                             if (tokenStep.onNext()) {
                                 displaySteps()
                             }
                         }),
                         settingsAction,
-                        Action(context.i18n.ptrl("Back"), closesPage = false, actionBlock = {
+                        Action(context, "Back", closesPage = false, actionBlock = {
                             tokenStep.onBack()
                             displaySteps()
                         })
@@ -99,7 +99,7 @@ class CoderCliSetupWizardPage(
                 actionButtons.update {
                     listOf(
                         settingsAction,
-                        Action(context.i18n.ptrl("Back"), closesPage = false, actionBlock = {
+                        Action(context, "Back", closesPage = false, actionBlock = {
                             connectStep.onBack()
                             shouldAutoSetup.update {
                                 false

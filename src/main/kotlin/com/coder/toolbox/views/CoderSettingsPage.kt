@@ -116,7 +116,7 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
 
     override val actionButtons: StateFlow<List<RunnableActionDescription>> = MutableStateFlow(
         listOf(
-            Action(context.i18n.ptrl("Save"), closesPage = true) {
+            Action(context, "Save", closesPage = true) {
                 context.settingsStore.updateBinarySource(binarySourceField.contentState.value)
                 context.settingsStore.updateBinaryDirectory(binaryDirectoryField.contentState.value)
                 context.settingsStore.updateDataDirectory(dataDirectoryField.contentState.value)
