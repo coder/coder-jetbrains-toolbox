@@ -25,6 +25,7 @@ import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.squareup.moshi.Moshi
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,72 +82,65 @@ class CoderRemoteEnvironment(
     private fun getAvailableActions(): List<ActionDescription> {
         val actions = mutableListOf<ActionDescription>()
         if (wsRawStatus.canStop()) {
-            actions.add(Action(context.i18n.ptrl("Open web terminal")) {
-                context.cs.launch {
-                    context.desktop.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
-                        context.ui.showErrorInfoPopup(it)
-                    }
-                }
-            })
-        }
-        actions.add(
-            Action(context.i18n.ptrl("Open in dashboard")) {
-                context.cs.launch {
-                    context.desktop.browse(
-                        client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()
-                    ) {
-                        context.ui.showErrorInfoPopup(it)
-                    }
-                }
-            })
-
-        actions.add(Action(context.i18n.ptrl("View template")) {
-            context.cs.launch {
-                context.desktop.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
+            actions.add(Action(context, "Open web terminal") {
+                context.desktop.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
                     context.ui.showErrorInfoPopup(it)
                 }
             }
-        })
+            )
+        }
+        actions.add(
+            Action(context, "Open in dashboard") {
+                context.desktop.browse(
+                    client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()
+                ) {
+                    context.ui.showErrorInfoPopup(it)
+                }
+            }
+        )
+
+        actions.add(Action(context, "View template") {
+            context.desktop.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
+                context.ui.showErrorInfoPopup(it)
+            }
+        }
+        )
 
         if (wsRawStatus.canStart()) {
             if (workspace.outdated) {
-                actions.add(Action(context.i18n.ptrl("Update and start")) {
-                    context.cs.launch {
-                        val build = client.updateWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
-                    }
-                })
+                actions.add(Action(context, "Update and start") {
+                    val build = client.updateWorkspace(workspace)
+                    update(workspace.copy(latestBuild = build), agent)
+                }
+                )
             } else {
-                actions.add(Action(context.i18n.ptrl("Start")) {
-                    context.cs.launch {
-                        val build = client.startWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
+                actions.add(Action(context, "Start") {
+                    val build = client.startWorkspace(workspace)
+                    update(workspace.copy(latestBuild = build), agent)
 
-                    }
-                })
+                }
+                )
             }
         }
         if (wsRawStatus.canStop()) {
             if (workspace.outdated) {
-                actions.add(Action(context.i18n.ptrl("Update and restart")) {
-                    context.cs.launch {
-                        val build = client.updateWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
-                    }
-                })
-            }
-            actions.add(Action(context.i18n.ptrl("Stop")) {
-                context.cs.launch {
-                    tryStopSshConnection()
-
-                    val build = client.stopWorkspace(workspace)
+                actions.add(Action(context, "Update and restart") {
+                    val build = client.updateWorkspace(workspace)
                     update(workspace.copy(latestBuild = build), agent)
                 }
-            })
+                )
+            }
+            actions.add(Action(context, "Stop") {
+                tryStopSshConnection()
+
+                val build = client.stopWorkspace(workspace)
+                update(workspace.copy(latestBuild = build), agent)
+            }
+            )
         }
         actions.add(CoderDelimiter(context.i18n.pnotr("")))
-        actions.add(Action(context.i18n.ptrl("Delete workspace"), highlightInRed = true) {
-            context.cs.launch {
+        actions.add(Action(context, "Delete workspace", highlightInRed = true) {
+            context.cs.launch(CoroutineName("Delete Workspace Action")) {
                 var dialogText =
                     if (wsRawStatus.canStop()) "This will close the workspace and remove all its information, including files, unsaved changes, history, and usage data."
                     else "This will remove all information from the workspace, including files, unsaved changes, history, and usage data."
@@ -192,7 +186,7 @@ class CoderRemoteEnvironment(
         pollJob = pollNetworkMetrics()
     }
 
-    private fun pollNetworkMetrics(): Job = context.cs.launch {
+    private fun pollNetworkMetrics(): Job = context.cs.launch(CoroutineName("Network Metrics Poller")) {
         context.logger.info("Starting the network metrics poll job for $id")
         while (isActive) {
             context.logger.debug("Searching SSH command's PID for workspace $id...")
@@ -250,7 +244,7 @@ class CoderRemoteEnvironment(
         actionsList.update {
             getAvailableActions()
         }
-        context.cs.launch {
+        context.cs.launch(CoroutineName("Workspace Status Updater")) {
             state.update {
                 wsRawStatus.toRemoteEnvironmentState(context)
             }
@@ -285,7 +279,7 @@ class CoderRemoteEnvironment(
      */
     fun startSshConnection(): Boolean {
         if (wsRawStatus.ready() && !isConnected.value) {
-            context.cs.launch {
+            context.cs.launch(CoroutineName("SSH Connection Trigger")) {
                 connectionRequest.update {
                     true
                 }
@@ -306,7 +300,7 @@ class CoderRemoteEnvironment(
                 WorkspaceAndAgentStatus.DELETING.toRemoteEnvironmentState(context)
             }
 
-            context.cs.launch {
+            context.cs.launch(CoroutineName("Workspace Deletion Poller")) {
                 withTimeout(5.minutes) {
                     var workspaceStillExists = true
                     while (context.cs.isActive && workspaceStillExists) {

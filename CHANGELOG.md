@@ -4,8 +4,39 @@
 
 ### Changed
 
-- workspaces status is now refresh every time Coder Toolbox becomes visible
 - workspaces can no longer be removed by accident - users are now required to input the workspace name.
+
+### Fixed
+
+- relaxed SNI hostname resolution
+
+## 0.6.5 - 2025-09-16
+
+### Fixed
+
+- token is no longer required when authentication is done via certificates
+- errors while running actions are now reported
+
+## 0.6.4 - 2025-09-03
+
+### Added
+
+- improved diagnose support
+
+### Fixed
+
+- NPE during error reporting
+- relaxed `Content-Type` checks while downloading the CLI
+
+## 0.6.3 - 2025-08-25
+
+### Added
+
+- progress reporting while handling URIs
+
+### Changed
+
+- workspaces status is now refresh every time Coder Toolbox becomes visible
 
 ### Fixed
 

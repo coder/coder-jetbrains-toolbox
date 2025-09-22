@@ -3,43 +3,42 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.sdk.ex.APIResponseException
-import com.coder.toolbox.util.toURL
-import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import java.util.UUID
 
 class CoderCliSetupWizardPage(
     private val context: CoderToolboxContext,
     private val settingsPage: CoderSettingsPage,
-    private val visibilityState: MutableStateFlow<ProviderVisibilityState>,
+    visibilityState: StateFlow<ProviderVisibilityState>,
     initialAutoSetup: Boolean = false,
+    jumpToMainPageOnError: Boolean = false,
     onConnect: suspend (
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,
 ) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
     private val shouldAutoSetup = MutableStateFlow(initialAutoSetup)
-    private val settingsAction = Action(context.i18n.ptrl("Settings"), actionBlock = {
+    private val settingsAction = Action(context, "Settings") {
         context.ui.showUiPage(settingsPage)
-    })
+    }
 
-    private val deploymentUrlStep = DeploymentUrlStep(context, this::notify)
+    private val deploymentUrlStep = DeploymentUrlStep(context, visibilityState)
     private val tokenStep = TokenStep(context)
     private val connectStep = ConnectStep(
         context,
-        shouldAutoSetup,
-        this::notify,
+        shouldAutoLogin = shouldAutoSetup,
+        jumpToMainPageOnError,
+        visibilityState,
         this::displaySteps,
         onConnect
     )
+    private val errorReporter = ErrorReporter.create(context, visibilityState, this.javaClass)
 
     /**
      * Fields for this page, displayed in order.
@@ -47,23 +46,10 @@ class CoderCliSetupWizardPage(
     override val fields: MutableStateFlow<List<UiField>> = MutableStateFlow(emptyList())
     override val actionButtons: MutableStateFlow<List<RunnableActionDescription>> = MutableStateFlow(emptyList())
 
-    private val errorBuffer = mutableListOf<Throwable>()
-
-    init {
-        if (shouldAutoSetup.value) {
-            CoderCliSetupContext.url = context.secrets.lastDeploymentURL.toURL()
-            CoderCliSetupContext.token = context.secrets.lastToken
-        }
-    }
 
     override fun beforeShow() {
         displaySteps()
-        if (errorBuffer.isNotEmpty() && visibilityState.value.applicationVisible) {
-            errorBuffer.forEach {
-                showError(it)
-            }
-            errorBuffer.clear()
-        }
+        errorReporter.flush()
     }
 
     private fun displaySteps() {
@@ -74,7 +60,7 @@ class CoderCliSetupWizardPage(
                 }
                 actionButtons.update {
                     listOf(
-                        Action(context.i18n.ptrl("Next"), closesPage = false, actionBlock = {
+                        Action(context, "Next", closesPage = false, actionBlock = {
                             if (deploymentUrlStep.onNext()) {
                                 displaySteps()
                             }
@@ -91,13 +77,13 @@ class CoderCliSetupWizardPage(
                 }
                 actionButtons.update {
                     listOf(
-                        Action(context.i18n.ptrl("Connect"), closesPage = false, actionBlock = {
+                        Action(context, "Connect", closesPage = false, actionBlock = {
                             if (tokenStep.onNext()) {
                                 displaySteps()
                             }
                         }),
                         settingsAction,
-                        Action(context.i18n.ptrl("Back"), closesPage = false, actionBlock = {
+                        Action(context, "Back", closesPage = false, actionBlock = {
                             tokenStep.onBack()
                             displaySteps()
                         })
@@ -113,7 +99,7 @@ class CoderCliSetupWizardPage(
                 actionButtons.update {
                     listOf(
                         settingsAction,
-                        Action(context.i18n.ptrl("Back"), closesPage = false, actionBlock = {
+                        Action(context, "Back", closesPage = false, actionBlock = {
                             connectStep.onBack()
                             shouldAutoSetup.update {
                                 false
@@ -130,30 +116,5 @@ class CoderCliSetupWizardPage(
     /**
      * Show an error as a popup on this page.
      */
-    fun notify(logPrefix: String, ex: Throwable) {
-        context.logger.error(ex, logPrefix)
-        if (!visibilityState.value.applicationVisible) {
-            context.logger.debug("Toolbox is not yet visible, scheduling error to be displayed later")
-            errorBuffer.add(ex)
-            return
-        }
-        showError(ex)
-    }
-
-    private fun showError(ex: Throwable) {
-        val textError = if (ex is APIResponseException) {
-            if (!ex.reason.isNullOrBlank()) {
-                ex.reason
-            } else ex.message
-        } else ex.message
-
-        context.cs.launch {
-            context.ui.showSnackbar(
-                UUID.randomUUID().toString(),
-                context.i18n.ptrl("Error encountered while setting up Coder"),
-                context.i18n.pnotr(textError ?: ""),
-                context.i18n.ptrl("Dismiss")
-            )
-        }
-    }
+    fun notify(message: String, ex: Throwable) = errorReporter.report(message, ex)
 }

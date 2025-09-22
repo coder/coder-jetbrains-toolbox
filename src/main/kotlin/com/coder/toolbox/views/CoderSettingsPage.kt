@@ -12,6 +12,7 @@ import com.jetbrains.toolbox.api.ui.components.ComboBoxField.LabelledValue
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.UiField
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedSendChannelException
@@ -115,7 +116,7 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
 
     override val actionButtons: StateFlow<List<RunnableActionDescription>> = MutableStateFlow(
         listOf(
-            Action(context.i18n.ptrl("Save"), closesPage = true) {
+            Action(context, "Save", closesPage = true) {
                 context.settingsStore.updateBinarySource(binarySourceField.contentState.value)
                 context.settingsStore.updateBinaryDirectory(binaryDirectoryField.contentState.value)
                 context.settingsStore.updateDataDirectory(dataDirectoryField.contentState.value)
@@ -134,7 +135,7 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
                 context.settingsStore.updateEnableSshWildcardConfig(enableSshWildCardConfig.checkedState.value)
 
                 if (enableSshWildCardConfig.checkedState.value != oldIsSshWildcardConfigEnabled) {
-                    context.cs.launch {
+                    context.cs.launch(CoroutineName("SSH Wildcard Setting")) {
                         try {
                             triggerSshConfig.send(true)
                             context.logger.info("Wildcard settings have been modified from $oldIsSshWildcardConfigEnabled to ${!oldIsSshWildcardConfigEnabled}, ssh config is going to be regenerated...")
@@ -211,7 +212,7 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
             settings.networkInfoDir
         }
 
-        visibilityUpdateJob = context.cs.launch {
+        visibilityUpdateJob = context.cs.launch(CoroutineName("Signature Verification Fallback Setting")) {
             disableSignatureVerificationField.checkedState.collect { state ->
                 signatureFallbackStrategyField.visibility.update {
                     // the fallback checkbox should not be visible

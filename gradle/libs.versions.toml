@@ -13,10 +13,10 @@ ksp = "2.1.20-2.0.1"
 retrofit = "3.0.0"
 changelog = "2.4.0"
 gettext = "0.7.0"
-plugin-structure = "3.310"
+plugin-structure = "3.316"
 mockk = "1.14.5"
 detekt = "1.23.8"
-bouncycastle = "1.81"
+bouncycastle = "1.82"
 
 [libraries]
 toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "toolbox-plugin-api" }
