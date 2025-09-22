@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.5 - 2025-09-16
+
 ### Fixed
 
 - token is no longer required when authentication is done via certificates
