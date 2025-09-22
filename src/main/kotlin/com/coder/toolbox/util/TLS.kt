@@ -86,11 +86,13 @@ fun sslContextFromPEMs(
 
 fun coderSocketFactory(settings: ReadOnlyTLSSettings): SSLSocketFactory {
     val sslContext = sslContextFromPEMs(settings.certPath, settings.keyPath, settings.caPath)
-    if (settings.altHostname.isNullOrBlank()) {
+
+    val altHostname = settings.altHostname
+    if (altHostname.isNullOrBlank()) {
         return sslContext.socketFactory
     }
 
-    return AlternateNameSSLSocketFactory(sslContext.socketFactory, settings.altHostname!!)
+    return AlternateNameSSLSocketFactory(sslContext.socketFactory, altHostname)
 }
 
 fun coderTrustManagers(tlsCAPath: String?): Array<TrustManager> {
