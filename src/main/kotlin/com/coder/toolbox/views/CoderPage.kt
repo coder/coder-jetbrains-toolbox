@@ -5,6 +5,7 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.localization.LocalizableString
+import com.jetbrains.toolbox.api.ui.actions.ActionDelimiter
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.CoroutineName
@@ -55,12 +56,14 @@ class Action(
     private val context: CoderToolboxContext,
     private val description: String,
     closesPage: Boolean = false,
+    highlightInRed: Boolean = false,
     enabled: () -> Boolean = { true },
     private val actionBlock: suspend () -> Unit,
 ) : RunnableActionDescription {
     override val label: LocalizableString = context.i18n.ptrl(description)
     override val shouldClosePage: Boolean = closesPage
     override val isEnabled: Boolean = enabled()
+    override val isDangerous: Boolean = highlightInRed
     override fun run() {
         context.cs.launch(CoroutineName("$description Action")) {
             try {
@@ -76,3 +79,5 @@ class Action(
         }
     }
 }
+
+class CoderDelimiter(override val label: LocalizableString) : ActionDelimiter

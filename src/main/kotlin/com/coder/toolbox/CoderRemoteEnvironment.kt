@@ -12,17 +12,18 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.util.waitForFalseWithTimeout
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
+import com.coder.toolbox.views.CoderDelimiter
 import com.coder.toolbox.views.EnvironmentView
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.remoteDev.AfterDisconnectHook
 import com.jetbrains.toolbox.api.remoteDev.BeforeConnectionHook
-import com.jetbrains.toolbox.api.remoteDev.DeleteEnvironmentConfirmationParams
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
 import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
+import com.jetbrains.toolbox.api.ui.components.TextType
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
@@ -79,7 +80,7 @@ class CoderRemoteEnvironment(
     fun asPairOfWorkspaceAndAgent(): Pair<Workspace, WorkspaceAgent> = Pair(workspace, agent)
 
     private fun getAvailableActions(): List<ActionDescription> {
-        val actions = mutableListOf<Action>()
+        val actions = mutableListOf<ActionDescription>()
         if (wsRawStatus.canStop()) {
             actions.add(Action(context, "Open web terminal") {
                 context.desktop.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
@@ -137,6 +138,28 @@ class CoderRemoteEnvironment(
             }
             )
         }
+        actions.add(CoderDelimiter(context.i18n.pnotr("")))
+        actions.add(Action(context, "Delete workspace", highlightInRed = true) {
+            context.cs.launch(CoroutineName("Delete Workspace Action")) {
+                var dialogText =
+                    if (wsRawStatus.canStop()) "This will close the workspace and remove all its information, including files, unsaved changes, history, and usage data."
+                    else "This will remove all information from the workspace, including files, unsaved changes, history, and usage data."
+                dialogText += "\n\nType \"${workspace.name}\" below to confirm:"
+
+                val confirmation = context.ui.showTextInputPopup(
+                    if (wsRawStatus.canStop()) context.i18n.ptrl("Delete running workspace?") else context.i18n.ptrl("Delete workspace?"),
+                    context.i18n.pnotr(dialogText),
+                    context.i18n.ptrl("Workspace name"),
+                    TextType.General,
+                    context.i18n.ptrl("OK"),
+                    context.i18n.ptrl("Cancel")
+                )
+                if (confirmation != workspace.name) {
+                    return@launch
+                }
+                deleteWorkspace()
+            }
+        })
         return actions
     }
 
@@ -266,43 +289,32 @@ class CoderRemoteEnvironment(
         return false
     }
 
-    override fun getDeleteEnvironmentConfirmationParams(): DeleteEnvironmentConfirmationParams? {
-        return object : DeleteEnvironmentConfirmationParams {
-            override val cancelButtonText: String = "Cancel"
-            override val confirmButtonText: String = "Delete"
-            override val message: String =
-                if (wsRawStatus.canStop()) "Workspace will be closed and all the information will be lost, including all files, unsaved changes, historical info and usage data."
-                else "All the information in this workspace will be lost, including all files, unsaved changes, historical info and usage data."
-            override val title: String = if (wsRawStatus.canStop()) "Delete running workspace?" else "Delete workspace?"
-        }
-    }
+    override val deleteActionFlow: StateFlow<(() -> Unit)?> = MutableStateFlow(null)
 
-    override val deleteActionFlow: StateFlow<(() -> Unit)?> = MutableStateFlow {
-        context.cs.launch(CoroutineName("Delete Workspace Action")) {
-            try {
-                client.removeWorkspace(workspace)
-                // mark the env as deleting otherwise we will have to
-                // wait for the poller to update the status in the next 5 seconds
-                state.update {
-                    WorkspaceAndAgentStatus.DELETING.toRemoteEnvironmentState(context)
-                }
+    suspend fun deleteWorkspace() {
+        try {
+            client.removeWorkspace(workspace)
+            // mark the env as deleting otherwise we will have to
+            // wait for the poller to update the status in the next 5 seconds
+            state.update {
+                WorkspaceAndAgentStatus.DELETING.toRemoteEnvironmentState(context)
+            }
 
-                context.cs.launch(CoroutineName("Workspace Deletion Poller")) {
-                    withTimeout(5.minutes) {
-                        var workspaceStillExists = true
-                        while (context.cs.isActive && workspaceStillExists) {
-                            if (wsRawStatus == WorkspaceAndAgentStatus.DELETING || wsRawStatus == WorkspaceAndAgentStatus.DELETED) {
-                                workspaceStillExists = false
-                                context.envPageManager.showPluginEnvironmentsPage()
-                            } else {
-                                delay(1.seconds)
-                            }
+            context.cs.launch(CoroutineName("Workspace Deletion Poller")) {
+                withTimeout(5.minutes) {
+                    var workspaceStillExists = true
+                    while (context.cs.isActive && workspaceStillExists) {
+                        if (wsRawStatus == WorkspaceAndAgentStatus.DELETING || wsRawStatus == WorkspaceAndAgentStatus.DELETED) {
+                            workspaceStillExists = false
+                            context.envPageManager.showPluginEnvironmentsPage()
+                        } else {
+                            delay(1.seconds)
                         }
                     }
                 }
-            } catch (e: APIResponseException) {
-                context.ui.showErrorInfoPopup(e)
             }
+        } catch (e: APIResponseException) {
+            context.ui.showErrorInfoPopup(e)
         }
     }
 
