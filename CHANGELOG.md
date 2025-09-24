@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.6 - 2025-09-24
+
 ### Changed
 
 - workspaces can no longer be removed by accident - users are now required to input the workspace name.
