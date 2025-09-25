@@ -406,7 +406,6 @@ class CoderRemoteProvider(
         // Store the URL and token for use next time.
         context.settingsStore.updateLastUsedUrl(client.url)
         if (context.settingsStore.requireTokenAuth) {
-            context.secrets.lastToken = client.token ?: ""
             context.secrets.storeTokenFor(client.url, client.token ?: "")
             context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
         } else {
