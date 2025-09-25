@@ -84,6 +84,30 @@ fun sslContextFromPEMs(
     return sslContext
 }
 
+/**
+ * Netflix TLS Workaround — SNI & Hostname Validation
+ *
+ * Context:
+ * - The Netflix servers we connect to rely on the SNI in the ClientHello
+ * beyond just the typical use case of serving multiple hostnames from a
+ * single IP. The alternate hostname for the SNI can contain underscores
+ * (non-compliant for hostnames).
+ * - The server always presents the same certificate, regardless of the SNI
+ * - The certificate’s SAN entries do not match the server’s DNS name, and in
+ * - Because of this mismatch, the TLS handshake fails unless we apply two
+ * client-side workarounds:
+ *
+ *  1. SNI manipulation — we rewrite the SNI in the ClientHello via a custom
+ *     SSLSocketFactory. Even though the server’s cert does not vary by SNI,
+ *     connections fail if this rewrite is removed. The server’s TLS stack
+ *     appears to depend on the SNI being set in a particular way.
+ *
+ *  2. Hostname validation override — we relax certificate checks by allowing
+ *     an “alternate hostname” to be matched against the cert SANs. This avoids
+ *     rejections when the SAN does not align with the requested DNS name.
+ *
+ * See [this issue](https://github.com/coder/jetbrains-coder/issues/578) for more details.
+ */
 fun coderSocketFactory(settings: ReadOnlyTLSSettings): SSLSocketFactory {
     val sslContext = sslContextFromPEMs(settings.certPath, settings.keyPath, settings.caPath)
 
