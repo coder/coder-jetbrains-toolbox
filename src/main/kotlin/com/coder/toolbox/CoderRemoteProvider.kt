@@ -7,7 +7,6 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
-import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.waitForTrue
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
@@ -364,8 +363,8 @@ class CoderRemoteProvider(
             if (shouldDoAutoSetup()) {
                 try {
                     CoderCliSetupContext.apply {
-                        url = context.secrets.lastDeploymentURL.toURL()
-                        token = context.secrets.lastToken
+                        url = context.deploymentUrl
+                        token = context.secrets.tokenFor(context.deploymentUrl)
                     }
                     CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
                     return CoderCliSetupWizardPage(
@@ -399,14 +398,16 @@ class CoderRemoteProvider(
      * Auto-login only on first the firs run if there is a url & token configured or the auth
      * should be done via certificates.
      */
-    private fun shouldDoAutoSetup(): Boolean = firstRun && (context.secrets.canAutoLogin || !settings.requireTokenAuth)
+    private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !settings.requireTokenAuth)
+
+    fun canAutoLogin(): Boolean = !context.secrets.tokenFor(context.deploymentUrl).isNullOrBlank()
 
     private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
-        context.secrets.lastDeploymentURL = client.url.toString()
+        context.settingsStore.updateLastUsedUrl(client.url)
         if (context.settingsStore.requireTokenAuth) {
             context.secrets.lastToken = client.token ?: ""
-            context.secrets.storeTokenFor(client.url, context.secrets.lastToken)
+            context.secrets.storeTokenFor(client.url, client.token ?: "")
             context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
         } else {
             context.logger.info("Deployment URL was stored and will be available for automatic connection")

@@ -36,6 +36,7 @@ class CoderSettingsStore(
     ) : ReadOnlyTLSSettings
 
     // Properties implementation
+    override val lastDeploymentURL: String? get() = store[LAST_USED_URL]
     override val defaultURL: String get() = store[DEFAULT_URL] ?: "https://dev.coder.com"
     override val binarySource: String? get() = store[BINARY_SOURCE]
     override val binaryDirectory: String? get() = store[BINARY_DIRECTORY]
@@ -155,6 +156,10 @@ class CoderSettingsStore(
     fun readOnly(): ReadOnlyCoderSettings = this
 
     // Write operations
+    fun updateLastUsedUrl(url: URL) {
+        store[LAST_USED_URL] = url.toString()
+    }
+
     fun updateBinarySource(source: String) {
         store[BINARY_SOURCE] = source
     }

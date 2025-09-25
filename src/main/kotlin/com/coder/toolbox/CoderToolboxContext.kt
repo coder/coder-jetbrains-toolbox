@@ -36,14 +36,15 @@ data class CoderToolboxContext(
      *
      * In order of preference:
      *
-     * 1. Last used URL.
-     * 2. URL in settings.
-     * 3. CODER_URL.
-     * 4. URL in global cli config.
+     * 1. Last used URL from the settings.
+     * 2. Last used URL from the secrets store.
+     * 3. Default URL
      */
     val deploymentUrl: URL
         get() {
-            if (this.secrets.lastDeploymentURL.isNotBlank()) {
+            if (!this.settingsStore.lastDeploymentURL.isNullOrBlank()) {
+                return this.settingsStore.lastDeploymentURL!!.toURL()
+            } else if (this.secrets.lastDeploymentURL.isNotBlank()) {
                 return this.secrets.lastDeploymentURL.toURL()
             }
             return this.settingsStore.defaultURL.toURL()

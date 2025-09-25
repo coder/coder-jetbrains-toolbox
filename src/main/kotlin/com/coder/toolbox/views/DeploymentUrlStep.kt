@@ -63,8 +63,8 @@ class DeploymentUrlStep(
         errorField.textState.update {
             context.i18n.pnotr("")
         }
-        urlField.textState.update {
-            context.secrets.lastDeploymentURL
+        urlField.contentState.update {
+            context.deploymentUrl.toString()
         }
 
         signatureFallbackStrategyField.checkedState.update {

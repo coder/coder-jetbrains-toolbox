@@ -8,6 +8,12 @@ import java.util.Locale.getDefault
  * Read-only interface for accessing Coder settings
  */
 interface ReadOnlyCoderSettings {
+
+    /**
+     * The last used deployment URL.
+     */
+    val lastDeploymentURL: String?
+
     /**
      * The default URL to show in the connection window.
      */

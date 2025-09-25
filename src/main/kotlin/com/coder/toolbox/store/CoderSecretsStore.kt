@@ -18,14 +18,11 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
         }
     }
 
-    var lastDeploymentURL: String
+    val lastDeploymentURL: String
         get() = get("last-deployment-url")
-        set(value) = set("last-deployment-url", value)
     var lastToken: String
         get() = get("last-token")
         set(value) = set("last-token", value)
-    val canAutoLogin: Boolean
-        get() = lastDeploymentURL.isNotBlank() && lastToken.isNotBlank()
 
     fun tokenFor(url: URL): String? = store[url.host]
 
