@@ -2,7 +2,7 @@ package com.coder.toolbox.store
 
 internal const val CODER_SSH_CONFIG_OPTIONS = "CODER_SSH_CONFIG_OPTIONS"
 
-internal const val CODER_URL = "CODER_URL"
+internal const val LAST_USED_URL = "lastDeploymentURL"
 
 internal const val DEFAULT_URL = "defaultURL"
 

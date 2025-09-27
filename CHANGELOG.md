@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- simplified storage for last used url and token
+
 ## 0.6.6 - 2025-09-24
 
 ### Changed

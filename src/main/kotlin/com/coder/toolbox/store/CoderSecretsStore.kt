@@ -8,24 +8,11 @@ import java.net.URL
  * Provides Coder secrets backed by the secrets store service.
  */
 class CoderSecretsStore(private val store: PluginSecretStore) {
-    private fun get(key: String): String = store[key] ?: ""
-
-    private fun set(key: String, value: String) {
-        if (value.isBlank()) {
-            store.clear(key)
-        } else {
-            store[key] = value
-        }
-    }
-
-    var lastDeploymentURL: String
-        get() = get("last-deployment-url")
-        set(value) = set("last-deployment-url", value)
-    var lastToken: String
-        get() = get("last-token")
-        set(value) = set("last-token", value)
-    val canAutoLogin: Boolean
-        get() = lastDeploymentURL.isNotBlank() && lastToken.isNotBlank()
+    @Deprecated(
+        message = "The URL is now stored the JSON backed settings store. Use CoderSettingsStore#lastDeploymentURL",
+        replaceWith = ReplaceWith("context.settingsStore.lastDeploymentURL")
+    )
+    val lastDeploymentURL: String = store["last-deployment-url"] ?: ""
 
     fun tokenFor(url: URL): String? = store[url.host]
 
