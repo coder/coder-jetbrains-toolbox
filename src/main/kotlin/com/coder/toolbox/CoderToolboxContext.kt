@@ -42,12 +42,9 @@ data class CoderToolboxContext(
      */
     val deploymentUrl: URL
         get() {
-            if (!this.settingsStore.lastDeploymentURL.isNullOrBlank()) {
-                return this.settingsStore.lastDeploymentURL!!.toURL()
-            } else if (this.secrets.lastDeploymentURL.isNotBlank()) {
-                return this.secrets.lastDeploymentURL.toURL()
-            }
-            return this.settingsStore.defaultURL.toURL()
+            return settingsStore.lastDeploymentURL?.takeIf { it.isNotBlank() }?.toURL()
+                ?: secrets.lastDeploymentURL.takeIf { it.isNotBlank() }?.toURL()
+                ?: settingsStore.defaultURL.toURL()
         }
 
     suspend fun logAndShowError(title: String, error: String) {
