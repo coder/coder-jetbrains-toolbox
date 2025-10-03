@@ -354,24 +354,22 @@ class CoderCLIManager(
                 // always use the correct URL.
                 "--url",
                 escape(deploymentURL.toString()),
-                if (!context.settingsStore.headerCommand.isNullOrBlank()) "--header-command" else null,
-                if (!context.settingsStore.headerCommand.isNullOrBlank()) escapeSubcommand(context.settingsStore.headerCommand!!) else null,
+                context.settingsStore.headerCommand?.takeIf { it.isNotBlank() }?.let { "--header-command" },
+                context.settingsStore.headerCommand?.takeIf { it.isNotBlank() }?.let { escapeSubcommand(it) },
                 "ssh",
                 "--stdio",
                 if (context.settingsStore.disableAutostart && feats.disableAutostart) "--disable-autostart" else null,
                 "--network-info-dir ${escape(context.settingsStore.networkInfoDir)}"
             )
         val proxyArgs = baseArgs + listOfNotNull(
-            if (!context.settingsStore.sshLogDirectory.isNullOrBlank()) "--log-dir" else null,
-            if (!context.settingsStore.sshLogDirectory.isNullOrBlank()) escape(context.settingsStore.sshLogDirectory!!) else null,
+            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let { "--log-dir" },
+            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let { escape(it) },
             if (feats.reportWorkspaceUsage) "--usage-app=jetbrains" else null,
         )
-        val extraConfig =
-            if (!context.settingsStore.sshConfigOptions.isNullOrBlank()) {
-                "\n" + context.settingsStore.sshConfigOptions!!.prependIndent("  ")
-            } else {
-                ""
-            }
+        val extraConfig = context.settingsStore.sshConfigOptions
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "\n" + it.prependIndent("  ") }
+            ?: ""
         val options = """
             ConnectTimeout 0
             StrictHostKeyChecking no

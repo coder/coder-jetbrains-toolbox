@@ -15,11 +15,9 @@ import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
-import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
-import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.squareup.moshi.Moshi
 import okhttp3.OkHttpClient
@@ -114,7 +112,9 @@ open class CoderRestClient(
             )
         }
 
-        return userResponse.body()!!
+        return requireNotNull(userResponse.body()) {
+            "Successful response returned null body or user"
+        }
     }
 
     /**
@@ -132,7 +132,9 @@ open class CoderRestClient(
             )
         }
 
-        return workspacesResponse.body()!!.workspaces
+        return requireNotNull(workspacesResponse.body()?.workspaces) {
+            "Successful response returned null body or workspaces"
+        }
     }
 
     /**
@@ -140,33 +142,19 @@ open class CoderRestClient(
      * @throws [APIResponseException].
      */
     suspend fun workspace(workspaceID: UUID): Workspace {
-        val workspacesResponse = retroRestClient.workspace(workspaceID)
-        if (!workspacesResponse.isSuccessful) {
+        val workspaceResponse = retroRestClient.workspace(workspaceID)
+        if (!workspaceResponse.isSuccessful) {
             throw APIResponseException(
                 "retrieve workspace",
                 url,
-                workspacesResponse.code(),
-                workspacesResponse.parseErrorBody(moshi)
+                workspaceResponse.code(),
+                workspaceResponse.parseErrorBody(moshi)
             )
         }
 
-        return workspacesResponse.body()!!
-    }
-
-    /**
-     * Maps the available workspaces to the associated agents.
-     */
-    suspend fun workspacesByAgents(): Set<Pair<Workspace, WorkspaceAgent>> {
-        // It is possible for there to be resources with duplicate names so we
-        // need to use a set.
-        return workspaces().flatMap { ws ->
-            when (ws.latestBuild.status) {
-                WorkspaceStatus.RUNNING -> ws.latestBuild.resources
-                else -> resources(ws)
-            }.filter { it.agents != null }.flatMap { it.agents!! }.map {
-                ws to it
-            }
-        }.toSet()
+        return requireNotNull(workspaceResponse.body()) {
+            "Successful response returned null body or workspace"
+        }
     }
 
     /**
@@ -187,7 +175,10 @@ open class CoderRestClient(
                 resourcesResponse.parseErrorBody(moshi)
             )
         }
-        return resourcesResponse.body()!!
+
+        return requireNotNull(resourcesResponse.body()) {
+            "Successful response returned null body or workspace resources"
+        }
     }
 
     suspend fun buildInfo(): BuildInfo {
@@ -200,7 +191,10 @@ open class CoderRestClient(
                 buildInfoResponse.parseErrorBody(moshi)
             )
         }
-        return buildInfoResponse.body()!!
+
+        return requireNotNull(buildInfoResponse.body()) {
+            "Successful response returned null body or build info"
+        }
     }
 
     /**
@@ -216,7 +210,10 @@ open class CoderRestClient(
                 templateResponse.parseErrorBody(moshi)
             )
         }
-        return templateResponse.body()!!
+
+        return requireNotNull(templateResponse.body()) {
+            "Successful response returned null body or template"
+        }
     }
 
     /**
@@ -238,7 +235,10 @@ open class CoderRestClient(
                 buildResponse.parseErrorBody(moshi)
             )
         }
-        return buildResponse.body()!!
+
+        return requireNotNull(buildResponse.body()) {
+            "Successful response returned null body or workspace build"
+        }
     }
 
     /**
@@ -254,7 +254,10 @@ open class CoderRestClient(
                 buildResponse.parseErrorBody(moshi)
             )
         }
-        return buildResponse.body()!!
+
+        return requireNotNull(buildResponse.body()) {
+            "Successful response returned null body or workspace build"
+        }
     }
 
     /**
@@ -296,7 +299,10 @@ open class CoderRestClient(
                 buildResponse.parseErrorBody(moshi)
             )
         }
-        return buildResponse.body()!!
+
+        return requireNotNull(buildResponse.body()) {
+            "Successful response returned null body or workspace build"
+        }
     }
 
     fun close() {
