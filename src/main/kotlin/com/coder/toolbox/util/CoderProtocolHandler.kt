@@ -2,9 +2,7 @@ package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
-import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
-import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
@@ -154,29 +152,6 @@ open class CoderProtocolHandler(
         return workspace
     }
 
-    private suspend fun buildRestClient(deploymentURL: String, token: String?): CoderRestClient? {
-        try {
-            return authenticate(deploymentURL, token)
-        } catch (ex: Exception) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, humanizeConnectionError(deploymentURL.toURL(), true, ex))
-            return null
-        }
-    }
-
-    /**
-     * Returns an authenticated Coder CLI.
-     */
-    private suspend fun authenticate(deploymentURL: String, token: String?): CoderRestClient {
-        val client = CoderRestClient(
-            context,
-            deploymentURL.toURL(),
-            token,
-            PluginManager.pluginInfo.version
-        )
-        client.initializeSession()
-        return client
-    }
-
     private suspend fun List<Workspace>.matchName(workspaceName: String, deploymentURL: String): Workspace? {
         val workspace = this.firstOrNull { it.name == workspaceName }
         if (workspace == null) {
@@ -324,29 +299,6 @@ open class CoderProtocolHandler(
             return false
         }
         return true
-    }
-
-    private suspend fun configureCli(
-        deploymentURL: String,
-        restClient: CoderRestClient,
-        progressReporter: (String) -> Unit
-    ): CoderCLIManager {
-        val cli = ensureCLI(
-            context,
-            deploymentURL.toURL(),
-            restClient.buildInfo().version,
-            progressReporter
-        )
-
-        // We only need to log in if we are using token-based auth.
-        if (restClient.token != null) {
-            context.logger.info("Authenticating Coder CLI...")
-            cli.login(restClient.token)
-        }
-
-        context.logger.info("Configuring Coder CLI...")
-        cli.configSsh(restClient.workspacesByAgents())
-        return cli
     }
 
     private fun launchIde(
