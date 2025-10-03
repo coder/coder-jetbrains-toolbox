@@ -21,13 +21,27 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.DisplayName
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 internal class CoderProtocolHandlerTest {
+
+    private companion object {
+        val AGENT_RIKER = AgentTestData(name = "Riker", id = "9a920eee-47fb-4571-9501-e4b3120c12f2")
+        val AGENT_BILL = AgentTestData(name = "Bill", id = "fb3daea4-da6b-424d-84c7-36b90574cfef")
+        val AGENT_BOB = AgentTestData(name = "Bob", id = "b0e4c54d-9ba9-4413-8512-11ca1e826a24")
+
+        val ALL_AGENTS = mapOf(
+            AGENT_BOB.name to AGENT_BOB.id,
+            AGENT_BILL.name to AGENT_BILL.id,
+            AGENT_RIKER.name to AGENT_RIKER.id
+        )
+
+        val SINGLE_AGENT = mapOf(AGENT_BOB.name to AGENT_BOB.id)
+    }
+
     private val context = CoderToolboxContext(
         mockk<ToolboxUi>(relaxed = true),
         mockk<EnvironmentUiPageManager>(),
@@ -51,128 +65,171 @@ internal class CoderProtocolHandlerTest {
         MutableStateFlow(false)
     )
 
-    private val agents =
-        mapOf(
-            "agent_name_bob" to "b0e4c54d-9ba9-4413-8512-11ca1e826a24",
-            "agent_name_bill" to "fb3daea4-da6b-424d-84c7-36b90574cfef",
-            "agent_name_riker" to "9a920eee-47fb-4571-9501-e4b3120c12f2",
+    @Test
+    fun `given a workspace with multiple agents when getMatchingAgent is called with a valid agent name then it correctly resolves resolves an agent`() {
+        val ws = DataGen.workspace("ws", agents = ALL_AGENTS)
+
+        val testCases = listOf(
+            AgentMatchTestCase(
+                "resolves agent with name Riker",
+                mapOf("agent_name" to AGENT_RIKER.name),
+                AGENT_RIKER.uuid
+            ),
+            AgentMatchTestCase(
+                "resolves agent with name Bill",
+                mapOf("agent_name" to AGENT_BILL.name),
+                AGENT_BILL.uuid
+            ),
+            AgentMatchTestCase(
+                "resolves agent with name Bob",
+                mapOf("agent_name" to AGENT_BOB.name),
+                AGENT_BOB.uuid
+            )
         )
-    private val agentBob =
-        mapOf(
-            "agent_name_bob" to "b0e4c54d-9ba9-4413-8512-11ca1e826a24",
-        )
 
-    @Test
-    @DisplayName("given a ws with multiple agents, expect the correct agent to be resolved if it matches the agent_name query param")
-    fun getMatchingAgent() {
-        val ws = DataGen.workspace("ws", agents = agents)
-
-        val tests =
-            listOf(
-                Pair(
-                    mapOf("agent_name" to "agent_name_riker"),
-                    "9a920eee-47fb-4571-9501-e4b3120c12f2"
-                ),
-                Pair(
-                    mapOf("agent_name" to "agent_name_bill"),
-                    "fb3daea4-da6b-424d-84c7-36b90574cfef"
-                ),
-                Pair(
-                    mapOf("agent_name" to "agent_name_bob"),
-                    "b0e4c54d-9ba9-4413-8512-11ca1e826a24"
-                )
-            )
         runBlocking {
-            tests.forEach {
-                assertEquals(UUID.fromString(it.second), protocolHandler.getMatchingAgent(it.first, ws)?.id)
-            }
-        }
-    }
-
-    @Test
-    @DisplayName("given a ws with only multiple agents expect the agent resolution to fail if none match the agent_name query param")
-    fun failsToGetMatchingAgent() {
-        val ws = DataGen.workspace("ws", agents = agents)
-        val tests =
-            listOf(
-                Triple(emptyMap(), MissingArgumentException::class, "Unable to determine"),
-                Triple(mapOf("agent_name" to ""), MissingArgumentException::class, "Unable to determine"),
-                Triple(mapOf("agent_name" to null), MissingArgumentException::class, "Unable to determine"),
-                Triple(mapOf("agent_name" to "not-an-agent-name"), IllegalArgumentException::class, "agent with ID"),
-                Triple(
-                    mapOf("agent_name" to "agent_name_homer"),
-                    IllegalArgumentException::class,
-                    "agent with name"
-                )
-            )
-        runBlocking {
-            tests.forEach {
-                assertNull(protocolHandler.getMatchingAgent(it.first, ws)?.id)
-            }
-        }
-    }
-
-    @Test
-    @DisplayName("given a ws with only one agent, the agent is selected even when agent_name query param was not provided")
-    fun getsFirstAgentWhenOnlyOne() {
-        val ws = DataGen.workspace("ws", agents = agentBob)
-        val tests =
-            listOf(
-                emptyMap(),
-                mapOf("agent_name" to ""),
-                mapOf("agent_name" to null)
-            )
-        runBlocking {
-            tests.forEach {
+            testCases.forEach { testCase ->
                 assertEquals(
-                    UUID.fromString("b0e4c54d-9ba9-4413-8512-11ca1e826a24"),
-                    protocolHandler.getMatchingAgent(
-                        it,
-                        ws,
-                    )?.id,
+                    testCase.expectedAgentId,
+                    protocolHandler.getMatchingAgent(testCase.params, ws)?.id,
+                    "Failed: ${testCase.description}"
                 )
             }
         }
     }
 
     @Test
-    @DisplayName("given a ws with only one agent, the agent is NOT selected when agent_name query param was provided but does not match")
-    fun failsToGetAgentWhenOnlyOne() {
-        val wsWithAgentBob = DataGen.workspace("ws", agents = agentBob)
-        val tests =
-            listOf(
-                Triple(
-                    mapOf("agent_name" to "agent_name_garfield"),
-                    IllegalArgumentException::class,
-                    "agent with name"
-                ),
+    fun `given a workspace with multiple agents when getMatchingAgent is called with invalid agent names then no agent is resolved`() {
+        val ws = DataGen.workspace("ws", agents = ALL_AGENTS)
+
+        val testCases = listOf(
+            AgentNullResultTestCase(
+                "empty parameters (i.e. no agent name) does not return any agent",
+                emptyMap()
+            ),
+            AgentNullResultTestCase(
+                "empty agent_name does not return any agent",
+                mapOf("agent_name" to "")
+            ),
+            AgentNullResultTestCase(
+                "null agent_name does not return any agent",
+                mapOf("agent_name" to null)
+            ),
+            AgentNullResultTestCase(
+                "non-existent agent does not return any agent",
+                mapOf("agent_name" to "agent_name_homer")
+            ),
+            AgentNullResultTestCase(
+                "UUID instead of name does not return any agent",
+                mapOf("agent_name" to "not-an-agent-name")
             )
+        )
+
         runBlocking {
-            tests.forEach {
-                assertNull(protocolHandler.getMatchingAgent(it.first, wsWithAgentBob))
+            testCases.forEach { testCase ->
+                assertNull(
+                    protocolHandler.getMatchingAgent(testCase.params, ws)?.id,
+                    "Failed: ${testCase.description}"
+                )
             }
         }
     }
 
     @Test
-    @DisplayName("fails to resolve any agent when the workspace has no agents")
-    fun failsToGetAgentWhenWorkspaceHasNoAgents() {
-        val wsWithoutAgents = DataGen.workspace("ws")
-        val tests =
-            listOf(
-                Triple(emptyMap(), IllegalArgumentException::class, "has no agents"),
-                Triple(mapOf("agent_name" to ""), IllegalArgumentException::class, "has no agents"),
-                Triple(mapOf("agent_name" to null), IllegalArgumentException::class, "has no agents"),
-                Triple(
-                    mapOf("agent_name" to "agent_name_riker"),
-                    IllegalArgumentException::class,
-                    "has no agents"
-                ),
+    fun `given a workspace with a single agent when getMatchingAgent is called with an empty agent name then the default agent is resolved`() {
+        val ws = DataGen.workspace("ws", agents = SINGLE_AGENT)
+
+        val testCases = listOf(
+            AgentMatchTestCase(
+                "empty parameters (i.e. no agent name) auto-selects the one and only agent available",
+                emptyMap(),
+                AGENT_BOB.uuid
+            ),
+            AgentMatchTestCase(
+                "empty agent_name auto-selects the one and only agent available",
+                mapOf("agent_name" to ""),
+                AGENT_BOB.uuid
+            ),
+            AgentMatchTestCase(
+                "null agent_name auto-selects the one and only agent available",
+                mapOf("agent_name" to null),
+                AGENT_BOB.uuid
             )
+        )
+
         runBlocking {
-            tests.forEach {
-                assertNull(protocolHandler.getMatchingAgent(it.first, wsWithoutAgents))
+            testCases.forEach { testCase ->
+                assertEquals(
+                    testCase.expectedAgentId,
+                    protocolHandler.getMatchingAgent(testCase.params, ws)?.id,
+                    "Failed: ${testCase.description}"
+                )
             }
         }
     }
+
+    @Test
+    fun `given a workspace with a single agent when getMatchingAgent is called with an invalid agent name then no agent is resolved`() {
+        val ws = DataGen.workspace("ws", agents = SINGLE_AGENT)
+
+        val testCase = AgentNullResultTestCase(
+            "non-matching agent_name with single agent",
+            mapOf("agent_name" to "agent_name_garfield")
+        )
+
+        runBlocking {
+            assertNull(
+                protocolHandler.getMatchingAgent(testCase.params, ws),
+                "Failed: ${testCase.description}"
+            )
+        }
+    }
+
+    @Test
+    fun `given a workspace with no agent when getMatchingAgent is called then no agent is resolved`() {
+        val ws = DataGen.workspace("ws")
+
+        val testCases = listOf(
+            AgentNullResultTestCase(
+                "empty parameters (i.e. no agent name) does not return any agent",
+                emptyMap()
+            ),
+            AgentNullResultTestCase(
+                "empty agent_name does not return any agent",
+                mapOf("agent_name" to "")
+            ),
+            AgentNullResultTestCase(
+                "null agent_name does not return any agent",
+                mapOf("agent_name" to null)
+            ),
+            AgentNullResultTestCase(
+                "valid agent_name does not return any agent",
+                mapOf("agent_name" to AGENT_RIKER.name)
+            )
+        )
+
+        runBlocking {
+            testCases.forEach { testCase ->
+                assertNull(
+                    protocolHandler.getMatchingAgent(testCase.params, ws),
+                    "Failed: ${testCase.description}"
+                )
+            }
+        }
+    }
+
+    internal data class AgentTestData(val name: String, val id: String) {
+        val uuid: UUID get() = UUID.fromString(id)
+    }
+
+    internal data class AgentMatchTestCase(
+        val description: String,
+        val params: Map<String, String?>,
+        val expectedAgentId: UUID
+    )
+
+    internal data class AgentNullResultTestCase(
+        val description: String,
+        val params: Map<String, String?>
+    )
 }
