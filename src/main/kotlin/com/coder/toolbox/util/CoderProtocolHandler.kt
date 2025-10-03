@@ -252,7 +252,10 @@ open class CoderProtocolHandler(
         parameters: Map<String, String?>,
         workspace: Workspace,
     ): WorkspaceAgent? {
-        val agents = workspace.latestBuild.resources.filter { it.agents != null }.flatMap { it.agents!! }
+        val agents = workspace.latestBuild.resources
+            .mapNotNull { it.agents }
+            .flatten()
+
         if (agents.isEmpty()) {
             context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "The workspace \"${workspace.name}\" has no agents")
             return null

@@ -21,12 +21,12 @@ object CoderHttpClientBuilder {
         val trustManagers = coderTrustManagers(settings.tls.caPath)
         var builder = OkHttpClient.Builder()
 
-        if (context.proxySettings.getProxy() != null) {
-            context.logger.info("proxy: ${context.proxySettings.getProxy()}")
-            builder.proxy(context.proxySettings.getProxy())
-        } else if (context.proxySettings.getProxySelector() != null) {
-            context.logger.info("proxy selector: ${context.proxySettings.getProxySelector()}")
-            builder.proxySelector(context.proxySettings.getProxySelector()!!)
+        context.proxySettings.getProxy()?.let { proxy ->
+            context.logger.info("proxy: $proxy")
+            builder.proxy(proxy)
+        } ?: context.proxySettings.getProxySelector()?.let { proxySelector ->
+            context.logger.info("proxy selector: $proxySelector")
+            builder.proxySelector(proxySelector)
         }
 
         // Note: This handles only HTTP/HTTPS proxy authentication.

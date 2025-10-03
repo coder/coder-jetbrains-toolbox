@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- potential race condition that could cause crashes when settings are modified concurrently
+
 ## 0.7.0 - 2025-09-27
 
 ### Changed

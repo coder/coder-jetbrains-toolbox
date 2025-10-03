@@ -56,7 +56,7 @@ class ConnectStep(
             return
         }
 
-        statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderCliSetupContext.url!!.host}...") }
+        statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderCliSetupContext.url?.host ?: "unknown host"}...") }
         connect()
     }
 
@@ -64,7 +64,8 @@ class ConnectStep(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
-        if (!CoderCliSetupContext.hasUrl()) {
+        val url = CoderCliSetupContext.url
+        if (url == null) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return
         }
@@ -74,7 +75,7 @@ class ConnectStep(
             return
         }
         // Capture the host name early for error reporting
-        val hostName = CoderCliSetupContext.url!!.host
+        val hostName = url.host
 
         signInJob?.cancel()
         signInJob = context.cs.launch(CoroutineName("Http and CLI Setup")) {
@@ -82,7 +83,7 @@ class ConnectStep(
                 context.logger.info("Setting up the HTTP client...")
                 val client = CoderRestClient(
                     context,
-                    CoderCliSetupContext.url!!,
+                    url,
                     if (context.settingsStore.requireTokenAuth) CoderCliSetupContext.token else null,
                     PluginManager.pluginInfo.version,
                 )
