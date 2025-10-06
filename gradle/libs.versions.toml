@@ -14,7 +14,7 @@ retrofit = "3.0.0"
 changelog = "2.4.0"
 gettext = "0.7.0"
 plugin-structure = "3.316"
-mockk = "1.14.5"
+mockk = "1.14.6"
 detekt = "1.23.8"
 bouncycastle = "1.82"
 
