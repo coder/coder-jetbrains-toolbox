@@ -1,0 +1,22 @@
+package com.coder.toolbox.oauth
+
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
+data class AuthorizationServer(
+    @field:Json(name = "authorization_endpoint") val authorizationEndpoint: String,
+    @field:Json(name = "token_endpoint") val tokenEndpoint: String,
+    @property:Json(name = "token_endpoint_auth_methods_supported") val authMethodForTokenEndpoint: List<TokenEndpointAuthMethod>,
+)
+
+enum class TokenEndpointAuthMethod {
+    @Json(name = "none")
+    NONE,
+
+    @Json(name = "client_secret_post")
+    CLIENT_SECRET_POST,
+
+    @Json(name = "client_secret_basic")
+    CLIENT_SECRET_BASIC,
+}

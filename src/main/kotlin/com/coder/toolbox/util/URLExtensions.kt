@@ -8,6 +8,12 @@ import java.net.URL
 
 fun String.toURL(): URL = URI.create(this).toURL()
 
+fun String.toBaseURL(): URL {
+    val url = this.toURL()
+    val port = if (url.port != -1) ":${url.port}" else ""
+    return URI.create("${url.protocol}://${url.host}$port").toURL()
+}
+
 fun String.validateStrictWebUrl(): WebUrlValidationResult = try {
     val uri = URI(this)
 
@@ -21,15 +27,18 @@ fun String.validateStrictWebUrl(): WebUrlValidationResult = try {
             "The URL \"$this\" is missing a scheme (like https://). " +
                     "Please enter a full web address like \"https://example.com\""
         )
+
         uri.scheme?.lowercase() !in setOf("http", "https") ->
             Invalid(
                 "The URL \"$this\" must start with http:// or https://, not \"${uri.scheme}\""
             )
+
         uri.authority.isNullOrBlank() ->
             Invalid(
                 "The URL \"$this\" does not include a valid website name. " +
                         "Please enter a full web address like \"https://example.com\""
             )
+
         else -> Valid
     }
 } catch (_: Exception) {
