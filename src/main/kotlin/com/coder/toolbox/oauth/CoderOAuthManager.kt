@@ -1,6 +1,5 @@
 package com.coder.toolbox.oauth
 
-import com.coder.toolbox.util.toBaseURL
 import com.jetbrains.toolbox.api.core.auth.AuthConfiguration
 import com.jetbrains.toolbox.api.core.auth.ContentType
 import com.jetbrains.toolbox.api.core.auth.ContentType.FORM_URL_ENCODED
@@ -8,10 +7,7 @@ import com.jetbrains.toolbox.api.core.auth.OAuthToken
 import com.jetbrains.toolbox.api.core.auth.PluginAuthInterface
 import com.jetbrains.toolbox.api.core.auth.RefreshConfiguration
 
-class CoderOAuthManager(
-    private val clientId: String,
-    private val authServer: AuthorizationServer
-) : PluginAuthInterface<CoderAccount, CoderLoginCfg> {
+class CoderOAuthManager(private val cfg: CoderOAuthCfg) : PluginAuthInterface<CoderAccount, CoderOAuthCfg> {
     override fun serialize(account: CoderAccount): String = "${account.id}|${account.fullName}"
 
     override fun deserialize(string: String): CoderAccount = CoderAccount(
@@ -33,28 +29,49 @@ class CoderOAuthManager(
         TODO("Not yet implemented")
     }
 
-    override fun createAuthConfig(loginConfiguration: CoderLoginCfg): AuthConfiguration = AuthConfiguration(
-        authParams = mapOf("response_type" to "code", "client_id" to clientId),
-        tokenParams = mapOf("grant_type" to "authorization_code", "client_id" to clientId),
-        baseUrl = authServer.authorizationEndpoint.toBaseURL().toString(),
-        authUrl = authServer.authorizationEndpoint,
-        tokenUrl = authServer.tokenEndpoint,
-        codeChallengeParamName = "code_challenge",
-        codeChallengeMethod = "S256",
-        verifierParamName = "code_verifier",
-        authorization = null
-    )
+    override fun createAuthConfig(loginConfiguration: CoderOAuthCfg): AuthConfiguration {
+        val codeVerifier = PKCEGenerator.generateCodeVerifier()
+        val codeChallenge = PKCEGenerator.generateCodeChallenge(codeVerifier)
 
+        return AuthConfiguration(
+            authParams = mapOf(
+                "client_id" to loginConfiguration.clientId,
+                "response_type" to "code",
+                "code_challenge" to codeChallenge
+            ),
+            tokenParams = mapOf(
+                "grant_type" to "authorization_code",
+                "client_id" to loginConfiguration.clientId,
+                "code_verifier" to codeVerifier
+            ),
+            baseUrl = loginConfiguration.baseUrl,
+            authUrl = loginConfiguration.authUrl,
+            tokenUrl = loginConfiguration.tokenUrl,
+            codeChallengeParamName = "code_challenge",
+            codeChallengeMethod = "S256",
+            verifierParamName = "code_verifier",
+            authorization = null
+        )
+    }
 
     override fun createRefreshConfig(account: CoderAccount): RefreshConfiguration {
         return object : RefreshConfiguration {
-            override val refreshUrl: String = authServer.tokenEndpoint
-            override val parameters: Map<String, String> =
-                mapOf("grant_type" to "refresh_token", "client_id" to clientId)
+            override val refreshUrl: String = cfg.tokenUrl
+            override val parameters: Map<String, String> = mapOf(
+                "grant_type" to "refresh_token",
+                "client_id" to cfg.clientId,
+                "client_secret" to cfg.clientSecret
+            )
             override val authorization: String? = null
             override val contentType: ContentType = FORM_URL_ENCODED
         }
     }
 }
 
-object CoderLoginCfg
+data class CoderOAuthCfg(
+    val baseUrl: String,
+    val authUrl: String,
+    val tokenUrl: String,
+    val clientId: String,
+    val clientSecret: String,
+)
