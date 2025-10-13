@@ -35,6 +35,7 @@ private val SUPPORTED_BIN_MIME_TYPES = listOf(
     "application/x-winexe",
     "application/x-msdos-program",
     "application/x-msdos-executable",
+    "application/x-ms-dos-executable",
     "application/vnd.microsoft.portable-executable"
 )
 /**
