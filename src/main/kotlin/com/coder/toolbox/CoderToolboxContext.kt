@@ -1,8 +1,13 @@
 package com.coder.toolbox
 
+import com.coder.toolbox.oauth.CoderAccount
+import com.coder.toolbox.oauth.CoderOAuthCfg
+import com.coder.toolbox.oauth.CoderOAuthManager
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.util.toURL
+import com.jetbrains.toolbox.api.core.ServiceLocator
+import com.jetbrains.toolbox.api.core.auth.PluginAuthManager
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
@@ -18,6 +23,7 @@ import java.util.UUID
 
 @Suppress("UnstableApiUsage")
 data class CoderToolboxContext(
+    private val serviceLocator: ServiceLocator,
     val ui: ToolboxUi,
     val envPageManager: EnvironmentUiPageManager,
     val envStateColorPalette: EnvironmentStateColorPalette,
@@ -46,6 +52,14 @@ data class CoderToolboxContext(
                 ?: secrets.lastDeploymentURL.takeIf { it.isNotBlank() }?.toURL()
                 ?: settingsStore.defaultURL.toURL()
         }
+
+    fun getAuthManager(
+        cfg: CoderOAuthCfg
+    ): PluginAuthManager<CoderAccount, CoderOAuthCfg> = serviceLocator.getAuthManager(
+        accountClass = CoderAccount::class.java,
+        displayName = "Coder Authentication",
+        pluginAuthInterface = CoderOAuthManager(cfg)
+    )
 
     suspend fun logAndShowError(title: String, error: String) {
         logger.error(error)

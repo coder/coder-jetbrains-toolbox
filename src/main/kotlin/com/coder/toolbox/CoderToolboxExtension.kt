@@ -29,6 +29,7 @@ class CoderToolboxExtension : RemoteDevExtension {
         val logger = serviceLocator.getService(Logger::class.java)
         return CoderRemoteProvider(
             CoderToolboxContext(
+                serviceLocator,
                 serviceLocator.getService<ToolboxUi>(),
                 serviceLocator.getService<EnvironmentUiPageManager>(),
                 serviceLocator.getService<EnvironmentStateColorPalette>(),
