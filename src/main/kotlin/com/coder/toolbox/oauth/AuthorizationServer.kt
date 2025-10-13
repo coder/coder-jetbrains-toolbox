@@ -7,6 +7,8 @@ import com.squareup.moshi.JsonClass
 data class AuthorizationServer(
     @field:Json(name = "authorization_endpoint") val authorizationEndpoint: String,
     @field:Json(name = "token_endpoint") val tokenEndpoint: String,
+    @field:Json(name = "registration_endpoint") val registrationEndpoint: String,
+    @property:Json(name = "response_types_supported") val supportedResponseTypes: List<String>,
     @property:Json(name = "token_endpoint_auth_methods_supported") val authMethodForTokenEndpoint: List<TokenEndpointAuthMethod>,
 )
 
