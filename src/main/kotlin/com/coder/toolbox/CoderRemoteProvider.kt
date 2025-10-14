@@ -318,6 +318,12 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         try {
+
+            if (context.oauthManager.canHandle(uri)) {
+                context.oauthManager.handle(uri)
+                return
+            }
+
             linkHandler.handle(
                 uri,
                 shouldDoAutoSetup()
