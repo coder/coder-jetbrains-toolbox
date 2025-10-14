@@ -7,7 +7,9 @@ import com.jetbrains.toolbox.api.core.auth.OAuthToken
 import com.jetbrains.toolbox.api.core.auth.PluginAuthInterface
 import com.jetbrains.toolbox.api.core.auth.RefreshConfiguration
 
-class CoderOAuthManager(private val cfg: CoderOAuthCfg) : PluginAuthInterface<CoderAccount, CoderOAuthCfg> {
+class CoderOAuthManager : PluginAuthInterface<CoderAccount, CoderOAuthCfg> {
+    private lateinit var refreshConf: CoderRefreshConfig
+
     override fun serialize(account: CoderAccount): String = "${account.id}|${account.fullName}"
 
     override fun deserialize(string: String): CoderAccount = CoderAccount(
@@ -32,6 +34,7 @@ class CoderOAuthManager(private val cfg: CoderOAuthCfg) : PluginAuthInterface<Co
     override fun createAuthConfig(loginConfiguration: CoderOAuthCfg): AuthConfiguration {
         val codeVerifier = PKCEGenerator.generateCodeVerifier()
         val codeChallenge = PKCEGenerator.generateCodeChallenge(codeVerifier)
+        refreshConf = loginConfiguration.toRefreshConf()
 
         return AuthConfiguration(
             authParams = mapOf(
@@ -56,11 +59,11 @@ class CoderOAuthManager(private val cfg: CoderOAuthCfg) : PluginAuthInterface<Co
 
     override fun createRefreshConfig(account: CoderAccount): RefreshConfiguration {
         return object : RefreshConfiguration {
-            override val refreshUrl: String = cfg.tokenUrl
+            override val refreshUrl: String = refreshConf.refreshUrl
             override val parameters: Map<String, String> = mapOf(
                 "grant_type" to "refresh_token",
-                "client_id" to cfg.clientId,
-                "client_secret" to cfg.clientSecret
+                "client_id" to refreshConf.clientId,
+                "client_secret" to refreshConf.clientSecret
             )
             override val authorization: String? = null
             override val contentType: ContentType = FORM_URL_ENCODED
@@ -74,4 +77,16 @@ data class CoderOAuthCfg(
     val tokenUrl: String,
     val clientId: String,
     val clientSecret: String,
+)
+
+private data class CoderRefreshConfig(
+    val refreshUrl: String,
+    val clientId: String,
+    val clientSecret: String,
+)
+
+private fun CoderOAuthCfg.toRefreshConf() = CoderRefreshConfig(
+    refreshUrl = this.tokenUrl,
+    clientId = this.clientId,
+    this.clientSecret
 )
