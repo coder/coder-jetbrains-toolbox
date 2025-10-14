@@ -1,11 +1,14 @@
 package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.oauth.CoderAccount
+import com.coder.toolbox.oauth.CoderOAuthCfg
 import com.coder.toolbox.sdk.DataGen
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.views.CoderSettingsPage
+import com.jetbrains.toolbox.api.core.auth.PluginAuthManager
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
@@ -43,6 +46,7 @@ internal class CoderProtocolHandlerTest {
     }
 
     private val context = CoderToolboxContext(
+        mockk<PluginAuthManager<CoderAccount, CoderOAuthCfg>>(),
         mockk<ToolboxUi>(relaxed = true),
         mockk<EnvironmentUiPageManager>(),
         mockk<EnvironmentStateColorPalette>(),
