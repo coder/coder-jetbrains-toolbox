@@ -17,5 +17,7 @@ data class ClientRegistrationResponse(
     @field:Json(name = "scope") val scope: String,
     @field:Json(name = "token_endpoint_auth_method") val tokenEndpointAuthMethod: String,
     @field:Json(name = "client_id_issued_at") val clientIdIssuedAt: Long?,
-    @field:Json(name = "client_secret_expires_at") val clientSecretExpiresAt: Long?
+    @field:Json(name = "client_secret_expires_at") val clientSecretExpiresAt: Long?,
+    @field:Json(name = "registration_client_uri") val registrationClientUri: String,
+    @field:Json(name = "registration_access_token") val registrationAccessToken: String
 )
