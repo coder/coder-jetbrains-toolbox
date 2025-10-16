@@ -1,8 +1,11 @@
 package com.coder.toolbox
 
+import com.coder.toolbox.oauth.CoderAccount
+import com.coder.toolbox.oauth.CoderOAuthCfg
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.util.toURL
+import com.jetbrains.toolbox.api.core.auth.PluginAuthManager
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
@@ -18,6 +21,7 @@ import java.util.UUID
 
 @Suppress("UnstableApiUsage")
 data class CoderToolboxContext(
+    val oauthManager: PluginAuthManager<CoderAccount, CoderOAuthCfg>,
     val ui: ToolboxUi,
     val envPageManager: EnvironmentUiPageManager,
     val envStateColorPalette: EnvironmentStateColorPalette,

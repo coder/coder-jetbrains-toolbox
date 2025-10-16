@@ -1,6 +1,14 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.browser.browse
+import com.coder.toolbox.oauth.ClientRegistrationRequest
+import com.coder.toolbox.oauth.CoderAuthorizationApi
+import com.coder.toolbox.oauth.CoderOAuthCfg
+import com.coder.toolbox.plugin.PluginManager
+import com.coder.toolbox.sdk.CoderHttpClientBuilder
+import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
+import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
@@ -14,8 +22,12 @@ import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import retrofit2.Retrofit
+import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.MalformedURLException
 import java.net.URL
 
@@ -41,6 +53,16 @@ class DeploymentUrlStep(
     )
 
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
+
+    val interceptors = buildList {
+        add((Interceptors.userAgent(PluginManager.pluginInfo.version)))
+        add(Interceptors.logging(context))
+    }
+    val okHttpClient = CoderHttpClientBuilder.build(
+        context,
+        interceptors
+    )
+
 
     override val panel: RowGroup
         get() {
@@ -86,6 +108,61 @@ class DeploymentUrlStep(
             errorReporter.report("URL is invalid", e)
             return false
         }
+        val service = Retrofit.Builder()
+            .baseUrl(CoderCliSetupContext.url!!)
+            .client(okHttpClient)
+            .addConverterFactory(
+                LoggingConverterFactory.wrap(
+                    context,
+                    MoshiConverterFactory.create(Moshi.Builder().build())
+                )
+            )
+            .build()
+            .create(CoderAuthorizationApi::class.java)
+        context.cs.launch {
+            context.logger.info(">> checking if Coder supports OAuth2")
+            val response = service.discoveryMetadata()
+            if (response.isSuccessful) {
+                val authServer = requireNotNull(response.body()) {
+                    "Successful response returned null body or oauth server discovery metadata"
+                }
+                context.logger.info(">> registering coder-jetbrains-toolbox as client app $response")
+                val clientResponse = service.registerClient(
+                    ClientRegistrationRequest(
+                        clientName = "coder-jetbrains-toolbox",
+                        redirectUris = listOf("jetbrains://gateway/com.coder.toolbox/auth"),//URLEncoder.encode("jetbrains://gateway/com.coder.toolbox/oauth", StandardCharsets.UTF_8.toString())),
+                        grantTypes = listOf("authorization_code", "refresh_token"),
+                        responseTypes = authServer.supportedResponseTypes,
+                        scope = "coder:workspaces.operate coder:workspaces.delete coder:workspaces.access user:read",
+                        tokenEndpointAuthMethod = "client_secret_post"
+                    )
+                )
+                if (clientResponse.isSuccessful) {
+                    val clientResponse =
+                        requireNotNull(clientResponse.body()) { "Successful response returned null body or client registration metadata" }
+                    context.logger.info(">> initiating oauth login with $clientResponse")
+
+                    val oauthCfg = CoderOAuthCfg(
+                        baseUrl = CoderCliSetupContext.url!!.toString(),
+                        authUrl = authServer.authorizationEndpoint,
+                        tokenUrl = authServer.tokenEndpoint,
+                        clientId = clientResponse.clientId,
+                        clientSecret = clientResponse.clientSecret,
+                    )
+
+                    val loginUrl = context.oauthManager.initiateLogin(oauthCfg)
+                    context.logger.info(">> retrieving token")
+                    context.desktop.browse(loginUrl) {
+                        context.ui.showErrorInfoPopup(it)
+                    }
+                    val token = context.oauthManager.getToken("coder", forceRefresh = false)
+                    context.logger.info(">> token is $token")
+                } else {
+                    context.logger.error(">> ${clientResponse.code()} ${clientResponse.message()} || ${clientResponse.errorBody()}")
+                }
+            }
+        }
+
         if (context.settingsStore.requireTokenAuth) {
             CoderCliSetupWizardState.goToNextStep()
         } else {
