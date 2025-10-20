@@ -360,6 +360,12 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
   The environment variable CODER_URL will be available to the command process.
 
+- `lastDeploymentURL` the last Coder deployment URL that Coder Toolbox successfully authenticated to.
+
+- `workspaceCreatePath` specifies the dashboard page’s relative path (to `lastDeploymentURL`) or full URL where users
+  can create new workspaces. Helpful for customers that have their own in-house dashboards. Defaults to `/templates` if
+  missing.
+
 ### TLS settings
 
 The following options control the secure communication behavior of the plugin with Coder deployment and its available
