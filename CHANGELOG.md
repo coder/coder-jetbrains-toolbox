@@ -2,9 +2,12 @@
 
 ## Unreleased
 
+## 0.7.1 - 2025-10-13
+
 ### Fixed
 
 - potential race condition that could cause crashes when settings are modified concurrently
+- CLI download on some Windows versions
 
 ## 0.7.0 - 2025-09-27
 
