@@ -138,9 +138,9 @@ interface ReadOnlyCoderSettings {
     val sshConfigOptions: String?
 
     /**
-     * A relative path or full URL to the dashboard page used for creating workspaces.
+     * A custom full URL to the dashboard page used for creating workspaces.
      */
-    val workspaceCreatePath: String
+    val workspaceCreateUrl: String?
 
     /**
      * The path where network information for SSH hosts are stored

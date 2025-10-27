@@ -80,8 +80,8 @@ class CoderSettingsStore(
             .normalize()
             .toString()
 
-    override val workspaceCreatePath: String
-        get() = store[WORKSPACE_CREATE_PATH] ?: "/templates"
+    override val workspaceCreateUrl: String?
+        get() = store[WORKSPACE_CREATE_URL]
 
     /**
      * Where the specified deployment should put its data.

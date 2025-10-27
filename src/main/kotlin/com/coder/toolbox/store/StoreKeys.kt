@@ -46,7 +46,7 @@ internal const val SSH_CONFIG_OPTIONS = "sshConfigOptions"
 
 internal const val NETWORK_INFO_DIR = "networkInfoDir"
 
-internal const val WORKSPACE_CREATE_PATH = "workspaceCreatePath"
+internal const val WORKSPACE_CREATE_URL = "workspaceCreateUrl"
 
 internal const val SSH_AUTO_CONNECT_PREFIX = "ssh_auto_connect_"
 

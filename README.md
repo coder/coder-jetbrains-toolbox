@@ -362,9 +362,8 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 
 - `lastDeploymentURL` the last Coder deployment URL that Coder Toolbox successfully authenticated to.
 
-- `workspaceCreatePath` specifies the dashboard page’s relative path (to `lastDeploymentURL`) or full URL where users
-  can create new workspaces. Helpful for customers that have their own in-house dashboards. Defaults to `/templates` if
-  missing.
+- `workspaceCreateUrl` specifies the dashboard page full URL where users can create new workspaces.
+  Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment templates page.
 
 ### TLS settings
 
