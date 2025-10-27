@@ -362,6 +362,10 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 
 - `lastDeploymentURL` the last Coder deployment URL that Coder Toolbox successfully authenticated to.
 
+- `workspaceViewUrl` specifies the dashboard page full URL where users can view details about a workspace.
+  Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment workspace page.
+  This setting supports `$workspaceOwner` and `$workspaceName` as placeholders.
+
 - `workspaceCreateUrl` specifies the dashboard page full URL where users can create new workspaces.
   Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment templates page.
 

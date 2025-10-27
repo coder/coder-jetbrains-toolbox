@@ -80,6 +80,8 @@ class CoderSettingsStore(
             .normalize()
             .toString()
 
+    override val workspaceViewUrl: String?
+        get() = store[WORKSPACE_VIEW_URL]
     override val workspaceCreateUrl: String?
         get() = store[WORKSPACE_CREATE_URL]
 
