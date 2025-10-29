@@ -137,11 +137,16 @@ interface ReadOnlyCoderSettings {
      */
     val sshConfigOptions: String?
 
-
     /**
      * The path where network information for SSH hosts are stored
      */
     val networkInfoDir: String
+
+    /**
+     * Indicates whether API tokens should be used for authentication instead
+     * of OAuth2 when OAuth2 is available. Defaults to false.
+     */
+    val preferAuthViaApiToken: Boolean
 
     /**
      * Where the specified deployment should put its data.

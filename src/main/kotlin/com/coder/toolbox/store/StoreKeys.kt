@@ -48,3 +48,4 @@ internal const val NETWORK_INFO_DIR = "networkInfoDir"
 
 internal const val SSH_AUTO_CONNECT_PREFIX = "ssh_auto_connect_"
 
+internal const val PREFER_AUTH_VIA_API_TOKEN = "preferAuthViaApiToken"

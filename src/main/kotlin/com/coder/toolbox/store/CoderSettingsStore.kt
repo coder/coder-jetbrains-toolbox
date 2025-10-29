@@ -79,6 +79,8 @@ class CoderSettingsStore(
             .resolve("ssh-network-metrics")
             .normalize()
             .toString()
+    override val preferAuthViaApiToken: Boolean
+        get() = store[PREFER_AUTH_VIA_API_TOKEN]?.toBooleanStrictOrNull() ?: false
 
     /**
      * Where the specified deployment should put its data.
