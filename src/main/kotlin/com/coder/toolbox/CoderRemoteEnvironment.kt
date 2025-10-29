@@ -94,7 +94,7 @@ class CoderRemoteEnvironment(
                 val urlTemplate = context.settingsStore.workspaceViewUrl
                     ?: client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()
                 val url = urlTemplate
-                    .replace("\$workspaceOwner", "@${workspace.ownerName}")
+                    .replace("\$workspaceOwner", "${workspace.ownerName}")
                     .replace("\$workspaceName", workspace.name)
                 context.desktop.browse(
                     url
