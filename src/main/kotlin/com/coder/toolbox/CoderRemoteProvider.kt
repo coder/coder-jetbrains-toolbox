@@ -225,7 +225,10 @@ class CoderRemoteProvider(
         listOf(
             Action(context, "Create workspace") {
                 val url = context.settingsStore.workspaceCreateUrl ?: client?.url?.withPath("/templates").toString()
-                context.desktop.browse(url) {
+                context.desktop.browse(
+                    url
+                        .replace("\$workspaceOwner", client?.me()?.username ?: "")
+                ) {
                     context.ui.showErrorInfoPopup(it)
                 }
             },
