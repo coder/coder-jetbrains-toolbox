@@ -368,6 +368,7 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 
 - `workspaceCreateUrl` specifies the dashboard page full URL where users can create new workspaces.
   Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment templates page.
+  This setting supports `$workspaceOwner` as placeholder with the replacing value being the username that logged in.
 
 ### TLS settings
 
