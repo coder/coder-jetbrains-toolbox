@@ -145,6 +145,7 @@ interface ReadOnlyCoderSettings {
 
     /**
      * A custom full URL to the dashboard page used for creating workspaces.
+     * Supports `$workspaceOwner` as placeholder.
      */
     val workspaceCreateUrl: String?
 
