@@ -224,7 +224,11 @@ class CoderRemoteProvider(
     override val additionalPluginActions: StateFlow<List<ActionDescription>> = MutableStateFlow(
         listOf(
             Action(context, "Create workspace") {
-                context.desktop.browse(client?.url?.withPath("/templates").toString()) {
+                val url = context.settingsStore.workspaceCreateUrl ?: client?.url?.withPath("/templates").toString()
+                context.desktop.browse(
+                    url
+                        .replace("\$workspaceOwner", client?.me()?.username ?: "")
+                ) {
                     context.ui.showErrorInfoPopup(it)
                 }
             },

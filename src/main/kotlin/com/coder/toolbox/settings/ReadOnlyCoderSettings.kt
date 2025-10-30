@@ -137,6 +137,17 @@ interface ReadOnlyCoderSettings {
      */
     val sshConfigOptions: String?
 
+    /**
+     * A custom full URL to the dashboard page used for viewing details about a workspace.
+     * Supports `$workspaceOwner` and `$workspaceName` as placeholders.
+     */
+    val workspaceViewUrl: String?
+
+    /**
+     * A custom full URL to the dashboard page used for creating workspaces.
+     * Supports `$workspaceOwner` as placeholder.
+     */
+    val workspaceCreateUrl: String?
 
     /**
      * The path where network information for SSH hosts are stored
