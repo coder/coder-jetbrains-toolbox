@@ -369,10 +369,7 @@ open class CoderProtocolHandler(
         val buildNumberIsNotAvailable = availableVersions.firstOrNull { it.contains(buildNumber) } == null
         if (buildNumberIsNotAvailable) {
             val selectedIde = availableVersions.maxOf { it }
-            context.logAndShowInfo(
-                "$productCode-$buildNumber not available",
-                "$productCode-$buildNumber is not available, we've selected the latest $selectedIde"
-            )
+            context.logger.info("$productCode-$buildNumber is not available, we've selected the latest $selectedIde")
             return selectedIde
         }
         return "$productCode-$buildNumber"
