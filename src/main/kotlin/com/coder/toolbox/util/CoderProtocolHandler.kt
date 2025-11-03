@@ -26,6 +26,7 @@ import kotlinx.coroutines.time.withTimeout
 import java.net.URI
 import java.util.UUID
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
@@ -111,6 +112,18 @@ open class CoderProtocolHandler(
             CoderCliSetupContext.token = token
         }
         CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
+
+        // If Toolbox is already opened and URI is executed the setup page
+        // from below is never called. I tried a couple of things, including
+        // yielding the coroutine - but it seems to be of no help. What works
+        // delaying the coroutine for 66 - to 100 milliseconds, these numbers
+        // were determined by trial and error.
+        // The only explanation that I have is that inspecting the TBX bytecode it seems the
+        // UI event is emitted via MutableSharedFlow(replay = 0) which has a buffer of 4 events
+        // and a drop oldest strategy. For some reason it seems that the UI collector
+        // is not yet active, causing the event to be lost unless we wait > 66 ms.
+        // I think this delay ensures the collector is ready before processEvent() is called.
+        delay(100.milliseconds)
         context.ui.showUiPage(
             CoderCliSetupWizardPage(
                 context, settingsPage, visibilityState, true,
@@ -369,10 +382,7 @@ open class CoderProtocolHandler(
         val buildNumberIsNotAvailable = availableVersions.firstOrNull { it.contains(buildNumber) } == null
         if (buildNumberIsNotAvailable) {
             val selectedIde = availableVersions.maxOf { it }
-            context.logAndShowInfo(
-                "$productCode-$buildNumber not available",
-                "$productCode-$buildNumber is not available, we've selected the latest $selectedIde"
-            )
+            context.logger.info("$productCode-$buildNumber is not available, we've selected the latest $selectedIde")
             return selectedIde
         }
         return "$productCode-$buildNumber"

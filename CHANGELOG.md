@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changed
+
+- URI handling no longer waits for confirmation to use latest build if the provided build number is too old
+
+### Fixed
+
+- IDE is now launched when URI is handled by an already running Toolbox instance.
+
 ## 0.7.1 - 2025-10-13
 
 ### Fixed
