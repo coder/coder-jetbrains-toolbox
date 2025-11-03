@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.2 - 2025-11-03
+
 ### Changed
 
 - URI handling no longer waits for confirmation to use latest build if the provided build number is too old
