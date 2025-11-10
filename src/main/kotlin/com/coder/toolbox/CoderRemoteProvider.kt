@@ -227,7 +227,7 @@ class CoderRemoteProvider(
                 val url = context.settingsStore.workspaceCreateUrl ?: client?.url?.withPath("/templates").toString()
                 context.desktop.browse(
                     url
-                        .replace("\$workspaceOwner", client?.me()?.username ?: "")
+                        .replace("\$workspaceOwner", client?.me?.username ?: "")
                 ) {
                     context.ui.showErrorInfoPopup(it)
                 }
@@ -333,8 +333,11 @@ class CoderRemoteProvider(
                 }
                 context.logger.info("Starting initialization with the new settings")
                 this@CoderRemoteProvider.client = restClient
-                coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
-
+                if (context.settingsStore.useAppNameAsTitle) {
+                    coderHeaderPage.setTitle(context.i18n.pnotr(restClient.appName))
+                } else {
+                    coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
+                }
                 environments.showLoadingMessage()
                 pollJob = poll(restClient, cli)
                 context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI $uri")
@@ -421,7 +424,11 @@ class CoderRemoteProvider(
             context.logger.info("Cancelled workspace poll job ${pollJob.toString()} in order to start a new one")
         }
         environments.showLoadingMessage()
-        coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
+        if (context.settingsStore.useAppNameAsTitle) {
+            coderHeaderPage.setTitle(context.i18n.pnotr(client.appName))
+        } else {
+            coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
+        }
         context.logger.info("Displaying ${client.url} in the UI")
         pollJob = poll(client, cli)
         context.logger.info("Workspace poll job with name ${pollJob.toString()} was created")
