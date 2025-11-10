@@ -1,5 +1,6 @@
 package com.coder.toolbox.sdk.v2
 
+import com.coder.toolbox.sdk.v2.models.Appearance
 import com.coder.toolbox.sdk.v2.models.BuildInfo
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
 import com.coder.toolbox.sdk.v2.models.Template
@@ -22,6 +23,12 @@ interface CoderV2RestFacade {
      */
     @GET("api/v2/users/me")
     suspend fun me(): Response<User>
+
+    /**
+     * Returns the configuration of the visual dashboard.
+     */
+    @GET("api/v2/appearance")
+    suspend fun appearance(): Response<Appearance>
 
     /**
      * Retrieves all workspaces the authenticated user has access to.
