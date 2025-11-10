@@ -189,3 +189,6 @@ msgstr ""
 
 msgid "Workspace name"
 msgstr ""
+
+msgid "Use app name as main page title instead of URL"
+msgstr ""
