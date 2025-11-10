@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- application name can now be displayed as the main title page instead of the URL
+
 ## 0.7.2 - 2025-11-03
 
 ### Changed
