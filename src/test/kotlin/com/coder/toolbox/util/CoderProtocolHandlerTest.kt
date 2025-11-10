@@ -60,7 +60,7 @@ internal class CoderProtocolHandlerTest {
     private val protocolHandler = CoderProtocolHandler(
         context,
         DialogUi(context),
-        CoderSettingsPage(context, Channel(Channel.CONFLATED)),
+        CoderSettingsPage(context, Channel(Channel.CONFLATED), {}),
         MutableStateFlow(ProviderVisibilityState(applicationVisible = true, providerVisible = true)),
         MutableStateFlow(false)
     )
