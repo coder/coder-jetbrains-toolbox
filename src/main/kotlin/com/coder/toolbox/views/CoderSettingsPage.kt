@@ -28,7 +28,11 @@ import kotlinx.coroutines.launch
  * TODO@JB: There is no scroll, and our settings do not fit.  As a consequence,
  *          I have not been able to test this page.
  */
-class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConfig: Channel<Boolean>) :
+class CoderSettingsPage(
+    private val context: CoderToolboxContext,
+    triggerSshConfig: Channel<Boolean>,
+    private val onSettingsClosed: () -> Unit
+) :
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
     private val settings = context.settingsStore.readOnly()
 
@@ -232,5 +236,6 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
 
     override fun afterHide() {
         visibilityUpdateJob.cancel()
+        onSettingsClosed()
     }
 }

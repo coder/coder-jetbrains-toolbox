@@ -57,7 +57,6 @@ class CoderRemoteProvider(
 
     private val triggerSshConfig = Channel<Boolean>(Channel.CONFLATED)
     private val triggerProviderVisible = Channel<Boolean>(Channel.CONFLATED)
-    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig)
     private val dialogUi = DialogUi(context)
 
     // The REST client, if we are signed in
@@ -65,8 +64,18 @@ class CoderRemoteProvider(
 
     // On the first load, automatically log in if we can.
     private var firstRun = true
+
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
     private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
+    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig) {
+        client?.let { restClient ->
+            if (context.settingsStore.useAppNameAsTitle) {
+                coderHeaderPage.setTitle(context.i18n.pnotr(restClient.appName))
+            } else {
+                coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
+            }
+        }
+    }
     private val visibilityState = MutableStateFlow(
         ProviderVisibilityState(
             applicationVisible = false,
