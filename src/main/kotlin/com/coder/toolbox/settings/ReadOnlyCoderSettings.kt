@@ -20,6 +20,12 @@ interface ReadOnlyCoderSettings {
     val defaultURL: String
 
     /**
+     * Whether to display the application name instead of the URL
+     * in the main screen. Defaults to URL
+     */
+    val useAppNameAsTitle: Boolean
+
+    /**
      * Used to download the Coder CLI which is necessary to proxy SSH
      * connections.  The If-None-Match header will be set to the SHA1 of the CLI
      * and can be used for caching.  Absolute URLs will be used as-is; otherwise

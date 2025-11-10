@@ -38,6 +38,7 @@ class CoderSettingsStore(
     // Properties implementation
     override val lastDeploymentURL: String? get() = store[LAST_USED_URL]
     override val defaultURL: String get() = store[DEFAULT_URL] ?: "https://dev.coder.com"
+    override val useAppNameAsTitle: Boolean = store[APP_NAME_AS_TITLE]?.toBooleanStrictOrNull() ?: false
     override val binarySource: String? get() = store[BINARY_SOURCE]
     override val binaryDirectory: String? get() = store[BINARY_DIRECTORY]
     override val disableSignatureVerification: Boolean
@@ -163,6 +164,10 @@ class CoderSettingsStore(
     // Write operations
     fun updateLastUsedUrl(url: URL) {
         store[LAST_USED_URL] = url.toString()
+    }
+
+    fun updateUseAppNameAsTitle(appNameAsTitle: Boolean) {
+        store[APP_NAME_AS_TITLE] = appNameAsTitle.toString()
     }
 
     fun updateBinarySource(source: String) {
