@@ -135,7 +135,7 @@ open class CoderRestClient(
         }
 
         return requireNotNull(appearanceResponse.body()) {
-            "Successful response returned null body or visual dashboard configuration"
+            "Successful response returned null body for visual dashboard configuration"
         }
     }
 
