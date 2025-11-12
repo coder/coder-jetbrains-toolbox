@@ -28,7 +28,11 @@ import kotlinx.coroutines.launch
  * TODO@JB: There is no scroll, and our settings do not fit.  As a consequence,
  *          I have not been able to test this page.
  */
-class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConfig: Channel<Boolean>) :
+class CoderSettingsPage(
+    private val context: CoderToolboxContext,
+    triggerSshConfig: Channel<Boolean>,
+    private val onSettingsClosed: () -> Unit
+) :
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
     private val settings = context.settingsStore.readOnly()
 
@@ -41,6 +45,8 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
         TextField(context.i18n.ptrl("Data directory"), settings.dataDirectory ?: "", TextType.General)
     private val enableDownloadsField =
         CheckboxField(settings.enableDownloads, context.i18n.ptrl("Enable downloads"))
+    private val useAppNameField =
+        CheckboxField(settings.useAppNameAsTitle, context.i18n.ptrl("Use app name as main page title instead of URL"))
 
     private val disableSignatureVerificationField = CheckboxField(
         settings.disableSignatureVerification,
@@ -95,6 +101,7 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
         listOf(
             binarySourceField,
             enableDownloadsField,
+            useAppNameField,
             binaryDirectoryField,
             enableBinaryDirectoryFallbackField,
             disableSignatureVerificationField,
@@ -121,6 +128,7 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
                 context.settingsStore.updateBinaryDirectory(binaryDirectoryField.contentState.value)
                 context.settingsStore.updateDataDirectory(dataDirectoryField.contentState.value)
                 context.settingsStore.updateEnableDownloads(enableDownloadsField.checkedState.value)
+                context.settingsStore.updateUseAppNameAsTitle(useAppNameField.checkedState.value)
                 context.settingsStore.updateDisableSignatureVerification(disableSignatureVerificationField.checkedState.value)
                 context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
                 context.settingsStore.updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
@@ -163,6 +171,9 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
         }
         enableDownloadsField.checkedState.update {
             settings.enableDownloads
+        }
+        useAppNameField.checkedState.update {
+            settings.useAppNameAsTitle
         }
         signatureFallbackStrategyField.checkedState.update {
             settings.fallbackOnCoderForSignatures.isAllowed()
@@ -225,5 +236,6 @@ class CoderSettingsPage(private val context: CoderToolboxContext, triggerSshConf
 
     override fun afterHide() {
         visibilityUpdateJob.cancel()
+        onSettingsClosed()
     }
 }

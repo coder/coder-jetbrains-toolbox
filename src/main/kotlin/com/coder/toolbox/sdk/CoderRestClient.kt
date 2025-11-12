@@ -10,6 +10,7 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.sdk.v2.CoderV2RestFacade
 import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
+import com.coder.toolbox.sdk.v2.models.Appearance
 import com.coder.toolbox.sdk.v2.models.BuildInfo
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
 import com.coder.toolbox.sdk.v2.models.Template
@@ -45,6 +46,7 @@ open class CoderRestClient(
 
     lateinit var me: User
     lateinit var buildVersion: String
+    lateinit var appName: String
 
     init {
         setupSession()
@@ -94,6 +96,7 @@ open class CoderRestClient(
     suspend fun initializeSession(): User {
         me = me()
         buildVersion = buildInfo().version
+        appName = appearance().applicationName
         return me
     }
 
@@ -101,7 +104,7 @@ open class CoderRestClient(
      * Retrieve the current user.
      * @throws [APIResponseException].
      */
-    suspend fun me(): User {
+    internal suspend fun me(): User {
         val userResponse = retroRestClient.me()
         if (!userResponse.isSuccessful) {
             throw APIResponseException(
@@ -114,6 +117,25 @@ open class CoderRestClient(
 
         return requireNotNull(userResponse.body()) {
             "Successful response returned null body or user"
+        }
+    }
+
+    /**
+     * Retrieves the visual dashboard configuration.
+     */
+    internal suspend fun appearance(): Appearance {
+        val appearanceResponse = retroRestClient.appearance()
+        if (!appearanceResponse.isSuccessful) {
+            throw APIResponseException(
+                "initializeSession",
+                url,
+                appearanceResponse.code(),
+                appearanceResponse.parseErrorBody(moshi)
+            )
+        }
+
+        return requireNotNull(appearanceResponse.body()) {
+            "Successful response returned null body for visual dashboard configuration"
         }
     }
 

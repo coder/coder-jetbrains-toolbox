@@ -6,6 +6,8 @@ internal const val LAST_USED_URL = "lastDeploymentURL"
 
 internal const val DEFAULT_URL = "defaultURL"
 
+internal const val APP_NAME_AS_TITLE = "useAppNameAsTitle"
+
 internal const val BINARY_SOURCE = "binarySource"
 
 internal const val BINARY_DIRECTORY = "binaryDirectory"
