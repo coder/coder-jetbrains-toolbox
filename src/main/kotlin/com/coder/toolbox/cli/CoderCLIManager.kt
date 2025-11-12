@@ -125,6 +125,7 @@ data class Features(
     val disableAutostart: Boolean = false,
     val reportWorkspaceUsage: Boolean = false,
     val wildcardSsh: Boolean = false,
+    val buildReason: Boolean = false,
 )
 
 /**
@@ -302,6 +303,25 @@ class CoderCLIManager(
             "--global-config",
             coderConfigPath.toString(),
         )
+    }
+
+    /**
+     * Start a workspace. Throws if the command execution fails.
+     */
+    fun startWorkspace(workspaceOwner: String, workspaceName: String, feats: Features = features): String {
+        val args = mutableListOf(
+            "--global-config",
+            coderConfigPath.toString(),
+            "start",
+            "--yes",
+            "$workspaceOwner/$workspaceName"
+        )
+
+        if (feats.buildReason) {
+            args.addAll(listOf("--reason", "jetbrains_connection"))
+        }
+
+        return exec(*args.toTypedArray())
     }
 
     /**
@@ -569,7 +589,8 @@ class CoderCLIManager(
                 Features(
                     disableAutostart = version >= SemVer(2, 5, 0),
                     reportWorkspaceUsage = version >= SemVer(2, 13, 0),
-                    version >= SemVer(2, 19, 0),
+                    wildcardSsh = version >= SemVer(2, 19, 0),
+                    buildReason = version >= SemVer(2, 25, 0),
                 )
             }
         }

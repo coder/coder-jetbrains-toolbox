@@ -6,6 +6,10 @@
 
 - application name can now be displayed as the main title page instead of the URL
 
+### Changed
+
+- workspaces are now started with the help of the CLI
+
 ## 0.7.2 - 2025-11-03
 
 ### Changed

@@ -241,6 +241,7 @@ open class CoderRestClient(
     /**
      * @throws [APIResponseException].
      */
+    @Deprecated(message = "This operation needs to be delegated to the CLI")
     suspend fun startWorkspace(workspace: Workspace): WorkspaceBuild {
         val buildRequest = CreateWorkspaceBuildRequest(
             null,

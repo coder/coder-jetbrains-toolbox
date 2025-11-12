@@ -26,6 +26,7 @@ import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -69,6 +71,7 @@ class CoderRemoteEnvironment(
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
     private val proxyCommandHandle = SshCommandProcessHandle(context)
     private var pollJob: Job? = null
+    private val startIsInProgress = AtomicBoolean(false)
 
     init {
         if (context.settingsStore.shouldAutoConnect(id)) {
@@ -120,9 +123,29 @@ class CoderRemoteEnvironment(
                 )
             } else {
                 actions.add(Action(context, "Start") {
-                    val build = client.startWorkspace(workspace)
-                    update(workspace.copy(latestBuild = build), agent)
-
+                    try {
+                        // needed in order to make sure Queuing is not overridden by the
+                        // general polling loop with the `Stopped` state
+                        startIsInProgress.set(true)
+                        val startJob = context.cs
+                            .launch(CoroutineName("Start Workspace Action CLI Runner") + Dispatchers.IO) {
+                                cli.startWorkspace(workspace.ownerName, workspace.name)
+                            }
+                        // cli takes 15 seconds to move the workspace in queueing/starting state
+                        // while the user won't see anything happening in TBX after start is clicked
+                        // During those 15 seconds we work around by forcing a `Queuing` state
+                        while (startJob.isActive && client.workspace(workspace.id).latestBuild.status.isNotStarted()) {
+                            state.update {
+                                WorkspaceAndAgentStatus.QUEUED.toRemoteEnvironmentState(context)
+                            }
+                            delay(1.seconds)
+                        }
+                        startIsInProgress.set(false)
+                        // retrieve the status again and update the status
+                        update(client.workspace(workspace.id), agent)
+                    } finally {
+                        startIsInProgress.set(false)
+                    }
                 }
                 )
             }
@@ -241,6 +264,10 @@ class CoderRemoteEnvironment(
      * Update the workspace/agent status to the listeners, if it has changed.
      */
     fun update(workspace: Workspace, agent: WorkspaceAgent) {
+        if (startIsInProgress.get()) {
+            context.logger.info("Skipping update for $id - workspace start is in progress")
+            return
+        }
         this.workspace = workspace
         this.agent = agent
         wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)

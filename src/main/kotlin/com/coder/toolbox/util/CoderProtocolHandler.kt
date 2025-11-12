@@ -84,7 +84,7 @@ open class CoderProtocolHandler(
             }
             reInitialize(restClient, cli)
             context.envPageManager.showPluginEnvironmentsPage()
-            if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
+            if (!prepareWorkspace(workspace, restClient, cli, workspaceName, deploymentURL)) return
             // we resolve the agent after the workspace is started otherwise we can get misleading
             // errors like: no agent available while workspace is starting or stopping
             // we also need to retrieve the workspace again to have the latest resources (ex: agent)
@@ -180,6 +180,7 @@ open class CoderProtocolHandler(
     private suspend fun prepareWorkspace(
         workspace: Workspace,
         restClient: CoderRestClient,
+        cli: CoderCLIManager,
         workspaceName: String,
         deploymentURL: String
     ): Boolean {
@@ -207,7 +208,7 @@ open class CoderProtocolHandler(
                     if (workspace.outdated) {
                         restClient.updateWorkspace(workspace)
                     } else {
-                        restClient.startWorkspace(workspace)
+                        cli.startWorkspace(workspace.ownerName, workspace.name)
                     }
                 } catch (e: Exception) {
                     context.logAndShowError(
