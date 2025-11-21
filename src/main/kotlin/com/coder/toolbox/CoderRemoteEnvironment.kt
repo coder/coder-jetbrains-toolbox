@@ -65,7 +65,7 @@ class CoderRemoteEnvironment(
     override val description: MutableStateFlow<EnvironmentDescription> =
         MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
     override val additionalEnvironmentInformation: MutableMap<LocalizableString, String> = mutableMapOf()
-    override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
+    override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(emptyList())
 
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
     private val proxyCommandHandle = SshCommandProcessHandle(context)
@@ -76,14 +76,17 @@ class CoderRemoteEnvironment(
             context.logger.info("resuming SSH connection to $id — last session was still active.")
             startSshConnection()
         }
+        refreshAvailableActions()
     }
 
     fun asPairOfWorkspaceAndAgent(): Pair<Workspace, WorkspaceAgent> = Pair(workspace, agent)
 
-    private fun getAvailableActions(): List<ActionDescription> {
+    private fun refreshAvailableActions() {
         val actions = mutableListOf<ActionDescription>()
+        context.logger.debug("Refreshing available actions for workspace $id with status: $environmentStatus")
         if (environmentStatus.canStop()) {
             actions.add(Action(context, "Open web terminal") {
+                context.logger.debug("Launching web terminal for $id...")
                 context.desktop.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
                     context.ui.showErrorInfoPopup(it)
                 }
@@ -95,8 +98,9 @@ class CoderRemoteEnvironment(
                 val urlTemplate = context.settingsStore.workspaceViewUrl
                     ?: client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()
                 val url = urlTemplate
-                    .replace("\$workspaceOwner", "${workspace.ownerName}")
+                    .replace("\$workspaceOwner", workspace.ownerName)
                     .replace("\$workspaceName", workspace.name)
+                context.logger.debug("Opening the dashboard for $id...")
                 context.desktop.browse(
                     url
                 ) {
@@ -106,21 +110,22 @@ class CoderRemoteEnvironment(
         )
 
         actions.add(Action(context, "View template") {
+            context.logger.debug("Opening the template for $id...")
             context.desktop.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
                 context.ui.showErrorInfoPopup(it)
             }
-        }
-        )
+        })
 
         if (environmentStatus.canStart()) {
             if (workspace.outdated) {
                 actions.add(Action(context, "Update and start") {
+                    context.logger.debug("Updating and starting $id...")
                     val build = client.updateWorkspace(workspace)
                     update(workspace.copy(latestBuild = build), agent)
-                }
-                )
+                })
             } else {
                 actions.add(Action(context, "Start") {
+                    context.logger.debug("Starting $id... ")
                     context.cs
                         .launch(CoroutineName("Start Workspace Action CLI Runner") + Dispatchers.IO) {
                             cli.startWorkspace(workspace.ownerName, workspace.name)
@@ -135,6 +140,7 @@ class CoderRemoteEnvironment(
         if (environmentStatus.canStop()) {
             if (workspace.outdated) {
                 actions.add(Action(context, "Update and restart") {
+                    context.logger.debug("Updating and re-starting $id...")
                     val build = client.updateWorkspace(workspace)
                     update(workspace.copy(latestBuild = build), agent)
                 }
@@ -142,7 +148,7 @@ class CoderRemoteEnvironment(
             }
             actions.add(Action(context, "Stop") {
                 tryStopSshConnection()
-
+                context.logger.debug("Stoping $id...")
                 val build = client.stopWorkspace(workspace)
                 update(workspace.copy(latestBuild = build), agent)
             }
@@ -169,10 +175,14 @@ class CoderRemoteEnvironment(
                 if (confirmation != workspace.name) {
                     return@launch
                 }
+                context.logger.debug("Deleting $id...")
                 deleteWorkspace()
             }
         })
-        return actions
+
+        actionsList.update {
+            actions
+        }
     }
 
     private suspend fun tryStopSshConnection() {
@@ -253,7 +263,6 @@ class CoderRemoteEnvironment(
                 agent
             )
         ) {
-            context.logger.debug("Skipping update for $id - previous and current status ")
             return
         }
         this.workspace = workspace
@@ -261,11 +270,10 @@ class CoderRemoteEnvironment(
         // workspace&agent status can be different from "environment status"
         // which is forced to queued state when a workspace is scheduled to start
         updateStatus(WorkspaceAndAgentStatus.from(workspace, agent))
+
         // we have to regenerate the action list in order to force a redraw
         // because the actions don't have a state flow on the enabled property
-        actionsList.update {
-            getAvailableActions()
-        }
+        refreshAvailableActions()
     }
 
     private fun updateStatus(status: WorkspaceAndAgentStatus) {
