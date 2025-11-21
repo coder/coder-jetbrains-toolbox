@@ -134,6 +134,8 @@ class CoderRemoteEnvironment(
                     // while the user won't see anything happening in TBX after start is clicked
                     // During those 15 seconds we work around by forcing a `Queuing` state
                     updateStatus(WorkspaceAndAgentStatus.QUEUED)
+                    // force refresh of the actions list (Start should no longer be available)
+                    refreshAvailableActions()
                 })
             }
         }
