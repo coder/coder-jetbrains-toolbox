@@ -10,6 +10,8 @@ import java.util.UUID
  */
 @JsonClass(generateAdapter = true)
 data class WorkspaceBuild(
+    @property:Json(name = "id") val id: UUID,
+    @property:Json(name = "build_number") val buildNumber: Int,
     @property:Json(name = "template_version_id") val templateVersionID: UUID,
     @property:Json(name = "resources") val resources: List<WorkspaceResource>,
     @property:Json(name = "status") val status: WorkspaceStatus,
