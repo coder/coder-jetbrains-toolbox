@@ -260,11 +260,7 @@ class CoderRemoteEnvironment(
      * Update the workspace/agent status to the listeners, if it has changed.
      */
     fun update(workspace: Workspace, agent: WorkspaceAgent) {
-        if (WorkspaceAndAgentStatus.from(this.workspace, this.agent) == WorkspaceAndAgentStatus.from(
-                workspace,
-                agent
-            )
-        ) {
+        if (this.workspace.latestBuild == workspace.latestBuild) {
             return
         }
         this.workspace = workspace
