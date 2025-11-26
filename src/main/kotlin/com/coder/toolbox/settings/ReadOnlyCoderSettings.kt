@@ -114,7 +114,12 @@ interface ReadOnlyCoderSettings {
     /**
      * Whether login should be done with a token
      */
-    val requireTokenAuth: Boolean
+    val requiresTokenAuth: Boolean
+
+    /**
+     * Whether the authentication is done with certificates.
+     */
+    val requiresMTlsAuth: Boolean
 
     /**
      * Whether to add --disable-autostart to the proxy command.  This works
@@ -216,6 +221,12 @@ interface ReadOnlyTLSSettings {
      * Coder service does not match the hostname in the TLS certificate.
      */
     val altHostname: String?
+
+    /**
+     * Command to run when certificates expire and SSLHandshakeException
+     * is raised with `Received fatal alert: certificate_expired` as message
+     */
+    val certRefreshCommand: String?
 }
 
 enum class SignatureFallbackStrategy {

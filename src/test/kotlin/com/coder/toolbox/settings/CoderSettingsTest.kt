@@ -261,19 +261,19 @@ internal class CoderSettingsTest {
     @Test
     fun testRequireTokenAuth() {
         var settings = CoderSettingsStore(pluginTestSettingsStore(), Environment(), logger)
-        assertEquals(true, settings.readOnly().requireTokenAuth)
+        assertEquals(true, settings.readOnly().requiresTokenAuth)
 
         settings = CoderSettingsStore(pluginTestSettingsStore(TLS_CERT_PATH to "cert path"), Environment(), logger)
-        assertEquals(true, settings.readOnly().requireTokenAuth)
+        assertEquals(true, settings.readOnly().requiresTokenAuth)
 
         settings = CoderSettingsStore(pluginTestSettingsStore(TLS_KEY_PATH to "key path"), Environment(), logger)
-        assertEquals(true, settings.readOnly().requireTokenAuth)
+        assertEquals(true, settings.readOnly().requiresTokenAuth)
 
         settings = CoderSettingsStore(
             pluginTestSettingsStore(TLS_CERT_PATH to "cert path", TLS_KEY_PATH to "key path"),
             Environment(), logger
         )
-        assertEquals(false, settings.readOnly().requireTokenAuth)
+        assertEquals(false, settings.readOnly().requiresTokenAuth)
     }
 
     @Test

@@ -414,14 +414,14 @@ class CoderRemoteProvider(
      * Auto-login only on first the firs run if there is a url & token configured or the auth
      * should be done via certificates.
      */
-    private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !settings.requireTokenAuth)
+    private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !settings.requiresTokenAuth)
 
     fun canAutoLogin(): Boolean = !context.secrets.tokenFor(context.deploymentUrl).isNullOrBlank()
 
     private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
         context.settingsStore.updateLastUsedUrl(client.url)
-        if (context.settingsStore.requireTokenAuth) {
+        if (context.settingsStore.requiresTokenAuth) {
             context.secrets.storeTokenFor(client.url, client.token ?: "")
             context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
         } else {

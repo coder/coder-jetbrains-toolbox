@@ -36,6 +36,8 @@ internal const val TLS_CA_PATH = "tlsCAPath"
 
 internal const val TLS_ALTERNATE_HOSTNAME = "tlsAlternateHostname"
 
+internal const val TLS_CERT_REFRESH_COMMAND = "tlsCertRefreshCommand"
+
 internal const val DISABLE_AUTOSTART = "disableAutostart"
 
 internal const val ENABLE_SSH_WILDCARD_CONFIG = "enableSshWildcardConfig"

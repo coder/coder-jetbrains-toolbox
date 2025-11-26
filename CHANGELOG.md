@@ -5,6 +5,7 @@
 ### Added
 
 - application name can now be displayed as the main title page instead of the URL
+- automatic mTLS certificate regeneration and retry mechanism
 
 ### Changed
 
