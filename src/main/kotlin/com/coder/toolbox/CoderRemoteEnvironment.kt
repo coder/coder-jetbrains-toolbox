@@ -37,7 +37,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -55,37 +54,39 @@ class CoderRemoteEnvironment(
     private var workspace: Workspace,
     private var agent: WorkspaceAgent,
 ) : RemoteProviderEnvironment("${workspace.name}.${agent.name}"), BeforeConnectionHook, AfterDisconnectHook {
-    private var wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
+    private var environmentStatus = WorkspaceAndAgentStatus.from(workspace, agent)
 
     override var name: String = "${workspace.name}.${agent.name}"
     private var isConnected: MutableStateFlow<Boolean> = MutableStateFlow(false)
     override val connectionRequest: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
     override val state: MutableStateFlow<RemoteEnvironmentState> =
-        MutableStateFlow(wsRawStatus.toRemoteEnvironmentState(context))
+        MutableStateFlow(environmentStatus.toRemoteEnvironmentState(context))
     override val description: MutableStateFlow<EnvironmentDescription> =
         MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
     override val additionalEnvironmentInformation: MutableMap<LocalizableString, String> = mutableMapOf()
-    override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(getAvailableActions())
+    override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(emptyList())
 
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
     private val proxyCommandHandle = SshCommandProcessHandle(context)
     private var pollJob: Job? = null
-    private val startIsInProgress = AtomicBoolean(false)
 
     init {
         if (context.settingsStore.shouldAutoConnect(id)) {
             context.logger.info("resuming SSH connection to $id — last session was still active.")
             startSshConnection()
         }
+        refreshAvailableActions()
     }
 
     fun asPairOfWorkspaceAndAgent(): Pair<Workspace, WorkspaceAgent> = Pair(workspace, agent)
 
-    private fun getAvailableActions(): List<ActionDescription> {
+    private fun refreshAvailableActions() {
         val actions = mutableListOf<ActionDescription>()
-        if (wsRawStatus.canStop()) {
+        context.logger.debug("Refreshing available actions for workspace $id with status: $environmentStatus")
+        if (environmentStatus.canStop()) {
             actions.add(Action(context, "Open web terminal") {
+                context.logger.debug("Launching web terminal for $id...")
                 context.desktop.browse(client.url.withPath("/${workspace.ownerName}/$name/terminal").toString()) {
                     context.ui.showErrorInfoPopup(it)
                 }
@@ -97,8 +98,9 @@ class CoderRemoteEnvironment(
                 val urlTemplate = context.settingsStore.workspaceViewUrl
                     ?: client.url.withPath("/@${workspace.ownerName}/${workspace.name}").toString()
                 val url = urlTemplate
-                    .replace("\$workspaceOwner", "${workspace.ownerName}")
+                    .replace("\$workspaceOwner", workspace.ownerName)
                     .replace("\$workspaceName", workspace.name)
+                context.logger.debug("Opening the dashboard for $id...")
                 context.desktop.browse(
                     url
                 ) {
@@ -108,51 +110,39 @@ class CoderRemoteEnvironment(
         )
 
         actions.add(Action(context, "View template") {
+            context.logger.debug("Opening the template for $id...")
             context.desktop.browse(client.url.withPath("/templates/${workspace.templateName}").toString()) {
                 context.ui.showErrorInfoPopup(it)
             }
-        }
-        )
+        })
 
-        if (wsRawStatus.canStart()) {
+        if (environmentStatus.canStart()) {
             if (workspace.outdated) {
                 actions.add(Action(context, "Update and start") {
+                    context.logger.debug("Updating and starting $id...")
                     val build = client.updateWorkspace(workspace)
                     update(workspace.copy(latestBuild = build), agent)
-                }
-                )
+                })
             } else {
                 actions.add(Action(context, "Start") {
-                    try {
-                        // needed in order to make sure Queuing is not overridden by the
-                        // general polling loop with the `Stopped` state
-                        startIsInProgress.set(true)
-                        val startJob = context.cs
-                            .launch(CoroutineName("Start Workspace Action CLI Runner") + Dispatchers.IO) {
-                                cli.startWorkspace(workspace.ownerName, workspace.name)
-                            }
-                        // cli takes 15 seconds to move the workspace in queueing/starting state
-                        // while the user won't see anything happening in TBX after start is clicked
-                        // During those 15 seconds we work around by forcing a `Queuing` state
-                        while (startJob.isActive && client.workspace(workspace.id).latestBuild.status.isNotStarted()) {
-                            state.update {
-                                WorkspaceAndAgentStatus.QUEUED.toRemoteEnvironmentState(context)
-                            }
-                            delay(1.seconds)
+                    context.logger.debug("Starting $id... ")
+                    context.cs
+                        .launch(CoroutineName("Start Workspace Action CLI Runner") + Dispatchers.IO) {
+                            cli.startWorkspace(workspace.ownerName, workspace.name)
                         }
-                        startIsInProgress.set(false)
-                        // retrieve the status again and update the status
-                        update(client.workspace(workspace.id), agent)
-                    } finally {
-                        startIsInProgress.set(false)
-                    }
-                }
-                )
+                    // cli takes 15 seconds to move the workspace in queueing/starting state
+                    // while the user won't see anything happening in TBX after start is clicked
+                    // During those 15 seconds we work around by forcing a `Queuing` state
+                    updateStatus(WorkspaceAndAgentStatus.QUEUED)
+                    // force refresh of the actions list (Start should no longer be available)
+                    refreshAvailableActions()
+                })
             }
         }
-        if (wsRawStatus.canStop()) {
+        if (environmentStatus.canStop()) {
             if (workspace.outdated) {
                 actions.add(Action(context, "Update and restart") {
+                    context.logger.debug("Updating and re-starting $id...")
                     val build = client.updateWorkspace(workspace)
                     update(workspace.copy(latestBuild = build), agent)
                 }
@@ -160,7 +150,7 @@ class CoderRemoteEnvironment(
             }
             actions.add(Action(context, "Stop") {
                 tryStopSshConnection()
-
+                context.logger.debug("Stoping $id...")
                 val build = client.stopWorkspace(workspace)
                 update(workspace.copy(latestBuild = build), agent)
             }
@@ -170,12 +160,14 @@ class CoderRemoteEnvironment(
         actions.add(Action(context, "Delete workspace", highlightInRed = true) {
             context.cs.launch(CoroutineName("Delete Workspace Action")) {
                 var dialogText =
-                    if (wsRawStatus.canStop()) "This will close the workspace and remove all its information, including files, unsaved changes, history, and usage data."
+                    if (environmentStatus.canStop()) "This will close the workspace and remove all its information, including files, unsaved changes, history, and usage data."
                     else "This will remove all information from the workspace, including files, unsaved changes, history, and usage data."
                 dialogText += "\n\nType \"${workspace.name}\" below to confirm:"
 
                 val confirmation = context.ui.showTextInputPopup(
-                    if (wsRawStatus.canStop()) context.i18n.ptrl("Delete running workspace?") else context.i18n.ptrl("Delete workspace?"),
+                    if (environmentStatus.canStop()) context.i18n.ptrl("Delete running workspace?") else context.i18n.ptrl(
+                        "Delete workspace?"
+                    ),
                     context.i18n.pnotr(dialogText),
                     context.i18n.ptrl("Workspace name"),
                     TextType.General,
@@ -185,10 +177,14 @@ class CoderRemoteEnvironment(
                 if (confirmation != workspace.name) {
                     return@launch
                 }
+                context.logger.debug("Deleting $id...")
                 deleteWorkspace()
             }
         })
-        return actions
+
+        actionsList.update {
+            actions
+        }
     }
 
     private suspend fun tryStopSshConnection() {
@@ -264,23 +260,28 @@ class CoderRemoteEnvironment(
      * Update the workspace/agent status to the listeners, if it has changed.
      */
     fun update(workspace: Workspace, agent: WorkspaceAgent) {
-        if (startIsInProgress.get()) {
-            context.logger.info("Skipping update for $id - workspace start is in progress")
+        if (this.workspace.latestBuild == workspace.latestBuild) {
             return
         }
         this.workspace = workspace
         this.agent = agent
-        wsRawStatus = WorkspaceAndAgentStatus.from(workspace, agent)
+        // workspace&agent status can be different from "environment status"
+        // which is forced to queued state when a workspace is scheduled to start
+        updateStatus(WorkspaceAndAgentStatus.from(workspace, agent))
+
         // we have to regenerate the action list in order to force a redraw
         // because the actions don't have a state flow on the enabled property
-        actionsList.update {
-            getAvailableActions()
-        }
+        refreshAvailableActions()
+    }
+
+    private fun updateStatus(status: WorkspaceAndAgentStatus) {
+        environmentStatus = status
         context.cs.launch(CoroutineName("Workspace Status Updater")) {
             state.update {
-                wsRawStatus.toRemoteEnvironmentState(context)
+                environmentStatus.toRemoteEnvironmentState(context)
             }
         }
+        context.logger.debug("Overall status for workspace $id is $environmentStatus. Workspace status: ${workspace.latestBuild.status}, agent status: ${agent.status}, agent lifecycle state: ${agent.lifecycleState}, login before ready: ${agent.loginBeforeReady}")
     }
 
     /**
@@ -310,7 +311,7 @@ class CoderRemoteEnvironment(
      * Returns true if the SSH connection was scheduled to start, false otherwise.
      */
     fun startSshConnection(): Boolean {
-        if (wsRawStatus.ready() && !isConnected.value) {
+        if (environmentStatus.ready() && !isConnected.value) {
             context.cs.launch(CoroutineName("SSH Connection Trigger")) {
                 connectionRequest.update {
                     true
@@ -336,7 +337,7 @@ class CoderRemoteEnvironment(
                 withTimeout(5.minutes) {
                     var workspaceStillExists = true
                     while (context.cs.isActive && workspaceStillExists) {
-                        if (wsRawStatus == WorkspaceAndAgentStatus.DELETING || wsRawStatus == WorkspaceAndAgentStatus.DELETED) {
+                        if (environmentStatus == WorkspaceAndAgentStatus.DELETING || environmentStatus == WorkspaceAndAgentStatus.DELETED) {
                             workspaceStillExists = false
                             context.envPageManager.showPluginEnvironmentsPage()
                         } else {
