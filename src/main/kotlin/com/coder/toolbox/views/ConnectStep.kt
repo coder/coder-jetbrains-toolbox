@@ -49,7 +49,7 @@ class ConnectStep(
             context.i18n.pnotr("")
         }
 
-        if (context.settingsStore.requireTokenAuth && CoderCliSetupContext.isNotReadyForAuth()) {
+        if (context.settingsStore.requiresTokenAuth && CoderCliSetupContext.isNotReadyForAuth()) {
             errorField.textState.update {
                 context.i18n.pnotr("URL and token were not properly configured. Please go back and provide a proper URL and token!")
             }
@@ -70,7 +70,7 @@ class ConnectStep(
             return
         }
 
-        if (context.settingsStore.requireTokenAuth && !CoderCliSetupContext.hasToken()) {
+        if (context.settingsStore.requiresTokenAuth && !CoderCliSetupContext.hasToken()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
@@ -84,7 +84,7 @@ class ConnectStep(
                 val client = CoderRestClient(
                     context,
                     url,
-                    if (context.settingsStore.requireTokenAuth) CoderCliSetupContext.token else null,
+                    if (context.settingsStore.requiresTokenAuth) CoderCliSetupContext.token else null,
                     PluginManager.pluginInfo.version,
                 )
                 // allows interleaving with the back/cancel action
@@ -98,7 +98,7 @@ class ConnectStep(
                     statusField.textState.update { (context.i18n.pnotr(progress)) }
                 }
                 // We only need to log in if we are using token-based auth.
-                if (context.settingsStore.requireTokenAuth) {
+                if (context.settingsStore.requiresTokenAuth) {
                     logAndReportProgress("Configuring Coder CLI...")
                     // allows interleaving with the back/cancel action
                     yield()
@@ -144,7 +144,7 @@ class ConnectStep(
                 CoderCliSetupWizardState.goToFirstStep()
             }
         } else {
-            if (context.settingsStore.requireTokenAuth) {
+            if (context.settingsStore.requiresTokenAuth) {
                 CoderCliSetupWizardState.goToPreviousStep()
             } else {
                 CoderCliSetupWizardState.goToFirstStep()

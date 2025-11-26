@@ -7,6 +7,7 @@ import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.sdk.convertors.OSConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.sdk.interceptors.CertificateRefreshInterceptor
 import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.sdk.v2.CoderV2RestFacade
 import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
@@ -20,6 +21,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
+import com.coder.toolbox.util.ReloadableTlsContext
 import com.squareup.moshi.Moshi
 import okhttp3.OkHttpClient
 import retrofit2.Response
@@ -40,6 +42,7 @@ open class CoderRestClient(
     val token: String?,
     private val pluginVersion: String = "development",
 ) {
+    private lateinit var tlsContext: ReloadableTlsContext
     private lateinit var moshi: Moshi
     private lateinit var httpClient: OkHttpClient
     private lateinit var retroRestClient: CoderV2RestFacade
@@ -60,12 +63,17 @@ open class CoderRestClient(
                 .add(OSConverter())
                 .add(UUIDConverter())
                 .build()
+
+        tlsContext = ReloadableTlsContext(context.settingsStore.readOnly().tls)
+
         val interceptors = buildList {
-            if (context.settingsStore.requireTokenAuth) {
+            if (context.settingsStore.requiresTokenAuth) {
                 if (token.isNullOrBlank()) {
                     throw IllegalStateException("Token is required for $url deployment")
                 }
                 add(Interceptors.tokenAuth(token))
+            } else if (context.settingsStore.requiresMTlsAuth && context.settingsStore.tls.certRefreshCommand?.isNotBlank() == true) {
+                add(CertificateRefreshInterceptor(context, tlsContext))
             }
             add((Interceptors.userAgent(pluginVersion)))
             add(Interceptors.externalHeaders(context, url))
@@ -74,7 +82,8 @@ open class CoderRestClient(
 
         httpClient = CoderHttpClientBuilder.build(
             context,
-            interceptors
+            interceptors,
+            tlsContext
         )
 
         retroRestClient =

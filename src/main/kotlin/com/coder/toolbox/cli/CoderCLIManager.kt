@@ -19,6 +19,7 @@ import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.settings.SignatureFallbackStrategy.ALLOW
 import com.coder.toolbox.util.InvalidVersionException
+import com.coder.toolbox.util.ReloadableTlsContext
 import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.escapeSubcommand
@@ -153,7 +154,8 @@ class CoderCLIManager(
         }
         val okHttpClient = CoderHttpClientBuilder.build(
             context,
-            interceptors
+            interceptors,
+            ReloadableTlsContext(context.settingsStore.readOnly().tls)
         )
 
         val retrofit = Retrofit.Builder()
