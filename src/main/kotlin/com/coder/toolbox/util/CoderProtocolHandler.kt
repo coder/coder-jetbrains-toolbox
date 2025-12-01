@@ -70,7 +70,7 @@ open class CoderProtocolHandler(
 
         context.logger.info("Handling $uri...")
         val deploymentURL = resolveDeploymentUrl(params) ?: return
-        val token = if (!context.settingsStore.requireTokenAuth) null else resolveToken(params) ?: return
+        val token = if (!context.settingsStore.requiresTokenAuth) null else resolveToken(params) ?: return
         val workspaceName = resolveWorkspaceName(params) ?: return
 
         suspend fun onConnect(

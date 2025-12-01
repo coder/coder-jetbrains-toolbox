@@ -32,7 +32,8 @@ class CoderSettingsStore(
         override val certPath: String?,
         override val keyPath: String?,
         override val caPath: String?,
-        override val altHostname: String?
+        override val altHostname: String?,
+        override val certRefreshCommand: String?
     ) : ReadOnlyTLSSettings
 
     // Properties implementation
@@ -62,9 +63,11 @@ class CoderSettingsStore(
             certPath = store[TLS_CERT_PATH],
             keyPath = store[TLS_KEY_PATH],
             caPath = store[TLS_CA_PATH],
-            altHostname = store[TLS_ALTERNATE_HOSTNAME]
+            altHostname = store[TLS_ALTERNATE_HOSTNAME],
+            certRefreshCommand = store[TLS_CERT_REFRESH_COMMAND]
         )
-    override val requireTokenAuth: Boolean get() = tls.certPath.isNullOrBlank() || tls.keyPath.isNullOrBlank()
+    override val requiresTokenAuth: Boolean get() = tls.certPath.isNullOrBlank() || tls.keyPath.isNullOrBlank()
+    override val requiresMTlsAuth: Boolean get() = tls.certPath?.isNotBlank() == true && tls.keyPath?.isNotBlank() == true
     override val disableAutostart: Boolean
         get() = store[DISABLE_AUTOSTART]?.toBooleanStrictOrNull() ?: (getOS() == OS.MAC)
     override val isSshWildcardConfigEnabled: Boolean

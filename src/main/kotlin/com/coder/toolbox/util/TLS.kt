@@ -280,3 +280,77 @@ class MergedSystemTrustManger(private val otherTrustManager: X509TrustManager) :
     override fun getAcceptedIssuers(): Array<X509Certificate> =
         otherTrustManager.acceptedIssuers + systemTrustManager.acceptedIssuers
 }
+
+class ReloadableX509TrustManager(
+    private val caPath: String?,
+) : X509TrustManager {
+    @Volatile
+    private var delegate: X509TrustManager = loadTrustManager()
+
+    private fun loadTrustManager(): X509TrustManager {
+        val trustManagers = coderTrustManagers(caPath)
+        return trustManagers.first { it is X509TrustManager } as X509TrustManager
+    }
+
+    fun reload() {
+        delegate = loadTrustManager()
+    }
+
+    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {
+        delegate.checkClientTrusted(chain, authType)
+    }
+
+    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
+        delegate.checkServerTrusted(chain, authType)
+    }
+
+    override fun getAcceptedIssuers(): Array<X509Certificate> {
+        return delegate.acceptedIssuers
+    }
+}
+
+class ReloadableSSLSocketFactory(
+    private val settings: ReadOnlyTLSSettings,
+) : SSLSocketFactory() {
+    @Volatile
+    private var delegate: SSLSocketFactory = loadSocketFactory()
+
+    private fun loadSocketFactory(): SSLSocketFactory {
+        return coderSocketFactory(settings)
+    }
+
+    fun reload() {
+        delegate = loadSocketFactory()
+    }
+
+    override fun getDefaultCipherSuites(): Array<String> = delegate.defaultCipherSuites
+
+    override fun getSupportedCipherSuites(): Array<String> = delegate.supportedCipherSuites
+
+    override fun createSocket(): Socket = delegate.createSocket()
+
+    override fun createSocket(s: Socket?, host: String?, port: Int, autoClose: Boolean): Socket =
+        delegate.createSocket(s, host, port, autoClose)
+
+    override fun createSocket(host: String?, port: Int): Socket = delegate.createSocket(host, port)
+
+    override fun createSocket(host: String?, port: Int, localHost: InetAddress?, localPort: Int): Socket =
+        delegate.createSocket(host, port, localHost, localPort)
+
+    override fun createSocket(host: InetAddress?, port: Int): Socket = delegate.createSocket(host, port)
+
+    override fun createSocket(address: InetAddress?, port: Int, localAddress: InetAddress?, localPort: Int): Socket =
+        delegate.createSocket(address, port, localAddress, localPort)
+}
+
+class ReloadableTlsContext(
+    settings: ReadOnlyTLSSettings
+) {
+    val sslSocketFactory = ReloadableSSLSocketFactory(settings)
+    val trustManager = ReloadableX509TrustManager(settings.caPath)
+
+    fun reload() {
+        sslSocketFactory.reload()
+        trustManager.reload()
+    }
+}
