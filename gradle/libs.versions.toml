@@ -16,7 +16,7 @@ gettext = "0.7.0"
 plugin-structure = "3.320"
 mockk = "1.14.6"
 detekt = "1.23.8"
-bouncycastle = "1.82"
+bouncycastle = "1.83"
 
 [libraries]
 toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "toolbox-plugin-api" }
