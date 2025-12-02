@@ -10,6 +10,7 @@
 ### Changed
 
 - workspaces are now started with the help of the CLI
+- simplified URI handling when the same deployment URL is already opened
 
 ## 0.7.2 - 2025-11-03
 

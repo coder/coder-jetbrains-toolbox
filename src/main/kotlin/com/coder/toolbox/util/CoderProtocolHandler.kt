@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.withTimeout
 import java.net.URI
+import java.net.URL
 import java.util.UUID
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -52,8 +53,10 @@ open class CoderProtocolHandler(
      */
     suspend fun handle(
         uri: URI,
+        currentUrl: URL?,
         shouldWaitForAutoLogin: Boolean,
-        reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
+        refreshSession: suspend (URL, String) -> Pair<CoderRestClient, CoderCLIManager>,
+        performLogin: suspend (CoderRestClient, CoderCLIManager) -> Unit
     ) {
         val params = uri.toQueryParameters()
         if (params.isEmpty()) {
@@ -72,65 +75,56 @@ open class CoderProtocolHandler(
         val deploymentURL = resolveDeploymentUrl(params) ?: return
         val token = if (!context.settingsStore.requiresTokenAuth) null else resolveToken(params) ?: return
         val workspaceName = resolveWorkspaceName(params) ?: return
-
-        suspend fun onConnect(
-            restClient: CoderRestClient,
-            cli: CoderCLIManager
-        ) {
-            val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL)
-            if (workspace == null) {
+        if (deploymentURL.toURL().toURI().normalize() == currentUrl?.toURI()?.normalize()) {
+            if (context.settingsStore.requiresTokenAuth) {
+                token?.let {
+                    val (restClient, cli) = refreshSession(currentUrl, it)
+                    val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL)
+                    if (workspace != null) {
+                        connectToWorkspace(workspace, restClient, cli, workspaceName, deploymentURL, params)
+                    }
+                }
+            }
+        } else {
+            suspend fun onConnect(
+                restClient: CoderRestClient,
+                cli: CoderCLIManager
+            ) {
+                val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL)
+                if (workspace == null) {
+                    context.envPageManager.showPluginEnvironmentsPage()
+                    return
+                }
+                performLogin(restClient, cli)
                 context.envPageManager.showPluginEnvironmentsPage()
-                return
+                connectToWorkspace(workspace, restClient, cli, workspaceName, deploymentURL, params)
             }
-            reInitialize(restClient, cli)
-            context.envPageManager.showPluginEnvironmentsPage()
-            if (!prepareWorkspace(workspace, restClient, cli, workspaceName, deploymentURL)) return
-            // we resolve the agent after the workspace is started otherwise we can get misleading
-            // errors like: no agent available while workspace is starting or stopping
-            // we also need to retrieve the workspace again to have the latest resources (ex: agent)
-            // attached to the workspace.
-            val agent: WorkspaceAgent = resolveAgent(
-                params,
-                restClient.workspace(workspace.id)
-            ) ?: return
-            if (!ensureAgentIsReady(workspace, agent)) return
-            delay(2.seconds)
-            val environmentId = "${workspace.name}.${agent.name}"
-            context.showEnvironmentPage(environmentId)
 
-            val productCode = params.ideProductCode()
-            val buildNumber = params.ideBuildNumber()
-            val projectFolder = params.projectFolder()
-
-            if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
-                launchIde(environmentId, productCode, buildNumber, projectFolder)
+            CoderCliSetupContext.apply {
+                url = deploymentURL.toURL()
+                CoderCliSetupContext.token = token
             }
-        }
+            CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
 
-        CoderCliSetupContext.apply {
-            url = deploymentURL.toURL()
-            CoderCliSetupContext.token = token
-        }
-        CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
-
-        // If Toolbox is already opened and URI is executed the setup page
-        // from below is never called. I tried a couple of things, including
-        // yielding the coroutine - but it seems to be of no help. What works
-        // delaying the coroutine for 66 - to 100 milliseconds, these numbers
-        // were determined by trial and error.
-        // The only explanation that I have is that inspecting the TBX bytecode it seems the
-        // UI event is emitted via MutableSharedFlow(replay = 0) which has a buffer of 4 events
-        // and a drop oldest strategy. For some reason it seems that the UI collector
-        // is not yet active, causing the event to be lost unless we wait > 66 ms.
-        // I think this delay ensures the collector is ready before processEvent() is called.
-        delay(100.milliseconds)
-        context.ui.showUiPage(
-            CoderCliSetupWizardPage(
-                context, settingsPage, visibilityState, true,
-                jumpToMainPageOnError = true,
-                onConnect = ::onConnect
+            // If Toolbox is already opened and URI is executed the setup page
+            // from below is never called. I tried a couple of things, including
+            // yielding the coroutine - but it seems to be of no help. What works
+            // delaying the coroutine for 66 - to 100 milliseconds, these numbers
+            // were determined by trial and error.
+            // The only explanation that I have is that inspecting the TBX bytecode it seems the
+            // UI event is emitted via MutableSharedFlow(replay = 0) which has a buffer of 4 events
+            // and a drop oldest strategy. For some reason it seems that the UI collector
+            // is not yet active, causing the event to be lost unless we wait > 66 ms.
+            // I think this delay ensures the collector is ready before processEvent() is called.
+            delay(100.milliseconds)
+            context.ui.showUiPage(
+                CoderCliSetupWizardPage(
+                    context, settingsPage, visibilityState, true,
+                    jumpToMainPageOnError = true,
+                    onConnect = ::onConnect
+                )
             )
-        )
+        }
     }
 
     private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
@@ -431,6 +425,37 @@ open class CoderProtocolHandler(
             return true
         } catch (_: TimeoutCancellationException) {
             return false
+        }
+    }
+
+    private suspend fun connectToWorkspace(
+        workspace: Workspace,
+        restClient: CoderRestClient,
+        cli: CoderCLIManager,
+        workspaceName: String,
+        deploymentURL: String,
+        params: Map<String, String>
+    ) {
+        if (!prepareWorkspace(workspace, restClient, cli, workspaceName, deploymentURL)) return
+        // we resolve the agent after the workspace is started otherwise we can get misleading
+        // errors like: no agent available while workspace is starting or stopping
+        // we also need to retrieve the workspace again to have the latest resources (ex: agent)
+        // attached to the workspace.
+        val agent: WorkspaceAgent = resolveAgent(
+            params,
+            restClient.workspace(workspace.id)
+        ) ?: return
+        if (!ensureAgentIsReady(workspace, agent)) return
+        delay(2.seconds)
+        val environmentId = "${workspace.name}.${agent.name}"
+        context.showEnvironmentPage(environmentId)
+
+        val productCode = params.ideProductCode()
+        val buildNumber = params.ideBuildNumber()
+        val projectFolder = params.projectFolder()
+
+        if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
+            launchIde(environmentId, productCode, buildNumber, projectFolder)
         }
     }
 
