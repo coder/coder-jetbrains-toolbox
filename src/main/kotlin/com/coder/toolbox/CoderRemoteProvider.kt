@@ -2,6 +2,7 @@ package com.coder.toolbox
 
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
@@ -37,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.net.URI
+import java.net.URL
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -254,6 +256,16 @@ class CoderRemoteProvider(
      * Also called as part of our own logout.
      */
     override fun close() {
+        softClose()
+        client = null
+        lastEnvironments.clear()
+        environments.value = LoadableState.Value(emptyList())
+        isInitialized.update { false }
+        CoderCliSetupWizardState.goToFirstStep()
+        context.logger.info("Coder plugin is now closed")
+    }
+
+    private fun softClose() {
         pollJob?.let {
             it.cancel()
             context.logger.info("Cancelled workspace poll job ${pollJob.toString()}")
@@ -262,12 +274,6 @@ class CoderRemoteProvider(
             it.close()
             context.logger.info("REST API client closed and resources released")
         }
-        client = null
-        lastEnvironments.clear()
-        environments.value = LoadableState.Value(emptyList())
-        isInitialized.update { false }
-        CoderCliSetupWizardState.goToFirstStep()
-        context.logger.info("Coder plugin is now closed")
     }
 
     override val svgIcon: SvgIcon =
@@ -333,25 +339,11 @@ class CoderRemoteProvider(
         try {
             linkHandler.handle(
                 uri,
-                shouldDoAutoSetup()
-            ) { restClient, cli ->
-                context.logger.info("Stopping workspace polling and de-initializing resources")
-                close()
-                isInitialized.update {
-                    false
-                }
-                context.logger.info("Starting initialization with the new settings")
-                this@CoderRemoteProvider.client = restClient
-                if (context.settingsStore.useAppNameAsTitle) {
-                    coderHeaderPage.setTitle(context.i18n.pnotr(restClient.appName))
-                } else {
-                    coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
-                }
-                environments.showLoadingMessage()
-                pollJob = poll(restClient, cli)
-                context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI $uri")
-                isInitialized.waitForTrue()
-            }
+                client?.url,
+                shouldDoAutoSetup(),
+                ::refreshSession,
+                ::performReLogin
+            )
         } catch (ex: Exception) {
             val textError = if (ex is APIResponseException) {
                 if (!ex.reason.isNullOrBlank()) {
@@ -364,6 +356,49 @@ class CoderRemoteProvider(
             )
             context.envPageManager.showPluginEnvironmentsPage()
         }
+    }
+
+    private suspend fun refreshSession(url: URL, token: String): Pair<CoderRestClient, CoderCLIManager> {
+        coderHeaderPage.isBusyCreatingNewEnvironment.update { true }
+        try {
+            context.logger.info("Stopping workspace polling and re-initializing the http client and cli with a new token")
+            softClose()
+            val restClient = CoderRestClient(
+                context,
+                url,
+                token,
+                PluginManager.pluginInfo.version,
+            ).apply { initializeSession() }
+            val cli = CoderCLIManager(context, url).apply {
+                login(token)
+            }
+            this.client = restClient
+            pollJob = poll(restClient, cli)
+            triggerProviderVisible.send(true)
+            context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI")
+            return restClient to cli
+        } finally {
+            coderHeaderPage.isBusyCreatingNewEnvironment.update { false }
+        }
+    }
+
+    private suspend fun performReLogin(restClient: CoderRestClient, cli: CoderCLIManager) {
+        context.logger.info("Stopping workspace polling and de-initializing resources")
+        close()
+        isInitialized.update {
+            false
+        }
+        context.logger.info("Starting initialization with the new settings")
+        this@CoderRemoteProvider.client = restClient
+        if (context.settingsStore.useAppNameAsTitle) {
+            coderHeaderPage.setTitle(context.i18n.pnotr(restClient.appName))
+        } else {
+            coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
+        }
+        environments.showLoadingMessage()
+        pollJob = poll(restClient, cli)
+        context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI")
+        isInitialized.waitForTrue()
     }
 
     /**

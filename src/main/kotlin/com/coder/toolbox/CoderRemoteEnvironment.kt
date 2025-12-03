@@ -276,10 +276,8 @@ class CoderRemoteEnvironment(
 
     private fun updateStatus(status: WorkspaceAndAgentStatus) {
         environmentStatus = status
-        context.cs.launch(CoroutineName("Workspace Status Updater")) {
-            state.update {
-                environmentStatus.toRemoteEnvironmentState(context)
-            }
+        state.update {
+            environmentStatus.toRemoteEnvironmentState(context)
         }
         context.logger.debug("Overall status for workspace $id is $environmentStatus. Workspace status: ${workspace.latestBuild.status}, agent status: ${agent.status}, agent lifecycle state: ${agent.lifecycleState}, login before ready: ${agent.loginBeforeReady}")
     }
@@ -312,10 +310,8 @@ class CoderRemoteEnvironment(
      */
     fun startSshConnection(): Boolean {
         if (environmentStatus.ready() && !isConnected.value) {
-            context.cs.launch(CoroutineName("SSH Connection Trigger")) {
-                connectionRequest.update {
-                    true
-                }
+            connectionRequest.update {
+                true
             }
             return true
         }
