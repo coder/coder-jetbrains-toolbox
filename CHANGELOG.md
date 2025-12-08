@@ -4,7 +4,11 @@
 
 ### Changed
 
-- simplified URI handling when the same deployment URL is already opened
+- streamlined URI handling with a faster workflow, clearer progress, and an overall smoother experience
+
+### Fixed
+
+- URI handling on Linux can now launch IDEs on newly started workspaces
 
 ## 0.8.0 - 2025-12-03
 
