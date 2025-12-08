@@ -5,11 +5,9 @@ import com.coder.toolbox.sdk.DataGen
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
-import com.coder.toolbox.views.CoderSettingsPage
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
-import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
@@ -18,8 +16,6 @@ import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import java.util.UUID
 import kotlin.test.Test
@@ -58,11 +54,7 @@ internal class CoderProtocolHandlerTest {
     )
 
     private val protocolHandler = CoderProtocolHandler(
-        context,
-        DialogUi(context),
-        CoderSettingsPage(context, Channel(Channel.CONFLATED), {}),
-        MutableStateFlow(ProviderVisibilityState(applicationVisible = true, providerVisible = true)),
-        MutableStateFlow(false)
+        context
     )
 
     @Test

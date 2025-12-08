@@ -34,7 +34,7 @@ abstract class CoderPage(
         }
     }
 
-    override val isBusyCreatingNewEnvironment: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    override val isBusy: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
     /**
      * Return the icon, if showing one.

@@ -8,6 +8,14 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
+import com.coder.toolbox.util.TOKEN
+import com.coder.toolbox.util.URL
+import com.coder.toolbox.util.WebUrlValidationResult.Invalid
+import com.coder.toolbox.util.toQueryParameters
+import com.coder.toolbox.util.toURL
+import com.coder.toolbox.util.token
+import com.coder.toolbox.util.url
+import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.util.waitForTrue
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
@@ -46,6 +54,7 @@ import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as DropDownM
 import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as dropDownFactory
 
 private val POLL_INTERVAL = 5.seconds
+private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CoderRemoteProvider(
@@ -63,6 +72,7 @@ class CoderRemoteProvider(
 
     // The REST client, if we are signed in
     private var client: CoderRestClient? = null
+    private var cli: CoderCLIManager? = null
 
     // On the first load, automatically log in if we can.
     private var firstRun = true
@@ -84,7 +94,7 @@ class CoderRemoteProvider(
             providerVisible = false
         )
     )
-    private val linkHandler = CoderProtocolHandler(context, dialogUi, settingsPage, visibilityState, isInitialized)
+    private val linkHandler = CoderProtocolHandler(context)
 
     override val loadingEnvironmentsDescription: LocalizableString = context.i18n.ptrl("Loading workspaces...")
     override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
@@ -258,6 +268,7 @@ class CoderRemoteProvider(
     override fun close() {
         softClose()
         client = null
+        cli = null
         lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
@@ -337,13 +348,50 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         try {
-            linkHandler.handle(
-                uri,
-                client?.url,
-                shouldDoAutoSetup(),
-                ::refreshSession,
-                ::performReLogin
-            )
+            val params = uri.toQueryParameters()
+            if (params.isEmpty()) {
+                // probably a plugin installation scenario
+                context.logAndShowInfo("URI will not be handled", "No query parameters were provided")
+                return
+            }
+            // this switches to the main plugin screen, even
+            // if last opened provider was not Coder
+            context.envPageManager.showPluginEnvironmentsPage()
+            coderHeaderPage.isBusy.update { true }
+            if (shouldDoAutoSetup()) {
+                isInitialized.waitForTrue()
+            }
+            context.logger.info("Handling $uri...")
+            val newUrl = resolveDeploymentUrl(params)?.toURL() ?: return
+            val newToken = if (context.settingsStore.requiresMTlsAuth) null else resolveToken(params) ?: return
+            if (sameUrl(newUrl, client?.url)) {
+                if (context.settingsStore.requiresTokenAuth) {
+                    newToken?.let {
+                        refreshSession(newUrl, it)
+                    }
+                }
+            } else {
+                CoderCliSetupContext.apply {
+                    url = newUrl
+                    token = newToken
+                }
+                CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
+                CoderCliSetupWizardPage(
+                    context, settingsPage, visibilityState,
+                    initialAutoSetup = true,
+                    jumpToMainPageOnError = true,
+                    connectSynchronously = true,
+                    onConnect = ::onConnect
+                ).apply {
+                    beforeShow()
+                }
+            }
+            // TODO - do I really need these two lines? I'm anyway doing a workspace call
+            triggerProviderVisible.send(true)
+            isInitialized.waitForTrue()
+
+            linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
+            coderHeaderPage.isBusy.update { false }
         } catch (ex: Exception) {
             val textError = if (ex is APIResponseException) {
                 if (!ex.reason.isNullOrBlank()) {
@@ -355,50 +403,61 @@ class CoderRemoteProvider(
                 textError ?: ""
             )
             context.envPageManager.showPluginEnvironmentsPage()
+        } finally {
+            coderHeaderPage.isBusy.update { false }
         }
     }
+
+    private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
+        val deploymentURL = params.url() ?: askUrl()
+        if (deploymentURL.isNullOrBlank()) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"${URL}\" is missing from URI")
+            return null
+        }
+        val validationResult = deploymentURL.validateStrictWebUrl()
+        if (validationResult is Invalid) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
+            return null
+        }
+        return deploymentURL
+    }
+
+    private suspend fun resolveToken(params: Map<String, String>): String? {
+        val token = params.token()
+        if (token.isNullOrBlank()) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")
+            return null
+        }
+        return token
+    }
+
+    private fun sameUrl(first: URL, second: URL?): Boolean = first.toURI().normalize() == second?.toURI()?.normalize()
 
     private suspend fun refreshSession(url: URL, token: String): Pair<CoderRestClient, CoderCLIManager> {
-        coderHeaderPage.isBusyCreatingNewEnvironment.update { true }
-        try {
-            context.logger.info("Stopping workspace polling and re-initializing the http client and cli with a new token")
-            softClose()
-            val restClient = CoderRestClient(
-                context,
-                url,
-                token,
-                PluginManager.pluginInfo.version,
-            ).apply { initializeSession() }
-            val cli = CoderCLIManager(context, url).apply {
-                login(token)
-            }
-            this.client = restClient
-            pollJob = poll(restClient, cli)
-            triggerProviderVisible.send(true)
-            context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI")
-            return restClient to cli
-        } finally {
-            coderHeaderPage.isBusyCreatingNewEnvironment.update { false }
+        context.logger.info("Stopping workspace polling and re-initializing the http client and cli with a new token")
+        softClose()
+        val newRestClient = CoderRestClient(
+            context,
+            url,
+            token,
+            PluginManager.pluginInfo.version,
+        ).apply { initializeSession() }
+        val newCli = CoderCLIManager(context, url).apply {
+            login(token)
         }
+        this.client = newRestClient
+        this.cli = newCli
+        pollJob = poll(newRestClient, newCli)
+        context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI")
+        return newRestClient to newCli
     }
 
-    private suspend fun performReLogin(restClient: CoderRestClient, cli: CoderCLIManager) {
-        context.logger.info("Stopping workspace polling and de-initializing resources")
-        close()
-        isInitialized.update {
-            false
-        }
-        context.logger.info("Starting initialization with the new settings")
-        this@CoderRemoteProvider.client = restClient
-        if (context.settingsStore.useAppNameAsTitle) {
-            coderHeaderPage.setTitle(context.i18n.pnotr(restClient.appName))
-        } else {
-            coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
-        }
-        environments.showLoadingMessage()
-        pollJob = poll(restClient, cli)
-        context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI")
-        isInitialized.waitForTrue()
+    private suspend fun askUrl(): String? {
+        context.popupPluginMainPage()
+        return dialogUi.ask(
+            context.i18n.ptrl("Deployment URL"),
+            context.i18n.ptrl("Enter the full URL of your Coder deployment")
+        )
     }
 
     /**
@@ -455,6 +514,7 @@ class CoderRemoteProvider(
 
     private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
+        close()
         context.settingsStore.updateLastUsedUrl(client.url)
         if (context.settingsStore.requiresTokenAuth) {
             context.secrets.storeTokenFor(client.url, client.token ?: "")
@@ -463,10 +523,7 @@ class CoderRemoteProvider(
             context.logger.info("Deployment URL was stored and will be available for automatic connection")
         }
         this.client = client
-        pollJob?.let {
-            it.cancel()
-            context.logger.info("Cancelled workspace poll job ${pollJob.toString()} in order to start a new one")
-        }
+        this.cli = cli
         environments.showLoadingMessage()
         if (context.settingsStore.useAppNameAsTitle) {
             coderHeaderPage.setTitle(context.i18n.pnotr(client.appName))

@@ -18,6 +18,7 @@ class CoderCliSetupWizardPage(
     visibilityState: StateFlow<ProviderVisibilityState>,
     initialAutoSetup: Boolean = false,
     jumpToMainPageOnError: Boolean = false,
+    connectSynchronously: Boolean = false,
     onConnect: suspend (
         client: CoderRestClient,
         cli: CoderCLIManager,
@@ -33,9 +34,10 @@ class CoderCliSetupWizardPage(
     private val connectStep = ConnectStep(
         context,
         shouldAutoLogin = shouldAutoSetup,
-        jumpToMainPageOnError,
+        jumpToMainPageOnError = jumpToMainPageOnError,
+        connectSynchronously = connectSynchronously,
         visibilityState,
-        this::displaySteps,
+        refreshWizard = this::displaySteps,
         onConnect
     )
     private val errorReporter = ErrorReporter.create(context, visibilityState, this.javaClass)
