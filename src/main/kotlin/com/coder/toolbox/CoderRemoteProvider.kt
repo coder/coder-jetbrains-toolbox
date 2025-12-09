@@ -47,6 +47,7 @@ import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.net.URI
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -78,6 +79,7 @@ class CoderRemoteProvider(
     private var firstRun = true
 
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    private val isHandlingUri: AtomicBoolean = AtomicBoolean(false)
     private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
     private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig) {
         client?.let { restClient ->
@@ -354,13 +356,11 @@ class CoderRemoteProvider(
                 context.logAndShowInfo("URI will not be handled", "No query parameters were provided")
                 return
             }
+            isHandlingUri.set(true)
             // this switches to the main plugin screen, even
             // if last opened provider was not Coder
             context.envPageManager.showPluginEnvironmentsPage()
             coderHeaderPage.isBusy.update { true }
-            if (shouldDoAutoSetup()) {
-                isInitialized.waitForTrue()
-            }
             context.logger.info("Handling $uri...")
             val newUrl = resolveDeploymentUrl(params)?.toURL() ?: return
             val newToken = if (context.settingsStore.requiresMTlsAuth) null else resolveToken(params) ?: return
@@ -386,8 +386,9 @@ class CoderRemoteProvider(
                     beforeShow()
                 }
             }
-            // TODO - do I really need these two lines? I'm anyway doing a workspace call
+            // force the poll loop to run
             triggerProviderVisible.send(true)
+            // wait for environments to be populated
             isInitialized.waitForTrue()
 
             linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
@@ -405,6 +406,7 @@ class CoderRemoteProvider(
             context.envPageManager.showPluginEnvironmentsPage()
         } finally {
             coderHeaderPage.isBusy.update { false }
+            isHandlingUri.set(false)
         }
     }
 
@@ -467,6 +469,9 @@ class CoderRemoteProvider(
      * list.
      */
     override fun getOverrideUiPage(): UiPage? {
+        if (isHandlingUri.get()) {
+            return null
+        }
         // Show the setup page if we have not configured the client yet.
         if (client == null) {
             // When coming back to the application, initializeSession immediately.
