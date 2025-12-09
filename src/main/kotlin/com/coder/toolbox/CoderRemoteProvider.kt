@@ -407,6 +407,7 @@ class CoderRemoteProvider(
         } finally {
             coderHeaderPage.isBusy.update { false }
             isHandlingUri.set(false)
+            firstRun = false
         }
     }
 
