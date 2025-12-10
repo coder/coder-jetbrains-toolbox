@@ -7,26 +7,16 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.coder.toolbox.util.WebUrlValidationResult.Invalid
-import com.coder.toolbox.views.CoderCliSetupWizardPage
-import com.coder.toolbox.views.CoderSettingsPage
-import com.coder.toolbox.views.state.CoderCliSetupContext
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
-import com.coder.toolbox.views.state.WizardStep
-import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.withTimeout
-import java.net.URI
+import java.net.URL
 import java.util.UUID
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
@@ -36,10 +26,6 @@ private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
 @Suppress("UnstableApiUsage")
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
-    private val dialogUi: DialogUi,
-    private val settingsPage: CoderSettingsPage,
-    private val visibilityState: MutableStateFlow<ProviderVisibilityState>,
-    private val isInitialized: StateFlow<Boolean>,
 ) {
     private val settings = context.settingsStore.readOnly()
 
@@ -51,40 +37,15 @@ open class CoderProtocolHandler(
      * connectable state.
      */
     suspend fun handle(
-        uri: URI,
-        shouldWaitForAutoLogin: Boolean,
-        reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
+        params: Map<String, String>,
+        url: URL,
+        restClient: CoderRestClient,
+        cli: CoderCLIManager
     ) {
-        val params = uri.toQueryParameters()
-        if (params.isEmpty()) {
-            // probably a plugin installation scenario
-            context.logAndShowInfo("URI will not be handled", "No query parameters were provided")
-            return
-        }
-        // this switches to the main plugin screen, even
-        // if last opened provider was not Coder
-        context.envPageManager.showPluginEnvironmentsPage()
-        if (shouldWaitForAutoLogin) {
-            isInitialized.waitForTrue()
-        }
-
-        context.logger.info("Handling $uri...")
-        val deploymentURL = resolveDeploymentUrl(params) ?: return
-        val token = if (!context.settingsStore.requiresTokenAuth) null else resolveToken(params) ?: return
         val workspaceName = resolveWorkspaceName(params) ?: return
-
-        suspend fun onConnect(
-            restClient: CoderRestClient,
-            cli: CoderCLIManager
-        ) {
-            val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL)
-            if (workspace == null) {
-                context.envPageManager.showPluginEnvironmentsPage()
-                return
-            }
-            reInitialize(restClient, cli)
-            context.envPageManager.showPluginEnvironmentsPage()
-            if (!prepareWorkspace(workspace, restClient, cli, workspaceName, deploymentURL)) return
+        val workspace = restClient.workspaces().matchName(workspaceName, url)
+        if (workspace != null) {
+            if (!prepareWorkspace(workspace, restClient, cli, url)) return
             // we resolve the agent after the workspace is started otherwise we can get misleading
             // errors like: no agent available while workspace is starting or stopping
             // we also need to retrieve the workspace again to have the latest resources (ex: agent)
@@ -105,55 +66,8 @@ open class CoderProtocolHandler(
             if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
                 launchIde(environmentId, productCode, buildNumber, projectFolder)
             }
-        }
 
-        CoderCliSetupContext.apply {
-            url = deploymentURL.toURL()
-            CoderCliSetupContext.token = token
         }
-        CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
-
-        // If Toolbox is already opened and URI is executed the setup page
-        // from below is never called. I tried a couple of things, including
-        // yielding the coroutine - but it seems to be of no help. What works
-        // delaying the coroutine for 66 - to 100 milliseconds, these numbers
-        // were determined by trial and error.
-        // The only explanation that I have is that inspecting the TBX bytecode it seems the
-        // UI event is emitted via MutableSharedFlow(replay = 0) which has a buffer of 4 events
-        // and a drop oldest strategy. For some reason it seems that the UI collector
-        // is not yet active, causing the event to be lost unless we wait > 66 ms.
-        // I think this delay ensures the collector is ready before processEvent() is called.
-        delay(100.milliseconds)
-        context.ui.showUiPage(
-            CoderCliSetupWizardPage(
-                context, settingsPage, visibilityState, true,
-                jumpToMainPageOnError = true,
-                onConnect = ::onConnect
-            )
-        )
-    }
-
-    private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
-        val deploymentURL = params.url() ?: askUrl()
-        if (deploymentURL.isNullOrBlank()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$URL\" is missing from URI")
-            return null
-        }
-        val validationResult = deploymentURL.validateStrictWebUrl()
-        if (validationResult is Invalid) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
-            return null
-        }
-        return deploymentURL
-    }
-
-    private suspend fun resolveToken(params: Map<String, String>): String? {
-        val token = params.token()
-        if (token.isNullOrBlank()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")
-            return null
-        }
-        return token
     }
 
     private suspend fun resolveWorkspaceName(params: Map<String, String>): String? {
@@ -165,7 +79,7 @@ open class CoderProtocolHandler(
         return workspace
     }
 
-    private suspend fun List<Workspace>.matchName(workspaceName: String, deploymentURL: String): Workspace? {
+    private suspend fun List<Workspace>.matchName(workspaceName: String, deploymentURL: URL): Workspace? {
         val workspace = this.firstOrNull { it.name == workspaceName }
         if (workspace == null) {
             context.logAndShowError(
@@ -181,15 +95,14 @@ open class CoderProtocolHandler(
         workspace: Workspace,
         restClient: CoderRestClient,
         cli: CoderCLIManager,
-        workspaceName: String,
-        deploymentURL: String
+        url: URL
     ): Boolean {
         when (workspace.latestBuild.status) {
             WorkspaceStatus.PENDING, WorkspaceStatus.STARTING ->
                 if (!restClient.waitForReady(workspace)) {
                     context.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
-                        "$workspaceName from $deploymentURL could not be ready on time"
+                        "${workspace.name} from $url could not be ready on time"
                     )
                     return false
                 }
@@ -199,7 +112,7 @@ open class CoderProtocolHandler(
                 if (settings.disableAutostart) {
                     context.logAndShowWarning(
                         CAN_T_HANDLE_URI_TITLE,
-                        "$workspaceName from $deploymentURL is not running and autostart is disabled"
+                        "${workspace.name} from $url is not running and autostart is disabled"
                     )
                     return false
                 }
@@ -213,7 +126,7 @@ open class CoderProtocolHandler(
                 } catch (e: Exception) {
                     context.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
-                        "$workspaceName from $deploymentURL could not be started",
+                        "${workspace.name} from $url could not be started",
                         e
                     )
                     return false
@@ -222,7 +135,7 @@ open class CoderProtocolHandler(
                 if (!restClient.waitForReady(workspace)) {
                     context.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
-                        "$workspaceName from $deploymentURL could not be started on time",
+                        "${workspace.name} from $url could not be started on time",
                     )
                     return false
                 }
@@ -231,7 +144,7 @@ open class CoderProtocolHandler(
             WorkspaceStatus.FAILED, WorkspaceStatus.DELETING, WorkspaceStatus.DELETED -> {
                 context.logAndShowError(
                     CAN_T_HANDLE_URI_TITLE,
-                    "Unable to connect to $workspaceName from $deploymentURL"
+                    "Unable to connect to ${workspace.name} from $url"
                 )
                 return false
             }
@@ -433,19 +346,9 @@ open class CoderProtocolHandler(
             return false
         }
     }
-
-    private suspend fun askUrl(): String? {
-        context.popupPluginMainPage()
-        return dialogUi.ask(
-            context.i18n.ptrl("Deployment URL"),
-            context.i18n.ptrl("Enter the full URL of your Coder deployment")
-        )
-    }
 }
 
 private suspend fun CoderToolboxContext.showEnvironmentPage(envId: String) {
     this.ui.showWindow()
     this.envPageManager.showEnvironmentPage(envId, false)
 }
-
-class MissingArgumentException(message: String, ex: Throwable? = null) : IllegalArgumentException(message, ex)

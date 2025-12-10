@@ -34,6 +34,8 @@ abstract class CoderPage(
         }
     }
 
+    override val isBusy: MutableStateFlow<Boolean> = MutableStateFlow(false)
+
     /**
      * Return the icon, if showing one.
      *
