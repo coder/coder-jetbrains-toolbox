@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.1 - 2025-12-11
+
 ### Changed
 
 - streamlined URI handling with a faster workflow, clearer progress, and an overall smoother experience
