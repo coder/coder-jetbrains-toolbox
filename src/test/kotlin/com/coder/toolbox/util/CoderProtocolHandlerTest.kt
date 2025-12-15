@@ -1,6 +1,7 @@
 package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.sdk.DataGen
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.CoderSecretsStore
@@ -54,7 +55,8 @@ internal class CoderProtocolHandlerTest {
     )
 
     private val protocolHandler = CoderProtocolHandler(
-        context
+        context,
+        IdeFeedManager(context)
     )
 
     @Test

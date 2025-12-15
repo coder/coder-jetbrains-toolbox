@@ -2,6 +2,7 @@ package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
@@ -26,6 +27,7 @@ private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
 @Suppress("UnstableApiUsage")
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
+    ideFeedManager: IdeFeedManager,
 ) {
     private val settings = context.settingsStore.readOnly()
 
