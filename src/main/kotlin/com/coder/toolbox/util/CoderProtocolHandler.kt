@@ -3,6 +3,7 @@ package com.coder.toolbox.util
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.feed.IdeFeedManager
+import com.coder.toolbox.feed.IdeType
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
@@ -27,7 +28,7 @@ private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
 @Suppress("UnstableApiUsage")
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
-    ideFeedManager: IdeFeedManager,
+    private val ideFeedManager: IdeFeedManager,
 ) {
     private val settings = context.settingsStore.readOnly()
 
@@ -236,72 +237,136 @@ open class CoderProtocolHandler(
     private fun launchIde(
         environmentId: String,
         productCode: String,
-        buildNumber: String,
+        buildNumberHint: String,
         projectFolder: String?
     ) {
         context.cs.launch(CoroutineName("Launch Remote IDE")) {
-            val selectedIde = selectAndInstallRemoteIde(productCode, buildNumber, environmentId) ?: return@launch
-            context.logger.info("$productCode-$buildNumber is already on $environmentId. Going to launch JBClient")
+            val selectedIde = selectAndInstallRemoteIde(productCode, buildNumberHint, environmentId) ?: return@launch
+            context.logger.info("Selected IDE $selectedIde for $productCode with hint $buildNumberHint")
+
+            // Ensure JBClient is prepared (installed/downloaded locally)
             installJBClient(selectedIde, environmentId).join()
+
+            // Launch
             launchJBClient(selectedIde, environmentId, projectFolder)
         }
     }
 
     private suspend fun selectAndInstallRemoteIde(
         productCode: String,
-        buildNumber: String,
+        buildNumberHint: String,
         environmentId: String
     ): String? {
-        val installedIdes = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
+        val selectedIdeVersion = resolveIdeIdentifier(environmentId, productCode, buildNumberHint) ?: return null
+        val installedIdeVersions = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
 
-        var selectedIde = "$productCode-$buildNumber"
-        if (installedIdes.firstOrNull { it.contains(buildNumber) } != null) {
-            context.logger.info("$selectedIde is already installed on $environmentId")
-            return selectedIde
+        if (installedIdeVersions.contains(selectedIdeVersion)) {
+            context.logger.info("$selectedIdeVersion is already installed on $environmentId")
+            return selectedIdeVersion
         }
 
-        selectedIde = resolveAvailableIde(environmentId, productCode, buildNumber) ?: return null
+        val selectedIde = "$productCode-$selectedIdeVersion"
+        context.logger.info("Installing $selectedIde on $environmentId...")
+        context.remoteIdeOrchestrator.installRemoteTool(environmentId, selectedIde)
 
-        // needed otherwise TBX will install it again
-        if (!installedIdes.contains(selectedIde)) {
-            context.logger.info("Installing $selectedIde on $environmentId...")
-            context.remoteIdeOrchestrator.installRemoteTool(environmentId, selectedIde)
-
-            if (context.remoteIdeOrchestrator.waitForIdeToBeInstalled(environmentId, selectedIde)) {
-                context.logger.info("Successfully installed $selectedIde on $environmentId...")
-                return selectedIde
-            } else {
-                context.ui.showSnackbar(
-                    UUID.randomUUID().toString(),
-                    context.i18n.pnotr("$selectedIde could not be installed"),
-                    context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
-                    context.i18n.ptrl("OK")
-                )
-                return null
-            }
-        } else {
-            context.logger.info("$selectedIde is already present on $environmentId...")
+        if (context.remoteIdeOrchestrator.waitForIdeToBeInstalled(environmentId, selectedIde)) {
+            context.logger.info("Successfully installed $selectedIdeVersion on $environmentId.")
             return selectedIde
+        } else {
+            context.ui.showSnackbar(
+                UUID.randomUUID().toString(),
+                context.i18n.pnotr("$selectedIde could not be installed"),
+                context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
+                context.i18n.ptrl("OK")
+            )
+            return null
         }
     }
 
-    private suspend fun resolveAvailableIde(environmentId: String, productCode: String, buildNumber: String): String? {
-        val availableVersions = context
-            .remoteIdeOrchestrator
-            .getAvailableRemoteTools(environmentId, productCode)
+    /**
+     * Resolves the full IDE identifier (e.g., "RR-241.14494.240") based on the build hint.
+     * Supports: latest_eap, latest_release, latest_installed, or specific build number.
+     */
+    internal suspend fun resolveIdeIdentifier(
+        environmentId: String,
+        productCode: String,
+        buildNumberHint: String
+    ): String? {
+        val availableBuilds = context.remoteIdeOrchestrator.getAvailableRemoteTools(environmentId, productCode)
 
-        if (availableVersions.isEmpty()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "$productCode is not available on $environmentId")
-            return null
-        }
+        when (buildNumberHint) {
+            "latest_eap" -> {
+                // Use IdeFeedManager to find best EAP match from available builds
+                val bestEap = ideFeedManager.findBestMatch(
+                    productCode,
+                    IdeType.EAP,
+                    availableBuilds
+                )
 
-        val buildNumberIsNotAvailable = availableVersions.firstOrNull { it.contains(buildNumber) } == null
-        if (buildNumberIsNotAvailable) {
-            val selectedIde = availableVersions.maxOf { it }
-            context.logger.info("$productCode-$buildNumber is not available, we've selected the latest $selectedIde")
-            return selectedIde
+                return if (bestEap != null) {
+                    bestEap.build
+                } else {
+                    // Fallback to latest available if valid
+                    if (availableBuilds.isEmpty()) {
+                        context.logAndShowError(
+                            CAN_T_HANDLE_URI_TITLE,
+                            "$productCode is not available on $environmentId"
+                        )
+                        return null
+                    }
+                    val fallback = availableBuilds.maxBy { it }
+                    context.logger.info("No EAP found for $productCode, falling back to latest available: $fallback")
+                    fallback
+                }
+            }
+
+            "latest_release" -> {
+                val bestRelease = ideFeedManager.findBestMatch(
+                    productCode,
+                    IdeType.RELEASE,
+                    availableBuilds
+                )
+
+                return if (bestRelease != null) {
+                    bestRelease.build
+                } else {
+                    // Fallback to latest available if valid
+                    if (availableBuilds.isEmpty()) {
+                        context.logAndShowError(
+                            CAN_T_HANDLE_URI_TITLE,
+                            "$productCode is not available on $environmentId"
+                        )
+                        return null
+                    }
+                    val fallback = availableBuilds.maxBy { it }
+                    context.logger.info("No Release found for $productCode, falling back to latest available: $fallback")
+                    fallback
+                }
+            }
+
+            "latest_installed" -> {
+                val installed = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
+                if (installed.isNotEmpty()) {
+                    return installed.maxBy { it }
+                }
+                // Fallback to latest available if valid
+                if (availableBuilds.isEmpty()) {
+                    context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "$productCode is not available on $environmentId")
+                    return null
+                }
+                val fallback = availableBuilds.maxBy { it }
+                context.logger.info("No installed IDE found, falling back to latest available: $fallback")
+                return fallback
+            }
+
+            else -> {
+                // Specific build number
+                // Check if exact match exists in available or installed (implicitly handled by install check later)
+                // Often the input buildNumber might be just "241" or "241.1234", but full build version is in the form of 241.1234.234"
+
+                return availableBuilds.filter { it.contains(buildNumberHint) }.maxByOrNull { it }
+            }
         }
-        return "$productCode-$buildNumber"
     }
 
     private fun installJBClient(selectedIde: String, environmentId: String): Job =
@@ -340,7 +405,9 @@ open class CoderProtocolHandler(
             withTimeout(waitTime.toJavaDuration()) {
                 while (!isInstalled) {
                     delay(5.seconds)
-                    isInstalled = getInstalledRemoteTools(environmentId, ideHint).isNotEmpty()
+                    val installed = getInstalledRemoteTools(environmentId, ideHint) // Hint matching
+                    // Check if *specific* IDE is installed now
+                    isInstalled = installed.contains(ideHint) || installed.any { it.contains(ideHint) }
                 }
             }
             return true
