@@ -113,7 +113,7 @@ jobs:
             | xargs -I '{}' gh api -X DELETE repos/${{ github.repository }}/releases/{}
 
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: zip-artifacts
           path: artifacts/
@@ -121,7 +121,7 @@ jobs:
         run: ls -R artifacts/
 
       - name: Download Release Notes
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: release-notes
           path: notes/
