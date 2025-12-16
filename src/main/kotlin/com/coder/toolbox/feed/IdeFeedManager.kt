@@ -208,28 +208,6 @@ class IdeFeedManager(
      * This method filters the loaded IDEs by product code and type, optionally
      * filtering by available builds, then returns the IDE with the highest build.
      *
-     * Build comparison is done lexicographically (string comparison).
-     *
-     * @param query The query criteria specifying product code, type, and optional available builds
-     * @return The IDE with the highest build matching the criteria, or null if no match found
-     */
-    suspend fun findBestMatch(query: IdeQuery): Ide? {
-        val ides = loadIdes()
-
-        return ides
-            .filter { it.code == query.productCode }
-            .filter { it.type == query.type }
-            .let { filtered ->
-                filtered.filter { it.build in query.availableBuilds }
-            }
-            .maxByOrNull { it.build }
-    }
-
-    /**
-     * Convenience method to find the best matching IDE.
-     *
-     * This is a shorthand for creating an IdeQuery and calling findBestMatch(query).
-     *
      * @param productCode The IntelliJ product code (e.g., "RR" for RustRover)
      * @param type The type of IDE release (RELEASE or EAP)
      * @param availableBuilds List of acceptable builds to filter by
@@ -239,9 +217,15 @@ class IdeFeedManager(
         productCode: String,
         type: IdeType,
         availableBuilds: List<String>
-    ): Ide? = findBestMatch(
-        IdeQuery(productCode, type, availableBuilds)
-    )
+    ): Ide? {
+        val ides = loadIdes()
+
+        return ides
+            .filter { it.code == productCode }
+            .filter { it.type == type }
+            .filter { it.build in availableBuilds }
+            .maxByOrNull { it.build }
+    }
 
     companion object {
         private const val RELEASE_CACHE_FILE = "release.json"

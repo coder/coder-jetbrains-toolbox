@@ -257,20 +257,19 @@ open class CoderProtocolHandler(
         buildNumberHint: String,
         environmentId: String
     ): String? {
-        val selectedIdeVersion = resolveIdeIdentifier(environmentId, productCode, buildNumberHint) ?: return null
+        val selectedIde = resolveIdeIdentifier(environmentId, productCode, buildNumberHint) ?: return null
         val installedIdeVersions = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
 
-        if (installedIdeVersions.contains(selectedIdeVersion)) {
-            context.logger.info("$selectedIdeVersion is already installed on $environmentId")
-            return selectedIdeVersion
+        if (installedIdeVersions.contains(selectedIde)) {
+            context.logger.info("$selectedIde is already installed on $environmentId")
+            return selectedIde
         }
 
-        val selectedIde = "$productCode-$selectedIdeVersion"
         context.logger.info("Installing $selectedIde on $environmentId...")
         context.remoteIdeOrchestrator.installRemoteTool(environmentId, selectedIde)
 
         if (context.remoteIdeOrchestrator.waitForIdeToBeInstalled(environmentId, selectedIde)) {
-            context.logger.info("Successfully installed $selectedIdeVersion on $environmentId.")
+            context.logger.info("Successfully installed $selectedIde on $environmentId.")
             return selectedIde
         } else {
             context.ui.showSnackbar(
@@ -293,10 +292,12 @@ open class CoderProtocolHandler(
         buildNumberHint: String
     ): String? {
         val availableBuilds = context.remoteIdeOrchestrator.getAvailableRemoteTools(environmentId, productCode)
+            .map { it.substringAfter("$productCode-") }
+        val installed = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
+            .map { it.substringAfter("$productCode-") }
 
         when (buildNumberHint) {
             "latest_eap" -> {
-                // Use IdeFeedManager to find best EAP match from available builds
                 val bestEap = ideFeedManager.findBestMatch(
                     productCode,
                     IdeType.EAP,
@@ -306,14 +307,14 @@ open class CoderProtocolHandler(
                 return if (bestEap != null) {
                     bestEap.build
                 } else {
-                    // Fallback to latest available if valid
                     if (availableBuilds.isEmpty()) {
                         context.logAndShowError(
                             CAN_T_HANDLE_URI_TITLE,
-                            "$productCode is not available on $environmentId"
+                            "Can't launch EAP for $productCode because no version is available on $environmentId"
                         )
                         return null
                     }
+                    // Fallback to max available
                     val fallback = availableBuilds.maxBy { it }
                     context.logger.info("No EAP found for $productCode, falling back to latest available: $fallback")
                     fallback
@@ -324,17 +325,15 @@ open class CoderProtocolHandler(
                 val bestRelease = ideFeedManager.findBestMatch(
                     productCode,
                     IdeType.RELEASE,
-                    availableBuilds
-                )
+                    availableBuilds.map { it.substringAfter("$productCode-") })
 
                 return if (bestRelease != null) {
                     bestRelease.build
                 } else {
-                    // Fallback to latest available if valid
                     if (availableBuilds.isEmpty()) {
                         context.logAndShowError(
                             CAN_T_HANDLE_URI_TITLE,
-                            "$productCode is not available on $environmentId"
+                            "Can't launch Release for $productCode because no version is available on $environmentId"
                         )
                         return null
                     }
@@ -345,26 +344,40 @@ open class CoderProtocolHandler(
             }
 
             "latest_installed" -> {
-                val installed = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
                 if (installed.isNotEmpty()) {
                     return installed.maxBy { it }
                 }
-                // Fallback to latest available if valid
                 if (availableBuilds.isEmpty()) {
-                    context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "$productCode is not available on $environmentId")
+                    context.logAndShowError(
+                        CAN_T_HANDLE_URI_TITLE,
+                        "Can't launch latest installed version for $productCode because there is no version installed nor available for install on $environmentId"
+                    )
                     return null
                 }
+                // Fallback to latest available if valid
                 val fallback = availableBuilds.maxBy { it }
                 context.logger.info("No installed IDE found, falling back to latest available: $fallback")
                 return fallback
             }
 
             else -> {
-                // Specific build number
-                // Check if exact match exists in available or installed (implicitly handled by install check later)
-                // Often the input buildNumber might be just "241" or "241.1234", but full build version is in the form of 241.1234.234"
+                // Specific build number. First check it in the installed list of builds
+                // then in the available list of builds
+                val installedMatch = installed.firstOrNull { it.contains(buildNumberHint) }
+                if (installedMatch != null) {
+                    return installedMatch
+                }
+                val availableMatch = availableBuilds.filter { it.contains(buildNumberHint) }.maxByOrNull { it }
+                if (availableMatch != null) {
+                    return availableMatch
+                } else {
+                    context.logAndShowError(
+                        CAN_T_HANDLE_URI_TITLE,
+                        "Can't launch $productCode-$buildNumberHint because there is no matching version installed nor available for install on $environmentId"
+                    )
+                    return null
+                }
 
-                return availableBuilds.filter { it.contains(buildNumberHint) }.maxByOrNull { it }
             }
         }
     }
