@@ -35,7 +35,7 @@ jobs:
 
       # Collect Tests Result of failed tests
       - if: ${{ failure() }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: tests-result
           path: ${{ github.workspace }}/build/reports/tests
@@ -79,13 +79,13 @@ jobs:
 
       # Store already-built plugin as an artifact for downloading
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: zip-artifacts
           path: ./build/distributions/*.zip
 
       - name: Upload Release Notes
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: release-notes
           path: RELEASE_NOTES.md
