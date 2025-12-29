@@ -73,7 +73,7 @@ class CoderRemoteEnvironment(
 
     init {
         if (context.settingsStore.shouldAutoConnect(id)) {
-            context.logger.info("resuming SSH connection to $id — last session was still active.")
+            context.logger.info("Last session to $id was still active, trying to establish SSH connection")
             startSshConnection()
         }
         refreshAvailableActions()
@@ -308,14 +308,13 @@ class CoderRemoteEnvironment(
      *
      * Returns true if the SSH connection was scheduled to start, false otherwise.
      */
-    fun startSshConnection(): Boolean {
+    fun startSshConnection() {
         if (environmentStatus.ready() && !isConnected.value) {
             connectionRequest.update {
                 true
             }
-            return true
+            context.logger.info("Workspace status is ready and there is no existing connection, resuming SSH connection to $id")
         }
-        return false
     }
 
     override val deleteActionFlow: StateFlow<(() -> Unit)?> = MutableStateFlow(null)
