@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## Fixed
+### Fixed
 
 - no longer spam Toolbox with requests to establish the SSH connections every 5 seconds
 
