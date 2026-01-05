@@ -304,9 +304,7 @@ class CoderRemoteEnvironment(
     }
 
     /**
-     * Launches the SSH connection if the workspace is ready and there is no connection already established.
-     *
-     * Returns true if the SSH connection was scheduled to start, false otherwise.
+     * Schedules the SSH connection to start as soon as possible if the workspace is ready and there is no connection already established.
      */
     fun startSshConnection() {
         if (environmentStatus.ready() && !isConnected.value) {
