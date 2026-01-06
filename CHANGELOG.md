@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.2 - 2026-01-06
+
 ### Changed
 
 - the proxy command now always logs in verbose mode when the log directory is enabled
