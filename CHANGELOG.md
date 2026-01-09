@@ -6,6 +6,16 @@
 
 - mTLS certificate refresh and http request retrying logic
 
+## 0.8.2 - 2026-01-06
+
+### Changed
+
+- the proxy command now always logs in verbose mode when the log directory is enabled
+
+### Fixed
+
+- no longer spam Toolbox with requests to establish the SSH connections every 5 seconds
+
 ## 0.8.1 - 2025-12-11
 
 ### Changed

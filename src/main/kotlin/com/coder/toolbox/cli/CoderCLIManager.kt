@@ -384,8 +384,7 @@ class CoderCLIManager(
                 "--network-info-dir ${escape(context.settingsStore.networkInfoDir)}"
             )
         val proxyArgs = baseArgs + listOfNotNull(
-            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let { "--log-dir" },
-            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let { escape(it) },
+            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let { "--log-dir ${escape(it)} -v" },
             if (feats.reportWorkspaceUsage) "--usage-app=jetbrains" else null,
         )
         val extraConfig = context.settingsStore.sshConfigOptions

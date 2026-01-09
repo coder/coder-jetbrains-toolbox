@@ -131,15 +131,14 @@ class CoderRemoteProvider(
                                 //       different information?
                                 it.name
                             }?.map { agent ->
-                                // If we have an environment already, update that.
-                                val env = CoderRemoteEnvironment(context, client, cli, ws, agent)
-                                lastEnvironments.firstOrNull { it == env }?.let {
-                                    it.update(ws, agent)
-                                    it
-                                } ?: env
+                                lastEnvironments.firstOrNull { it.id == "${ws.name}.${agent.name}" }
+                                    ?.also {
+                                        // If we have an environment already, update that.
+                                        it.update(ws, agent)
+                                    } ?: CoderRemoteEnvironment(context, client, cli, ws, agent)
                             } ?: emptyList()
                         }
-                    }.toSet()
+                    }.toSet().sortedBy { it.id }
 
                     // In case we logged out while running the query.
                     if (!isActive) {
@@ -153,7 +152,7 @@ class CoderRemoteProvider(
                     }
 
                     environments.update {
-                        LoadableState.Value(resolvedEnvironments.toList())
+                        LoadableState.Value(resolvedEnvironments)
                     }
                     if (!isInitialized.value) {
                         context.logger.info("Environments for ${client.url} are now initialized")
@@ -163,23 +162,8 @@ class CoderRemoteProvider(
                     }
                     lastEnvironments.apply {
                         clear()
-                        addAll(resolvedEnvironments.sortedBy { it.id })
+                        addAll(resolvedEnvironments)
                     }
-
-                    if (WorkspaceConnectionManager.shouldEstablishWorkspaceConnections) {
-                        WorkspaceConnectionManager.allConnected().forEach { wsId ->
-                            val env = lastEnvironments.firstOrNull() { it.id == wsId }
-                            if (env != null && !env.isConnected()) {
-                                context.logger.info("Establishing lost SSH connection for workspace with id $wsId")
-                                if (!env.startSshConnection()) {
-                                    context.logger.info("Can't establish lost SSH connection for workspace with id $wsId")
-                                }
-                            }
-                        }
-                        WorkspaceConnectionManager.reset()
-                    }
-
-                    WorkspaceConnectionManager.collectStatuses(lastEnvironments)
                 } catch (_: CancellationException) {
                     context.logger.debug("${client.url} polling loop canceled")
                     break
@@ -190,7 +174,6 @@ class CoderRemoteProvider(
                     } else {
                         context.logger.error(ex, "workspace polling error encountered")
                         if (ex is APIResponseException && ex.isTokenExpired) {
-                            WorkspaceConnectionManager.shouldEstablishWorkspaceConnections = true
                             close()
                             context.envPageManager.showPluginEnvironmentsPage()
                             errorBuffer.add(ex)
@@ -225,7 +208,6 @@ class CoderRemoteProvider(
      */
     private fun logout() {
         context.logger.info("Logging out ${client?.me?.username}...")
-        WorkspaceConnectionManager.reset()
         close()
         context.logger.info("User ${client?.me?.username} logged out successfully")
     }
