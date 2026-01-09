@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.retrofit.moshi)
     implementation(libs.bundles.bouncycastle)
     testImplementation(kotlin("test"))
+    testImplementation(libs.coroutines.test)
     testImplementation(libs.mokk)
     testImplementation(libs.bundles.toolbox.plugin.api)
 }
