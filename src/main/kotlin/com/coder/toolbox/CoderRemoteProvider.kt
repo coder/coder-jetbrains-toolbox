@@ -63,7 +63,7 @@ class CoderRemoteProvider(
 ) : RemoteProvider("Coder") {
     // Current polling job.
     private var pollJob: Job? = null
-    private val lastEnvironments = mutableSetOf<CoderRemoteEnvironment>()
+    internal val lastEnvironments = mutableListOf<CoderRemoteEnvironment>()
 
     private val settings = context.settingsStore.readOnly()
 
@@ -116,29 +116,7 @@ class CoderRemoteProvider(
             while (isActive) {
                 try {
                     context.logger.debug("Fetching workspace agents from ${client.url}")
-                    val resolvedEnvironments = client.workspaces().flatMap { ws ->
-                        // Agents are not included in workspaces that are off
-                        // so fetch them separately.
-                        when (ws.latestBuild.status) {
-                            WorkspaceStatus.RUNNING -> ws.latestBuild.resources
-                            else -> emptyList()
-                        }.ifEmpty {
-                            client.resources(ws)
-                        }.flatMap { resource ->
-                            resource.agents?.distinctBy {
-                                // There can be duplicates with coder_agent_instance.
-                                // TODO: Can we just choose one or do they hold
-                                //       different information?
-                                it.name
-                            }?.map { agent ->
-                                lastEnvironments.firstOrNull { it.id == "${ws.name}.${agent.name}" }
-                                    ?.also {
-                                        // If we have an environment already, update that.
-                                        it.update(ws, agent)
-                                    } ?: CoderRemoteEnvironment(context, client, cli, ws, agent)
-                            } ?: emptyList()
-                        }
-                    }.toSet().sortedBy { it.id }
+                    val resolvedEnvironments = resolveWorkspaceEnvironments(client, cli)
 
                     // In case we logged out while running the query.
                     if (!isActive) {
@@ -201,6 +179,42 @@ class CoderRemoteProvider(
                 lastPollTime = TimeSource.Monotonic.markNow()
             }
         }
+
+    /**
+     * Resolves workspace agents into remote environments.
+     *
+     * For each workspace:
+     * - If running, uses agents from the latest build resources
+     * - If not running, fetches resources separately
+     *
+     * @return a sorted list of resolved remote environments
+     */
+    internal suspend fun resolveWorkspaceEnvironments(
+        client: CoderRestClient,
+        cli: CoderCLIManager,
+    ): List<CoderRemoteEnvironment> {
+        return client.workspaces().flatMap { ws ->
+            // Agents are not included in workspaces that are off
+            // so fetch them separately.
+            val resources = when (ws.latestBuild.status) {
+                WorkspaceStatus.RUNNING -> ws.latestBuild.resources
+                else -> emptyList()
+            }.ifEmpty {
+                client.resources(ws)
+            }
+            resources
+                .flatMap { it.agents ?: emptyList() }
+                .distinctBy { it.name }
+                .map { agent ->
+                    lastEnvironments.firstOrNull { it.id == "${ws.name}.${agent.name}" }
+                        ?.also {
+                            // If we have an environment already, update that.
+                            it.update(ws, agent)
+                        } ?: CoderRemoteEnvironment(context, client, cli, ws, agent)
+                }
+
+        }.sortedBy { it.id }
+    }
 
     /**
      * Stop polling, clear the client and environments, then go back to the
