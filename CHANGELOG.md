@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- mTLS certificate refresh and http request retrying logic
+
 ## 0.8.2 - 2026-01-06
 
 ### Changed
