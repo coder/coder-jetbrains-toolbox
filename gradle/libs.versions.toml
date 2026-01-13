@@ -23,6 +23,7 @@ toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "t
 toolbox-ui-api = { module = "com.jetbrains.toolbox:ui-api", version.ref = "toolbox-plugin-api" }
 toolbox-remote-dev-api = { module = "com.jetbrains.toolbox:remote-dev-api", version.ref = "toolbox-plugin-api" }
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serialization" }
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 serialization-json-okio = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json-okio", version.ref = "serialization" }
