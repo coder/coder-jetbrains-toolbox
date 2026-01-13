@@ -51,7 +51,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
-import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as DropDownMenu
 import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as dropDownFactory
 
 private val POLL_INTERVAL = 5.seconds
@@ -102,6 +101,10 @@ class CoderRemoteProvider(
     override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
         LoadableState.Loading
     )
+    private val accountDropdownField = dropDownFactory(context.i18n.pnotr("")) {
+        logout()
+        context.envPageManager.showPluginEnvironmentsPage()
+    }
 
     private val errorBuffer = mutableListOf<Throwable>()
 
@@ -229,16 +232,7 @@ class CoderRemoteProvider(
     /**
      * A dropdown that appears at the top of the environment list to the right.
      */
-    override fun getAccountDropDown(): DropDownMenu? {
-        val username = client?.me?.username
-        if (username != null) {
-            return dropDownFactory(context.i18n.pnotr(username)) {
-                logout()
-                context.envPageManager.showPluginEnvironmentsPage()
-            }
-        }
-        return null
-    }
+    override fun getAccountDropDown() = accountDropdownField
 
     override val additionalPluginActions: StateFlow<List<ActionDescription>> = MutableStateFlow(
         listOf(
@@ -528,11 +522,15 @@ class CoderRemoteProvider(
         this.cli = cli
         environments.showLoadingMessage()
         if (context.settingsStore.useAppNameAsTitle) {
+            context.logger.info("Displaying ${client.appName} as main page title")
             coderHeaderPage.setTitle(context.i18n.pnotr(client.appName))
         } else {
+            context.logger.info("Displaying ${client.url} as main page title")
             coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
         }
-        context.logger.info("Displaying ${client.url} in the UI")
+        accountDropdownField.labelState.update {
+            context.i18n.pnotr(client.me.username)
+        }
         pollJob = poll(client, cli)
         context.logger.info("Workspace poll job with name ${pollJob.toString()} was created")
     }
