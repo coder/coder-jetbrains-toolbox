@@ -5,6 +5,7 @@
 ### Fixed
 
 - mTLS certificate refresh and http request retrying logic
+- account name is now rendered immediately after login
 
 ## 0.8.2 - 2026-01-06
 
