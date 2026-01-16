@@ -279,7 +279,7 @@ class CoderRemoteEnvironment(
         state.update {
             environmentStatus.toRemoteEnvironmentState(context)
         }
-        context.logger.debug("Overall status for workspace $id is $environmentStatus. Workspace status: ${workspace.latestBuild.status}, agent status: ${agent.status}, agent lifecycle state: ${agent.lifecycleState}, login before ready: ${agent.loginBeforeReady}")
+        context.logger.info("Overall status for workspace $id is $environmentStatus. Workspace status: ${workspace.latestBuild.status}, agent status: ${agent.status}, agent lifecycle state: ${agent.lifecycleState}, login before ready: ${agent.loginBeforeReady}")
     }
 
     /**
