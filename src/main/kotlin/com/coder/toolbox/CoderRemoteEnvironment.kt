@@ -133,7 +133,7 @@ class CoderRemoteEnvironment(
                     // cli takes 15 seconds to move the workspace in queueing/starting state
                     // while the user won't see anything happening in TBX after start is clicked
                     // During those 15 seconds we work around by forcing a `Queuing` state
-                    updateStatus(WorkspaceAndAgentStatus.QUEUED)
+                    updateStatus(WorkspaceAndAgentStatus.Queued(workspace))
                     // force refresh of the actions list (Start should no longer be available)
                     refreshAvailableActions()
                 })
@@ -323,14 +323,14 @@ class CoderRemoteEnvironment(
             // mark the env as deleting otherwise we will have to
             // wait for the poller to update the status in the next 5 seconds
             state.update {
-                WorkspaceAndAgentStatus.DELETING.toRemoteEnvironmentState(context)
+                WorkspaceAndAgentStatus.Deleting(workspace).toRemoteEnvironmentState(context)
             }
 
             context.cs.launch(CoroutineName("Workspace Deletion Poller")) {
                 withTimeout(5.minutes) {
                     var workspaceStillExists = true
                     while (context.cs.isActive && workspaceStillExists) {
-                        if (environmentStatus == WorkspaceAndAgentStatus.DELETING || environmentStatus == WorkspaceAndAgentStatus.DELETED) {
+                        if (environmentStatus is WorkspaceAndAgentStatus.Deleting || environmentStatus is WorkspaceAndAgentStatus.Deleted) {
                             workspaceStillExists = false
                             context.envPageManager.showPluginEnvironmentsPage()
                         } else {

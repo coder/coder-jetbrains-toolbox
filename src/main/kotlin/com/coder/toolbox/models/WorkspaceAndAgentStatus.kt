@@ -18,41 +18,60 @@ private val CircularSpinner: EnvironmentStateIcons = EnvironmentStateIcons.Conne
  * WorkspaceAndAgentStatus represents the combined status of a single agent and
  * its workspace (or just the workspace if there are no agents).
  */
-enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
+sealed class WorkspaceAndAgentStatus(
+    val label: String,
+    val workspace: Workspace
+) {
     // Workspace states.
-    QUEUED("Queued", "The workspace is queueing to start."),
-    STARTING("Starting", "The workspace is starting."),
-    FAILED("Failed", "The workspace has failed to start."),
-    DELETING("Deleting", "The workspace is being deleted."),
-    DELETED("Deleted", "The workspace has been deleted."),
-    STOPPING("Stopping", "The workspace is stopping."),
-    STOPPED("Stopped", "The workspace has stopped."),
-    CANCELING("Canceling action", "The workspace is being canceled."),
-    CANCELED("Canceled action", "The workspace has been canceled."),
-    RUNNING("Running", "The workspace is running, waiting for agents."),
+    class Queued(workspace: Workspace) : WorkspaceAndAgentStatus("Queued", workspace)
+
+    class Starting(workspace: Workspace) : WorkspaceAndAgentStatus("Starting", workspace)
+
+    class Failed(workspace: Workspace) : WorkspaceAndAgentStatus("Failed", workspace)
+
+    class Deleting(workspace: Workspace) : WorkspaceAndAgentStatus("Deleting", workspace)
+
+    class Deleted(workspace: Workspace) :
+        WorkspaceAndAgentStatus("Deleted", workspace)
+
+    class Stopping(workspace: Workspace) : WorkspaceAndAgentStatus("Stopping", workspace)
+
+    class Stopped(workspace: Workspace) : WorkspaceAndAgentStatus("Stopped", workspace)
+
+    class Canceling(workspace: Workspace) : WorkspaceAndAgentStatus("Canceling action", workspace)
+
+    class Canceled(workspace: Workspace) : WorkspaceAndAgentStatus("Canceled action", workspace)
+
+    class Running(workspace: Workspace) : WorkspaceAndAgentStatus("Running", workspace)
 
     // Agent states.
-    CONNECTING("Connecting", "The agent is connecting."),
-    DISCONNECTED("Disconnected", "The agent has disconnected."),
-    TIMEOUT("Timeout", "The agent is taking longer than expected to connect."),
-    AGENT_STARTING("Starting", "The startup script is running."),
-    AGENT_STARTING_READY(
-        "Starting",
-        "The startup script is still running but the agent is ready to accept connections.",
-    ),
-    CREATED("Created", "The agent has been created."),
-    START_ERROR("Started with error", "The agent is ready but the startup script errored."),
-    START_TIMEOUT("Starting", "The startup script is taking longer than expected."),
-    START_TIMEOUT_READY(
-        "Starting",
-        "The startup script is taking longer than expected but the agent is ready to accept connections.",
-    ),
-    SHUTTING_DOWN("Shutting down", "The agent is shutting down."),
-    SHUTDOWN_ERROR("Shutdown with error", "The agent shut down but the shutdown script errored."),
-    SHUTDOWN_TIMEOUT("Shutting down", "The shutdown script is taking longer than expected."),
-    OFF("Off", "The agent has shut down."),
-    READY("Ready", "The agent is ready to accept connections."),
-    ;
+    class Connecting(workspace: Workspace) : WorkspaceAndAgentStatus("Connecting", workspace)
+
+    class Disconnected(workspace: Workspace) : WorkspaceAndAgentStatus("Disconnected", workspace)
+
+    class Timeout(workspace: Workspace) : WorkspaceAndAgentStatus("Timeout", workspace)
+
+    class AgentStarting(workspace: Workspace) : WorkspaceAndAgentStatus("Starting", workspace)
+
+    class AgentStartingReady(workspace: Workspace) : WorkspaceAndAgentStatus("Starting", workspace)
+
+    class Created(workspace: Workspace) : WorkspaceAndAgentStatus("Created", workspace)
+
+    class StartError(workspace: Workspace) : WorkspaceAndAgentStatus("Started with error", workspace)
+
+    class StartTimeout(workspace: Workspace) : WorkspaceAndAgentStatus("Starting", workspace)
+
+    class StartTimeoutReady(workspace: Workspace) : WorkspaceAndAgentStatus("Starting", workspace)
+
+    class ShuttingDown(workspace: Workspace) : WorkspaceAndAgentStatus("Shutting down", workspace)
+
+    class ShutdownError(workspace: Workspace) : WorkspaceAndAgentStatus("Shutdown with error", workspace)
+
+    class ShutdownTimeout(workspace: Workspace) : WorkspaceAndAgentStatus("Shutting down", workspace)
+
+    class Off(workspace: Workspace) : WorkspaceAndAgentStatus("Off", workspace)
+
+    class Ready(workspace: Workspace) : WorkspaceAndAgentStatus("Ready", workspace)
 
     /**
      * Return the environment state for Toolbox, which tells it the label, color
@@ -73,19 +92,19 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
     }
 
     private fun getStateColor(context: CoderToolboxContext): StateColor {
-        return if (this == FAILED) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.FailedToStart)
-        else if (this == DELETING) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
-        else if (this == DELETED) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
+        return if (this is Failed) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.FailedToStart)
+        else if (this is Deleting) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
+        else if (this is Deleted) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
         else if (ready()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Active)
         else if (unhealthy()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Unhealthy)
-        else if (canStart() || this == STOPPING) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Hibernating)
+        else if (canStart() || this is Stopping) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Hibernating)
         else if (pending()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Activating)
         else context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Unreachable)
     }
 
     private fun getStateIcon(): EnvironmentStateIcons {
-        return if (this == FAILED) EnvironmentStateIcons.Error
-        else if (pending() || this == DELETING || this == DELETED || this == STOPPING) CircularSpinner
+        return if (this is Failed) EnvironmentStateIcons.Error
+        else if (pending() || this is Deleting || this is Deleted || this is Stopping) CircularSpinner
         else if (ready() || unhealthy()) EnvironmentStateIcons.Active
         else if (canStart()) EnvironmentStateIcons.Offline
         else EnvironmentStateIcons.NoIcon
@@ -94,11 +113,10 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
     /**
      * Return true if the agent is in a connectable state.
      */
-    fun ready(): Boolean = this == READY
+    fun ready(): Boolean = this is Ready
 
     fun unhealthy(): Boolean {
-        return listOf(START_ERROR, START_TIMEOUT_READY)
-            .contains(this)
+        return this is StartError || this is StartTimeoutReady
     }
 
     /**
@@ -106,15 +124,13 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
      */
     fun pending(): Boolean {
         // See ready() for why `CREATED` is not in this list.
-        return listOf(CREATED, CONNECTING, TIMEOUT, AGENT_STARTING, START_TIMEOUT, QUEUED, STARTING)
-            .contains(this)
+        return this is Created || this is Connecting || this is Timeout || this is AgentStarting || this is StartTimeout || this is Queued || this is Starting
     }
 
     /**
      * Return true if the workspace can be started.
      */
-    fun canStart(): Boolean = listOf(STOPPED, FAILED, CANCELED)
-        .contains(this)
+    fun canStart(): Boolean = this is Stopped || this is Failed || this is Canceled
 
     /**
      * Return true if the workspace can be stopped.
@@ -140,36 +156,42 @@ enum class WorkspaceAndAgentStatus(val label: String, val description: String) {
             workspace: Workspace,
             agent: WorkspaceAgent? = null,
         ) = when (workspace.latestBuild.status) {
-            WorkspaceStatus.PENDING -> QUEUED
-            WorkspaceStatus.STARTING -> STARTING
+            WorkspaceStatus.PENDING -> Queued(workspace)
+            WorkspaceStatus.STARTING -> Starting(workspace)
             WorkspaceStatus.RUNNING ->
                 when (agent?.status) {
                     WorkspaceAgentStatus.CONNECTED ->
                         when (agent.lifecycleState) {
-                            WorkspaceAgentLifecycleState.CREATED -> CREATED
-                            WorkspaceAgentLifecycleState.STARTING -> if (agent.loginBeforeReady == true) AGENT_STARTING_READY else AGENT_STARTING
-                            WorkspaceAgentLifecycleState.START_TIMEOUT -> if (agent.loginBeforeReady == true) START_TIMEOUT_READY else START_TIMEOUT
-                            WorkspaceAgentLifecycleState.START_ERROR -> START_ERROR
-                            WorkspaceAgentLifecycleState.READY -> READY
-                            WorkspaceAgentLifecycleState.SHUTTING_DOWN -> SHUTTING_DOWN
-                            WorkspaceAgentLifecycleState.SHUTDOWN_TIMEOUT -> SHUTDOWN_TIMEOUT
-                            WorkspaceAgentLifecycleState.SHUTDOWN_ERROR -> SHUTDOWN_ERROR
-                            WorkspaceAgentLifecycleState.OFF -> OFF
+                            WorkspaceAgentLifecycleState.CREATED -> Created(workspace)
+                            WorkspaceAgentLifecycleState.STARTING -> if (agent.loginBeforeReady == true) AgentStartingReady(
+                                workspace
+                            ) else AgentStarting(workspace)
+
+                            WorkspaceAgentLifecycleState.START_TIMEOUT -> if (agent.loginBeforeReady == true) StartTimeoutReady(
+                                workspace
+                            ) else StartTimeout(workspace)
+
+                            WorkspaceAgentLifecycleState.START_ERROR -> StartError(workspace)
+                            WorkspaceAgentLifecycleState.READY -> Ready(workspace)
+                            WorkspaceAgentLifecycleState.SHUTTING_DOWN -> ShuttingDown(workspace)
+                            WorkspaceAgentLifecycleState.SHUTDOWN_TIMEOUT -> ShutdownTimeout(workspace)
+                            WorkspaceAgentLifecycleState.SHUTDOWN_ERROR -> ShutdownError(workspace)
+                            WorkspaceAgentLifecycleState.OFF -> Off(workspace)
                         }
 
-                    WorkspaceAgentStatus.DISCONNECTED -> DISCONNECTED
-                    WorkspaceAgentStatus.TIMEOUT -> TIMEOUT
-                    WorkspaceAgentStatus.CONNECTING -> CONNECTING
-                    else -> RUNNING
+                    WorkspaceAgentStatus.DISCONNECTED -> Disconnected(workspace)
+                    WorkspaceAgentStatus.TIMEOUT -> Timeout(workspace)
+                    WorkspaceAgentStatus.CONNECTING -> Connecting(workspace)
+                    else -> Running(workspace)
                 }
 
-            WorkspaceStatus.STOPPING -> STOPPING
-            WorkspaceStatus.STOPPED -> STOPPED
-            WorkspaceStatus.FAILED -> FAILED
-            WorkspaceStatus.CANCELING -> CANCELING
-            WorkspaceStatus.CANCELED -> CANCELED
-            WorkspaceStatus.DELETING -> DELETING
-            WorkspaceStatus.DELETED -> DELETED
+            WorkspaceStatus.STOPPING -> Stopping(workspace)
+            WorkspaceStatus.STOPPED -> Stopped(workspace)
+            WorkspaceStatus.FAILED -> Failed(workspace)
+            WorkspaceStatus.CANCELING -> Canceling(workspace)
+            WorkspaceStatus.CANCELED -> Canceled(workspace)
+            WorkspaceStatus.DELETING -> Deleting(workspace)
+            WorkspaceStatus.DELETED -> Deleted(workspace)
         }
     }
 }
