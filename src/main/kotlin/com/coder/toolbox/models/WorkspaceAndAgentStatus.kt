@@ -82,9 +82,9 @@ sealed class WorkspaceAndAgentStatus(
      */
     fun toRemoteEnvironmentState(context: CoderToolboxContext): CustomRemoteEnvironmentStateV2 {
         return CustomRemoteEnvironmentStateV2(
-            context.i18n.pnotr(label),
+            label = context.i18n.pnotr(label),
             color = getStateColor(context),
-            isReachable = ready() || unhealthy(),
+            isReachable = this.workspace.latestBuild.status == WorkspaceStatus.RUNNING,
             // TODO@JB: How does this work?  Would like a spinner for pending states.
             iconId = getStateIcon().id,
             isPriorityShow = true
