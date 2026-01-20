@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- improved SSH connection reliability during transient network failures
+
 ## 0.8.3 - 2026-01-14
 
 ### Fixed
