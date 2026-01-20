@@ -298,8 +298,7 @@ class CoderRemoteEnvironment(
                 context.cs.launch {
                     context.logAndShowWarning(
                         title = "Connection unstable",
-                        warning = "Unstable connection between Coder server and workspace ${ws.name} detected. " +
-                                "Your active sessions may disconnect. Please check the dashboard"
+                        warning = "Unstable connection between Coder server and workspace ${ws.name} detected. Your active sessions may disconnect."
                     )
                 }
             }
