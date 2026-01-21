@@ -111,15 +111,51 @@ class ConnectionMonitoringServiceTest {
             // First call triggers notification
             service.checkConnectionStatus(workspace, agent)
 
-            // Reset mocks to verify subsequent calls
-            io.mockk.clearMocks(ui, logger, answers = false)
-
             // Second call should not trigger notification
             service.checkConnectionStatus(workspace, agent)
 
-            coVerify(exactly = 0) { logger.warn(any<String>()) }
-            coVerify(exactly = 0) { ui.showSnackbar(any(), any(), any(), any()) }
+            coVerify(exactly = 1) { logger.warn(any<String>()) }
+            coVerify(exactly = 1) { ui.showSnackbar(any(), any(), any(), any()) }
         }
+
+    @Test
+    fun `given two running workspaces with disconnected agents and ready lifecycles then expect expect that user is notified only once`() =
+        cs.runTest {
+            val service = ConnectionMonitoringService(cs, ui, logger, i18n)
+            val ws1 = createWorkspace(WorkspaceStatus.RUNNING)
+            val ws2 = createWorkspace(WorkspaceStatus.RUNNING)
+            val agent1 = createAgent(WorkspaceAgentStatus.DISCONNECTED, WorkspaceAgentLifecycleState.READY)
+            val agent2 = createAgent(WorkspaceAgentStatus.DISCONNECTED, WorkspaceAgentLifecycleState.READY)
+
+            // First call triggers notification
+            service.checkConnectionStatus(ws1, agent1)
+
+            // Second call should not trigger notification
+            service.checkConnectionStatus(ws2, agent2)
+
+            coVerify(exactly = 1) { logger.warn(any<String>()) }
+            coVerify(exactly = 1) { ui.showSnackbar(any(), any(), any(), any()) }
+        }
+
+    @Test
+    fun `given two running workspaces with timed out agents and ready lifecycles then expect expect that user is notified only once`() =
+        cs.runTest {
+            val service = ConnectionMonitoringService(cs, ui, logger, i18n)
+            val ws1 = createWorkspace(WorkspaceStatus.RUNNING)
+            val ws2 = createWorkspace(WorkspaceStatus.RUNNING)
+            val agent1 = createAgent(WorkspaceAgentStatus.TIMEOUT, WorkspaceAgentLifecycleState.READY)
+            val agent2 = createAgent(WorkspaceAgentStatus.TIMEOUT, WorkspaceAgentLifecycleState.READY)
+
+            // First call triggers notification
+            service.checkConnectionStatus(ws1, agent1)
+
+            // Second call should not trigger notification
+            service.checkConnectionStatus(ws2, agent2)
+
+            coVerify(exactly = 1) { logger.warn(any<String>()) }
+            coVerify(exactly = 1) { ui.showSnackbar(any(), any(), any(), any()) }
+        }
+
 
     private fun createWorkspace(status: WorkspaceStatus): Workspace {
         return Workspace(
@@ -136,7 +172,7 @@ class ConnectionMonitoringServiceTest {
                 status = status
             ),
             outdated = false,
-            name = "workspace",
+            name = "workspace-${UUID.randomUUID()}",
             ownerName = "owner"
         )
     }
@@ -148,7 +184,7 @@ class ConnectionMonitoringServiceTest {
         return WorkspaceAgent(
             id = UUID.randomUUID(),
             status = status,
-            name = "agent",
+            name = "agent-${UUID.randomUUID()}",
             architecture = null,
             operatingSystem = null,
             directory = null,
