@@ -50,7 +50,8 @@ internal class CoderProtocolHandlerTest {
         mockk<LocalizableStringFactory>(relaxed = true),
         CoderSettingsStore(pluginTestSettingsStore(), Environment(), mockk<Logger>(relaxed = true)),
         mockk<CoderSecretsStore>(),
-        mockk<ToolboxProxySettings>()
+        mockk<ToolboxProxySettings>(),
+        mockk<ConnectionMonitoringService>()
     )
 
     private val protocolHandler = CoderProtocolHandler(

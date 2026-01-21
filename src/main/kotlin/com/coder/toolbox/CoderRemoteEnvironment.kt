@@ -9,9 +9,6 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.NetworkMetrics
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
-import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
-import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
-import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.waitForFalseWithTimeout
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
@@ -275,35 +272,13 @@ class CoderRemoteEnvironment(
         // workspace&agent status can be different from "environment status"
         // which is forced to queued state when a workspace is scheduled to start
         updateStatus(WorkspaceAndAgentStatus.from(workspace, agent))
-        checkConnectionStatus(workspace, agent)
+        context.connectionMonitoringService.checkConnectionStatus(workspace, agent)
 
         // we have to regenerate the action list in order to force a redraw
         // because the actions don't have a state flow on the enabled property
         refreshAvailableActions()
     }
 
-    private fun checkConnectionStatus(
-        ws: Workspace,
-        agent: WorkspaceAgent
-    ) {
-        val isWorkspaceRunning = ws.latestBuild.status == WorkspaceStatus.RUNNING
-        val isAgentReady = agent.lifecycleState == WorkspaceAgentLifecycleState.READY
-        val hasConnectionIssue = agent.status in setOf(
-            WorkspaceAgentStatus.DISCONNECTED,
-            WorkspaceAgentStatus.TIMEOUT
-        )
-
-        when {
-            isWorkspaceRunning && isAgentReady && hasConnectionIssue -> {
-                context.cs.launch {
-                    context.logAndShowWarning(
-                        title = "Connection unstable",
-                        warning = "Unstable connection between Coder server and workspace ${ws.name} detected. Your active sessions may disconnect."
-                    )
-                }
-            }
-        }
-    }
 
     private fun updateStatus(status: WorkspaceAndAgentStatus) {
         environmentStatus = status

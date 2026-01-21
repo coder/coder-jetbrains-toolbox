@@ -3,6 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
+import com.coder.toolbox.util.ConnectionMonitoringService
 import com.jetbrains.toolbox.api.core.PluginSecretStore
 import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.ServiceLocator
@@ -26,21 +27,30 @@ import kotlinx.coroutines.CoroutineScope
 class CoderToolboxExtension : RemoteDevExtension {
     // All services must be passed in here and threaded as necessary.
     override fun createRemoteProviderPluginInstance(serviceLocator: ServiceLocator): RemoteProvider {
+        val ui = serviceLocator.getService<ToolboxUi>()
         val logger = serviceLocator.getService(Logger::class.java)
+        val cs = serviceLocator.getService<CoroutineScope>()
+        val i18n = serviceLocator.getService<LocalizableStringFactory>()
         return CoderRemoteProvider(
             CoderToolboxContext(
-                serviceLocator.getService<ToolboxUi>(),
+                ui,
                 serviceLocator.getService<EnvironmentUiPageManager>(),
                 serviceLocator.getService<EnvironmentStateColorPalette>(),
                 serviceLocator.getService<RemoteToolsHelper>(),
                 serviceLocator.getService<ClientHelper>(),
                 serviceLocator.getService<LocalDesktopManager>(),
-                serviceLocator.getService<CoroutineScope>(),
+                cs,
                 serviceLocator.getService<Logger>(),
-                serviceLocator.getService<LocalizableStringFactory>(),
+                i18n,
                 CoderSettingsStore(serviceLocator.getService<PluginSettingsStore>(), Environment(), logger),
                 CoderSecretsStore(serviceLocator.getService<PluginSecretStore>()),
-                serviceLocator.getService<ToolboxProxySettings>()
+                serviceLocator.getService<ToolboxProxySettings>(),
+                ConnectionMonitoringService(
+                    cs,
+                    ui,
+                    logger,
+                    i18n
+                )
             )
         )
     }

@@ -2,6 +2,7 @@ package com.coder.toolbox
 
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
+import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.toURL
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
@@ -30,6 +31,7 @@ data class CoderToolboxContext(
     val settingsStore: CoderSettingsStore,
     val secrets: CoderSecretsStore,
     val proxySettings: ToolboxProxySettings,
+    val connectionMonitoringService: ConnectionMonitoringService,
 ) {
     /**
      * Try to find a URL.
