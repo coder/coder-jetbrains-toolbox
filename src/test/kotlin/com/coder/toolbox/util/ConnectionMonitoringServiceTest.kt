@@ -82,7 +82,7 @@ class ConnectionMonitoringServiceTest {
         }
 
     @Test
-    fun `given a running workspace with a disconnected agent and a ready lifecycle then expect expect that user is notified only once`() =
+    fun `given a running workspace with a disconnected agent and a ready lifecycle then expect that user is notified only once`() =
         cs.runTest {
             val service = ConnectionMonitoringService(cs, ui, logger, i18n)
             val workspace = createWorkspace(WorkspaceStatus.RUNNING)
@@ -102,7 +102,7 @@ class ConnectionMonitoringServiceTest {
         }
 
     @Test
-    fun `given a running workspace with a timed out agent and a ready lifecycle then expect expect that user is notified only once`() =
+    fun `given a running workspace with a timed out agent and a ready lifecycle then expect that user is notified only once`() =
         cs.runTest {
             val service = ConnectionMonitoringService(cs, ui, logger, i18n)
             val workspace = createWorkspace(WorkspaceStatus.RUNNING)
@@ -119,7 +119,7 @@ class ConnectionMonitoringServiceTest {
         }
 
     @Test
-    fun `given two running workspaces with disconnected agents and ready lifecycles then expect expect that user is notified only once`() =
+    fun `given two running workspaces with disconnected agents and ready lifecycles then expect that user is notified only once`() =
         cs.runTest {
             val service = ConnectionMonitoringService(cs, ui, logger, i18n)
             val ws1 = createWorkspace(WorkspaceStatus.RUNNING)
@@ -138,7 +138,7 @@ class ConnectionMonitoringServiceTest {
         }
 
     @Test
-    fun `given two running workspaces with timed out agents and ready lifecycles then expect expect that user is notified only once`() =
+    fun `given two running workspaces with timed out agents and ready lifecycles then expect that user is notified only once`() =
         cs.runTest {
             val service = ConnectionMonitoringService(cs, ui, logger, i18n)
             val ws1 = createWorkspace(WorkspaceStatus.RUNNING)
