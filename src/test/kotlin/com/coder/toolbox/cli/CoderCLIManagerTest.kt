@@ -23,6 +23,7 @@ import com.coder.toolbox.store.NETWORK_INFO_DIR
 import com.coder.toolbox.store.SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.SSH_CONFIG_PATH
 import com.coder.toolbox.store.SSH_LOG_DIR
+import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
@@ -100,7 +101,9 @@ internal class CoderCLIManagerTest {
 
             override fun removeProxyChangeListener(listener: Runnable) {
             }
-        })
+        },
+        mockk<ConnectionMonitoringService>()
+    )
 
     @BeforeTest
     fun setup() {

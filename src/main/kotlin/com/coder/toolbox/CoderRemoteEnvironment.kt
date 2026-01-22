@@ -259,20 +259,26 @@ class CoderRemoteEnvironment(
     /**
      * Update the workspace/agent status to the listeners, if it has changed.
      */
+    /**
+     * Update the workspace/agent status to the listeners, if it has changed.
+     */
     fun update(workspace: Workspace, agent: WorkspaceAgent) {
         if (this.workspace.latestBuild == workspace.latestBuild) {
             return
         }
         this.workspace = workspace
         this.agent = agent
+
         // workspace&agent status can be different from "environment status"
         // which is forced to queued state when a workspace is scheduled to start
         updateStatus(WorkspaceAndAgentStatus.from(workspace, agent))
+        context.connectionMonitoringService.checkConnectionStatus(workspace, agent)
 
         // we have to regenerate the action list in order to force a redraw
         // because the actions don't have a state flow on the enabled property
         refreshAvailableActions()
     }
+
 
     private fun updateStatus(status: WorkspaceAndAgentStatus) {
         environmentStatus = status

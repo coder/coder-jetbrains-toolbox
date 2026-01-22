@@ -8,3 +8,4 @@ jvm/
 
 # hidden macOS metadata files
 .DS_Store
+bin/
