@@ -255,16 +255,34 @@ class CoderSettingsStore(
 
     private fun getDefaultGlobalDataDir(): Path {
         return when (getOS()) {
-            OS.WINDOWS -> Paths.get(env.get("LOCALAPPDATA"), "coder-toolbox")
-            OS.MAC -> Paths.get(env.get("HOME"), "Library/Application Support/coder-toolbox")
-            else -> {
-                val dir = env.get("XDG_DATA_HOME")
-                if (dir.isNotBlank()) {
-                    return Paths.get(dir, "coder-toolbox")
-                }
-                return Paths.get(env.get("HOME"), ".local/share/coder-toolbox")
-            }
+            OS.WINDOWS -> Paths.get(getWinAppData(), "coder-toolbox")
+            OS.MAC -> Paths.get(getMacAppData(), "coder-toolbox")
+            else -> Paths.get(getLinuxAppData(), "coder-toolbox")
         }
+    }
+
+    private fun getWinAppData(): String {
+        val appDataD: String = env.get("LOCALAPPDATA")
+        if (appDataD.isNotBlank()) {
+            return appDataD
+        }
+        return "${System.getProperty("user.home")}\\AppData\\Local"
+    }
+
+    private fun getMacAppData(): String {
+        val appData = env.get("HOME")
+        if (appData.isNotBlank()) {
+            return "$appData/Library/Application Support"
+        }
+        return "${System.getProperty("user.home")}/Library/Application Support"
+    }
+
+    private fun getLinuxAppData(): String {
+        val appData = env.get("XDG_DATA_HOME")
+        if (appData.isNotBlank()) {
+            return appData
+        }
+        return "${System.getProperty("user.home")}/.local/share"
     }
 
     private fun getDefaultGlobalConfigDir(): Path {
@@ -282,7 +300,7 @@ class CoderSettingsStore(
                 if (dir.isNotBlank()) {
                     return Paths.get(dir, "coderv2")
                 }
-                return Paths.get(env.get("HOME"), ".config/coderv2")
+                Paths.get(env.get("HOME"), ".config/coderv2")
             }
         }
     }
