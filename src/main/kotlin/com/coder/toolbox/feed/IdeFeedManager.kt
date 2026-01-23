@@ -4,9 +4,7 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.sdk.interceptors.Interceptors
-import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.ReloadableTlsContext
-import com.coder.toolbox.util.getOS
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +12,7 @@ import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.nio.file.Path
+import java.nio.file.Paths
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 
@@ -132,42 +131,17 @@ class IdeFeedManager(
     }
 
     /**
-     * Get the platform-specific cache directory path.
-     */
-    private fun getCacheDirectory(): Path {
-        val os = getOS()
-        val userHome = System.getProperty("user.home")
-
-        val basePath = when (os) {
-            OS.MAC -> Path.of(userHome, "Library", "Application Support")
-            OS.LINUX -> Path.of(userHome, ".local", "share")
-            OS.WINDOWS -> {
-                val localAppData = System.getenv("LOCALAPPDATA")
-                    ?: Path.of(userHome, "AppData", "Local").toString()
-                Path.of(localAppData)
-            }
-
-            null -> {
-                context.logger.warn("Unable to determine OS, using home directory for cache")
-                Path.of(userHome, ".cache")
-            }
-        }
-
-        return basePath.resolve("JetBrains/Toolbox/plugins/com.coder.toolbox")
-    }
-
-    /**
      * Get the path for the release feed cache file.
      */
     private fun getReleaseCachePath(): Path {
-        return getCacheDirectory().resolve(RELEASE_CACHE_FILE)
+        return Paths.get(context.settingsStore.globalDataDirectory, RELEASE_CACHE_FILE)
     }
 
     /**
      * Get the path for the EAP feed cache file.
      */
     private fun getEapCachePath(): Path {
-        return getCacheDirectory().resolve(EAP_CACHE_FILE)
+        return Paths.get(context.settingsStore.globalDataDirectory, EAP_CACHE_FILE)
     }
 
     /**
