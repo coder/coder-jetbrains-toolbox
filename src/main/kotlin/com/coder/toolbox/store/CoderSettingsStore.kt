@@ -282,6 +282,12 @@ class CoderSettingsStore(
         if (appData.isNotBlank()) {
             return appData
         }
+
+        val home = env.get("HOME")
+        if (home.isNotBlank()) {
+            return "$home/.local/share"
+        }
+
         return "${System.getProperty("user.home")}/.local/share"
     }
 
