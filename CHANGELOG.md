@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 0.8.4 - 2026-01-20
+
+### Fixed
+
+- improved SSH connection reliability during transient network failures
+
+## 0.8.3 - 2026-01-14
+
+### Fixed
+
+- mTLS certificate refresh and http request retrying logic
+- account name is now rendered immediately after login
+
+## 0.8.2 - 2026-01-06
+
+### Changed
+
+- the proxy command now always logs in verbose mode when the log directory is enabled
+
+### Fixed
+
+- no longer spam Toolbox with requests to establish the SSH connections every 5 seconds
+
 ## 0.8.1 - 2025-12-11
 
 ### Changed
