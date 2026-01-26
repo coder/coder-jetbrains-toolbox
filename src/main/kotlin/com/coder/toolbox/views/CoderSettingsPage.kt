@@ -69,32 +69,62 @@ class CoderSettingsPage(
         )
     )
 
-    private val enableBinaryDirectoryFallbackField =
-        CheckboxField(
-            settings.enableBinaryDirectoryFallback,
-            context.i18n.ptrl("Enable binary directory fallback")
-        )
-    private val headerCommandField =
-        TextField(context.i18n.ptrl("Header command"), settings.headerCommand ?: "", TextType.General)
-    private val tlsCertPathField =
-        TextField(context.i18n.ptrl("TLS cert path"), settings.tls.certPath ?: "", TextType.General)
-    private val tlsKeyPathField =
-        TextField(context.i18n.ptrl("TLS key path"), settings.tls.keyPath ?: "", TextType.General)
+    private val enableBinaryDirectoryFallbackField = CheckboxField(
+        settings.enableBinaryDirectoryFallback,
+        context.i18n.ptrl("Enable binary directory fallback")
+    )
+    private val headerCommandField = TextField(
+        context.i18n.ptrl("Header command"),
+        settings.headerCommand ?: "",
+        TextType.General
+    )
+
+    private val tlsCertPathField = TextField(
+        context.i18n.ptrl("TLS cert path"),
+        settings.tls.certPath ?: "",
+        TextType.General
+    )
+    private val tlsKeyPathField = TextField(
+        context.i18n.ptrl("TLS key path"),
+        settings.tls.keyPath ?: "", TextType.General
+    )
     private val tlsCAPathField =
         TextField(context.i18n.ptrl("TLS CA path"), settings.tls.caPath ?: "", TextType.General)
     private val tlsAlternateHostnameField =
         TextField(context.i18n.ptrl("TLS alternate hostname"), settings.tls.altHostname ?: "", TextType.General)
-    private val disableAutostartField =
-        CheckboxField(settings.disableAutostart, context.i18n.ptrl("Disable autostart"))
 
-    private val enableSshWildCardConfig =
-        CheckboxField(settings.isSshWildcardConfigEnabled, context.i18n.ptrl("Enable SSH wildcard config"))
-    private val sshExtraArgs =
-        TextField(context.i18n.ptrl("Extra SSH options"), settings.sshConfigOptions ?: "", TextType.General)
-    private val sshLogDirField =
-        TextField(context.i18n.ptrl("SSH proxy log directory"), settings.sshLogDirectory ?: "", TextType.General)
-    private val networkInfoDirField =
-        TextField(context.i18n.ptrl("SSH network metrics directory"), settings.networkInfoDir, TextType.General)
+    private val disableAutostartField = CheckboxField(
+        settings.disableAutostart,
+        context.i18n.ptrl("Disable autostart")
+    )
+
+    private val enableSshWildCardConfig = CheckboxField(
+        settings.isSshWildcardConfigEnabled,
+        context.i18n.ptrl("Enable SSH wildcard config")
+    )
+
+    private val sshConnectionTimeoutField = TextField(
+        context.i18n.ptrl("SSH connection timeout (seconds)"),
+        settings.sshConnectionTimeoutInSeconds.toString(),
+        TextType.Integer
+    )
+
+    private val sshExtraArgs = TextField(
+        context.i18n.ptrl("Extra SSH options"),
+        settings.sshConfigOptions ?: "",
+        TextType.General
+    )
+
+    private val sshLogDirField = TextField(
+        context.i18n.ptrl("SSH proxy log directory"),
+        settings.sshLogDirectory ?: "",
+        TextType.General
+    )
+    private val networkInfoDirField = TextField(
+        context.i18n.ptrl("SSH network metrics directory"),
+        settings.networkInfoDir,
+        TextType.General
+    )
 
     private lateinit var visibilityUpdateJob: Job
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
@@ -115,6 +145,7 @@ class CoderSettingsPage(
             tlsAlternateHostnameField,
             disableAutostartField,
             enableSshWildCardConfig,
+            sshConnectionTimeoutField,
             sshLogDirField,
             networkInfoDirField,
             sshExtraArgs,
@@ -151,6 +182,7 @@ class CoderSettingsPage(
                         }
                     }
                 }
+                context.settingsStore.updateSshConnectionTimeoutInSeconds(sshConnectionTimeoutField.contentState.value.toInt())
                 context.settingsStore.updateSshLogDir(sshLogDirField.contentState.value)
                 context.settingsStore.updateNetworkInfoDir(networkInfoDirField.contentState.value)
                 context.settingsStore.updateSshConfigOptions(sshExtraArgs.contentState.value)
