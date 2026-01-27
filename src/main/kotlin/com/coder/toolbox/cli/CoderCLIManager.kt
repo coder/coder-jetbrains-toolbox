@@ -392,7 +392,7 @@ class CoderCLIManager(
             ?.let { "\n" + it.prependIndent("  ") }
             ?: ""
         val options = """
-            ConnectTimeout 0
+            ConnectTimeout ${context.settingsStore.sshConnectionTimeoutInSeconds}
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
             LogLevel ERROR

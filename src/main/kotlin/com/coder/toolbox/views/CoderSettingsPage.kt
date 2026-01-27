@@ -15,7 +15,6 @@ import com.jetbrains.toolbox.api.ui.components.UiField
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -69,32 +68,62 @@ class CoderSettingsPage(
         )
     )
 
-    private val enableBinaryDirectoryFallbackField =
-        CheckboxField(
-            settings.enableBinaryDirectoryFallback,
-            context.i18n.ptrl("Enable binary directory fallback")
-        )
-    private val headerCommandField =
-        TextField(context.i18n.ptrl("Header command"), settings.headerCommand ?: "", TextType.General)
-    private val tlsCertPathField =
-        TextField(context.i18n.ptrl("TLS cert path"), settings.tls.certPath ?: "", TextType.General)
-    private val tlsKeyPathField =
-        TextField(context.i18n.ptrl("TLS key path"), settings.tls.keyPath ?: "", TextType.General)
+    private val enableBinaryDirectoryFallbackField = CheckboxField(
+        settings.enableBinaryDirectoryFallback,
+        context.i18n.ptrl("Enable binary directory fallback")
+    )
+    private val headerCommandField = TextField(
+        context.i18n.ptrl("Header command"),
+        settings.headerCommand ?: "",
+        TextType.General
+    )
+
+    private val tlsCertPathField = TextField(
+        context.i18n.ptrl("TLS cert path"),
+        settings.tls.certPath ?: "",
+        TextType.General
+    )
+    private val tlsKeyPathField = TextField(
+        context.i18n.ptrl("TLS key path"),
+        settings.tls.keyPath ?: "", TextType.General
+    )
     private val tlsCAPathField =
         TextField(context.i18n.ptrl("TLS CA path"), settings.tls.caPath ?: "", TextType.General)
     private val tlsAlternateHostnameField =
         TextField(context.i18n.ptrl("TLS alternate hostname"), settings.tls.altHostname ?: "", TextType.General)
-    private val disableAutostartField =
-        CheckboxField(settings.disableAutostart, context.i18n.ptrl("Disable autostart"))
 
-    private val enableSshWildCardConfig =
-        CheckboxField(settings.isSshWildcardConfigEnabled, context.i18n.ptrl("Enable SSH wildcard config"))
-    private val sshExtraArgs =
-        TextField(context.i18n.ptrl("Extra SSH options"), settings.sshConfigOptions ?: "", TextType.General)
-    private val sshLogDirField =
-        TextField(context.i18n.ptrl("SSH proxy log directory"), settings.sshLogDirectory ?: "", TextType.General)
-    private val networkInfoDirField =
-        TextField(context.i18n.ptrl("SSH network metrics directory"), settings.networkInfoDir, TextType.General)
+    private val disableAutostartField = CheckboxField(
+        settings.disableAutostart,
+        context.i18n.ptrl("Disable autostart")
+    )
+
+    private val enableSshWildCardConfig = CheckboxField(
+        settings.isSshWildcardConfigEnabled,
+        context.i18n.ptrl("Enable SSH wildcard config")
+    )
+
+    private val sshConnectionTimeoutField = TextField(
+        context.i18n.ptrl("SSH connection timeout (seconds)"),
+        settings.sshConnectionTimeoutInSeconds.toString(),
+        TextType.Integer
+    )
+
+    private val sshExtraArgs = TextField(
+        context.i18n.ptrl("Extra SSH options"),
+        settings.sshConfigOptions ?: "",
+        TextType.General
+    )
+
+    private val sshLogDirField = TextField(
+        context.i18n.ptrl("SSH proxy log directory"),
+        settings.sshLogDirectory ?: "",
+        TextType.General
+    )
+    private val networkInfoDirField = TextField(
+        context.i18n.ptrl("SSH network metrics directory"),
+        settings.networkInfoDir,
+        TextType.General
+    )
 
     private lateinit var visibilityUpdateJob: Job
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
@@ -115,6 +144,7 @@ class CoderSettingsPage(
             tlsAlternateHostnameField,
             disableAutostartField,
             enableSshWildCardConfig,
+            sshConnectionTimeoutField,
             sshLogDirField,
             networkInfoDirField,
             sshExtraArgs,
@@ -124,36 +154,43 @@ class CoderSettingsPage(
     override val actionButtons: StateFlow<List<RunnableActionDescription>> = MutableStateFlow(
         listOf(
             Action(context, "Save", closesPage = true) {
-                context.settingsStore.updateBinarySource(binarySourceField.contentState.value)
-                context.settingsStore.updateBinaryDirectory(binaryDirectoryField.contentState.value)
-                context.settingsStore.updateDataDirectory(dataDirectoryField.contentState.value)
-                context.settingsStore.updateEnableDownloads(enableDownloadsField.checkedState.value)
-                context.settingsStore.updateUseAppNameAsTitle(useAppNameField.checkedState.value)
-                context.settingsStore.updateDisableSignatureVerification(disableSignatureVerificationField.checkedState.value)
-                context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
-                context.settingsStore.updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
-                context.settingsStore.updateBinaryDirectoryFallback(enableBinaryDirectoryFallbackField.checkedState.value)
-                context.settingsStore.updateHeaderCommand(headerCommandField.contentState.value)
-                context.settingsStore.updateCertPath(tlsCertPathField.contentState.value)
-                context.settingsStore.updateKeyPath(tlsKeyPathField.contentState.value)
-                context.settingsStore.updateCAPath(tlsCAPathField.contentState.value)
-                context.settingsStore.updateAltHostname(tlsAlternateHostnameField.contentState.value)
-                context.settingsStore.updateDisableAutostart(disableAutostartField.checkedState.value)
-                val oldIsSshWildcardConfigEnabled = settings.isSshWildcardConfigEnabled
-                context.settingsStore.updateEnableSshWildcardConfig(enableSshWildCardConfig.checkedState.value)
+                with(context.settingsStore) {
+                    updateBinarySource(binarySourceField.contentState.value)
+                    updateBinaryDirectory(binaryDirectoryField.contentState.value)
+                    updateDataDirectory(dataDirectoryField.contentState.value)
+                    updateEnableDownloads(enableDownloadsField.checkedState.value)
+                    updateUseAppNameAsTitle(useAppNameField.checkedState.value)
+                    updateDisableSignatureVerification(disableSignatureVerificationField.checkedState.value)
+                    updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
+                    updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
+                    updateBinaryDirectoryFallback(enableBinaryDirectoryFallbackField.checkedState.value)
+                    updateHeaderCommand(headerCommandField.contentState.value)
+                    updateCertPath(tlsCertPathField.contentState.value)
+                    updateKeyPath(tlsKeyPathField.contentState.value)
+                    updateCAPath(tlsCAPathField.contentState.value)
+                    updateAltHostname(tlsAlternateHostnameField.contentState.value)
+                    updateDisableAutostart(disableAutostartField.checkedState.value)
 
-                if (enableSshWildCardConfig.checkedState.value != oldIsSshWildcardConfigEnabled) {
-                    context.cs.launch(CoroutineName("SSH Wildcard Setting")) {
-                        try {
+                    val sshWildcardEnabled = enableSshWildCardConfig.checkedState.value
+                    val sshTimeout = sshConnectionTimeoutField.contentState.value.toInt()
+
+                    val sshSettingsChanged = sshWildcardEnabled != settings.isSshWildcardConfigEnabled ||
+                            sshTimeout != settings.sshConnectionTimeoutInSeconds
+
+                    updateEnableSshWildcardConfig(sshWildcardEnabled)
+                    updateSshConnectionTimeoutInSeconds(sshTimeout)
+
+                    if (sshSettingsChanged) {
+                        runCatching {
                             triggerSshConfig.send(true)
-                            context.logger.info("Wildcard settings have been modified from $oldIsSshWildcardConfigEnabled to ${!oldIsSshWildcardConfigEnabled}, ssh config is going to be regenerated...")
-                        } catch (_: ClosedSendChannelException) {
+                            context.logger.info("Settings have been modified, ssh config is going to be regenerated...")
                         }
                     }
+
+                    updateSshLogDir(sshLogDirField.contentState.value)
+                    updateNetworkInfoDir(networkInfoDirField.contentState.value)
+                    updateSshConfigOptions(sshExtraArgs.contentState.value)
                 }
-                context.settingsStore.updateSshLogDir(sshLogDirField.contentState.value)
-                context.settingsStore.updateNetworkInfoDir(networkInfoDirField.contentState.value)
-                context.settingsStore.updateSshConfigOptions(sshExtraArgs.contentState.value)
             }
         )
     )
@@ -209,6 +246,10 @@ class CoderSettingsPage(
 
         enableSshWildCardConfig.checkedState.update {
             settings.isSshWildcardConfigEnabled
+        }
+
+        sshConnectionTimeoutField.contentState.update {
+            settings.sshConnectionTimeoutInSeconds.toString()
         }
 
         sshExtraArgs.contentState.update {

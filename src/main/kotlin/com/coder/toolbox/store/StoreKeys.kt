@@ -40,6 +40,8 @@ internal const val TLS_CERT_REFRESH_COMMAND = "tlsCertRefreshCommand"
 
 internal const val DISABLE_AUTOSTART = "disableAutostart"
 
+internal const val SSH_CONNECTION_TIMEOUT_IN_SECONDS = "sshConnectionTimeoutInSeconds"
+
 internal const val ENABLE_SSH_WILDCARD_CONFIG = "enableSshWildcardConfig"
 
 internal const val SSH_CONFIG_PATH = "sshConfigPath"
