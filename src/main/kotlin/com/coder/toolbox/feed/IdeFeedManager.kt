@@ -30,7 +30,10 @@ import kotlin.jvm.optionals.getOrNull
  */
 class IdeFeedManager(
     private val context: CoderToolboxContext,
-    feedService: JetBrainsFeedService? = null
+    feedService: JetBrainsFeedService? = null,
+    private val runsInOfflineMode: () -> Boolean = {
+        ProcessHandle.current().info().commandLine().getOrNull()?.contains("--offline-mode") ?: false
+    }
 ) {
     private val moshi = Moshi.Builder()
         .add(IdeTypeAdapter())
@@ -67,7 +70,7 @@ class IdeFeedManager(
      *
      * This method will only execute once. Subsequent calls will return the cached result.
      *
-     * If offline mode is enabled (via -Doffline=true), this will load from local cache files.
+     * If offline mode is enabled (via --offline-mode arg passed to Toolbox), this will load from local cache files.
      * Otherwise, it will fetch from the remote feeds and save to local cache.
      *
      * @return List of IDE objects from both release and EAP feeds
@@ -174,7 +177,7 @@ class IdeFeedManager(
      * Check if offline mode is enabled via the -Doffline=true system property.
      */
     private fun isOfflineMode(): Boolean {
-        return ProcessHandle.current().info().commandLine().getOrNull()?.contains("--offline-mode") ?: false
+        return runsInOfflineMode()
     }
 
     /**
