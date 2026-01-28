@@ -15,6 +15,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import kotlin.io.path.exists
 import kotlin.io.path.readText
+import kotlin.jvm.optionals.getOrNull
 
 /**
  * Manages the caching and loading of JetBrains IDE product feeds.
@@ -173,7 +174,7 @@ class IdeFeedManager(
      * Check if offline mode is enabled via the -Doffline=true system property.
      */
     private fun isOfflineMode(): Boolean {
-        return System.getProperty(OFFLINE_PROPERTY)?.toBoolean() == true
+        return ProcessHandle.current().info().commandLine().getOrNull()?.contains("--offline-mode") ?: false
     }
 
     /**
@@ -204,6 +205,5 @@ class IdeFeedManager(
     companion object {
         private const val RELEASE_CACHE_FILE = "release.json"
         private const val EAP_CACHE_FILE = "eap.json"
-        private const val OFFLINE_PROPERTY = "offline"
     }
 }
