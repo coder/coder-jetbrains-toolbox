@@ -2,6 +2,7 @@ package com.coder.toolbox
 
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
@@ -95,7 +96,7 @@ class CoderRemoteProvider(
             providerVisible = false
         )
     )
-    private val linkHandler = CoderProtocolHandler(context)
+    private val linkHandler = CoderProtocolHandler(context, IdeFeedManager(context))
 
     override val loadingEnvironmentsDescription: LocalizableString = context.i18n.ptrl("Loading workspaces...")
     override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
