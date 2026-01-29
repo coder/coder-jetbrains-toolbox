@@ -71,7 +71,7 @@ class CoderSettingsStore(
     override val disableAutostart: Boolean
         get() = store[DISABLE_AUTOSTART]?.toBooleanStrictOrNull() ?: (getOS() == OS.MAC)
     override val sshConnectionTimeoutInSeconds: Int
-        get() = store[SSH_CONNECTION_TIMEOUT_IN_SECONDS]?.toIntOrNull() ?: 10
+        get() = store[SSH_CONNECTION_TIMEOUT_IN_SECONDS]?.toIntOrNull() ?: 0
     override val isSshWildcardConfigEnabled: Boolean
         get() = store[ENABLE_SSH_WILDCARD_CONFIG]?.toBooleanStrictOrNull() ?: true
     override val sshConfigPath: String

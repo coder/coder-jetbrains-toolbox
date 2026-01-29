@@ -399,7 +399,8 @@ The following options control the SSH behavior of the Coder CLI.
   rules for matching multiple workspaces.
 
 - `SSH connnection timeout (seconds)` controls how long the SSH client will wait while trying to establish a TCP
-  connection to the remote host before giving up. Defaults to 10 seconds.
+  connection to the remote host before giving up. Defaults to 0 seconds which means it uses the system’s TCP timeout
+  settings instead.
 
 - `SSH proxy log directory` directory where SSH proxy logs are written. Useful for debugging SSH connection issues.
 
