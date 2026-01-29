@@ -293,6 +293,7 @@ class CoderRemoteEnvironment(
      * have to do is provide it a host name.
      */
     override suspend fun getContentsView(): EnvironmentContentsView = EnvironmentView(
+        context,
         client.url,
         cli,
         workspace,
