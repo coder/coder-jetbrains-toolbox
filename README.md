@@ -398,6 +398,10 @@ The following options control the SSH behavior of the Coder CLI.
 - `Enable SSH wildcard config` enables or disables wildcard entries in the SSH configuration, which allow generic
   rules for matching multiple workspaces.
 
+- `SSH connnection timeout (seconds)` controls how long the SSH client will wait while trying to establish a TCP
+  connection to the remote host before giving up. Defaults to 0 seconds which means it uses the system’s TCP timeout
+  settings instead.
+
 - `SSH proxy log directory` directory where SSH proxy logs are written. Useful for debugging SSH connection issues.
 
 - `SSH network metrics directory` directory where network information used by the SSH proxy is stored.

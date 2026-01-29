@@ -134,6 +134,11 @@ interface ReadOnlyCoderSettings {
     val isSshWildcardConfigEnabled: Boolean
 
     /**
+     * Timeout duration in seconds for establishing an SSH connection.
+     */
+    val sshConnectionTimeoutInSeconds: Int
+
+    /**
      * The location of the SSH config.  Defaults to ~/.ssh/config.
      */
     val sshConfigPath: String
