@@ -70,6 +70,8 @@ class CoderSettingsStore(
     override val requiresMTlsAuth: Boolean get() = tls.certPath?.isNotBlank() == true && tls.keyPath?.isNotBlank() == true
     override val disableAutostart: Boolean
         get() = store[DISABLE_AUTOSTART]?.toBooleanStrictOrNull() ?: (getOS() == OS.MAC)
+    override val sshConnectionTimeoutInSeconds: Int
+        get() = store[SSH_CONNECTION_TIMEOUT_IN_SECONDS]?.toIntOrNull() ?: 0
     override val isSshWildcardConfigEnabled: Boolean
         get() = store[ENABLE_SSH_WILDCARD_CONFIG]?.toBooleanStrictOrNull() ?: true
     override val sshConfigPath: String
@@ -231,6 +233,10 @@ class CoderSettingsStore(
 
     fun updateDisableAutostart(shouldDisableAutostart: Boolean) {
         store[DISABLE_AUTOSTART] = shouldDisableAutostart.toString()
+    }
+
+    fun updateSshConnectionTimeoutInSeconds(sshConnectionTimeoutInSeconds: Int) {
+        store[SSH_CONNECTION_TIMEOUT_IN_SECONDS] = sshConnectionTimeoutInSeconds.toString()
     }
 
     fun updateEnableSshWildcardConfig(enable: Boolean) {
