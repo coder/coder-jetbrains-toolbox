@@ -30,7 +30,8 @@ class IdeFeedManagerTest {
         Ide("IU", "241.1", "2024.1", IdeType.RELEASE),
         Ide("IU", "242.1", "2024.2", IdeType.RELEASE),
         Ide("IC", "241.1", "2024.1", IdeType.RELEASE),
-        Ide("GO", "241.1", "2024.1", IdeType.RELEASE)
+        Ide("GO", "241.1", "2024.1", IdeType.RELEASE),
+        Ide("RS", "2025.3.2.65536", "2025.3.2", IdeType.RELEASE)
     )
 
     private val eapIdes = listOf(
@@ -76,6 +77,23 @@ class IdeFeedManagerTest {
             assertNotNull(result)
             assertEquals("242.1", result?.build)
             assertEquals("RR", result?.code)
+            assertEquals(IdeType.RELEASE, result?.type)
+        }
+
+    @Test
+    fun `given a list of available release builds when findBestMatch is called with a valid product code that has a null intellijProductCode then it returns the matching IDE with highest build`() =
+        runTest {
+            // Given
+            coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
+            coEvery { feedService.fetchEapFeed() } returns eapIdes
+
+            // When
+            val result = ideFeedManager.findBestMatch("RS", IdeType.RELEASE, listOf("2025.3.2.65536"))
+
+            // Then
+            assertNotNull(result)
+            assertEquals("2025.3.2.65536", result?.build)
+            assertEquals("RS", result?.code)
             assertEquals(IdeType.RELEASE, result?.type)
         }
 

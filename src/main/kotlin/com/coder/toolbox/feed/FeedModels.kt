@@ -13,7 +13,7 @@ import com.squareup.moshi.ToJson
 @JsonClass(generateAdapter = true)
 data class IdeProduct(
     @Json(name = "code") val code: String,
-    @Json(name = "intellijProductCode") val intellijProductCode: String,
+    @Json(name = "intellijProductCode") val intellijProductCode: String?,
     @Json(name = "name") val name: String,
     @Json(name = "releases") val releases: List<IdeRelease> = emptyList()
 )
@@ -77,7 +77,7 @@ data class Ide(
          */
         fun from(product: IdeProduct, release: IdeRelease): Ide {
             return Ide(
-                code = product.intellijProductCode,
+                code = product.intellijProductCode ?: product.code,
                 build = release.build,
                 version = release.version,
                 type = release.type
