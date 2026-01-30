@@ -228,7 +228,7 @@ class CoderProtocolHandlerTest {
             // Feed returns empty or irrelevant EAPs
             coEvery { feedService.fetchEapFeed() } returns emptyList()
 
-            assertEquals("241.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_eap"))
+            assertEquals("RR-241.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_eap"))
         }
 
     @Test
@@ -241,7 +241,7 @@ class CoderProtocolHandlerTest {
                 Ide("RR", "243.1", "2024.3", IdeType.EAP)
             )
 
-            assertEquals("243.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_eap"))
+            assertEquals("RR-243.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_eap"))
         }
 
     @Test
@@ -257,7 +257,7 @@ class CoderProtocolHandlerTest {
             coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns listOf("RR-243.1", "RR-242.1")
             coEvery { feedService.fetchReleaseFeed() } returns emptyList()
 
-            assertEquals("243.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_release"))
+            assertEquals("RR-243.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_release"))
         }
 
     @Test
@@ -270,7 +270,7 @@ class CoderProtocolHandlerTest {
                 Ide("RR", "242.1", "2024.2", IdeType.RELEASE)
             )
 
-            assertEquals("242.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_release"))
+            assertEquals("RR-242.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_release"))
         }
 
     @Test
@@ -278,7 +278,7 @@ class CoderProtocolHandlerTest {
         runTest(dispatcher) {
             coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns listOf("RR-240.1", "RR-241.1")
 
-            assertEquals("241.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_installed"))
+            assertEquals("RR-241.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_installed"))
         }
 
     @Test
@@ -287,7 +287,7 @@ class CoderProtocolHandlerTest {
             coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns emptyList()
             coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns listOf("RR-243.1", "RR-242.1")
 
-            assertEquals("243.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_installed"))
+            assertEquals("RR-243.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_installed"))
         }
 
     @Test
@@ -305,7 +305,7 @@ class CoderProtocolHandlerTest {
             coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns listOf("RR-241.1", "RR-242.1")
             coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns listOf("RR-251.1", "RR-252.1")
 
-            assertEquals("251.1", handler.resolveIdeIdentifier("env-1", "RR", "251.1"))
+            assertEquals("RR-251.1", handler.resolveIdeIdentifier("env-1", "RR", "251.1"))
         }
 
     @Test
@@ -314,7 +314,7 @@ class CoderProtocolHandlerTest {
             coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns listOf("RR-241.1", "RR-242.1")
             coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns listOf("RR-251.1", "RR-252.1")
 
-            assertEquals("241.1", handler.resolveIdeIdentifier("env-1", "RR", "241.1"))
+            assertEquals("RR-241.1", handler.resolveIdeIdentifier("env-1", "RR", "241.1"))
         }
 
     @Test
@@ -338,7 +338,7 @@ class CoderProtocolHandlerTest {
                 "RR-252.1"
             )
 
-            assertEquals("241.1.2", handler.resolveIdeIdentifier("env-1", "RR", "241.1"))
+            assertEquals("RR-241.1.2", handler.resolveIdeIdentifier("env-1", "RR", "241.1"))
         }
 
     internal data class AgentTestData(val name: String, val id: String) {

@@ -301,7 +301,7 @@ open class CoderProtocolHandler(
                 context.logger.info("Installed $productCode IDEs: $this")
             }
 
-        when (buildNumberHint) {
+        val resolvedBuildNumber = when (buildNumberHint) {
             "latest_eap" -> {
                 val bestEap = ideFeedManager.findBestMatch(
                     productCode,
@@ -309,7 +309,7 @@ open class CoderProtocolHandler(
                     availableBuilds
                 )
 
-                return if (bestEap != null) {
+                if (bestEap != null) {
                     bestEap.build
                 } else {
                     if (availableBuilds.isEmpty()) {
@@ -320,7 +320,7 @@ open class CoderProtocolHandler(
                         return null
                     }
                     // Fallback to max available
-                    val fallback = availableBuilds.maxBy { it }
+                    val fallback = availableBuilds.maxByOrNull { it }
                     context.logger.info("No EAP found for $productCode, falling back to latest available: $fallback")
                     fallback
                 }
@@ -330,9 +330,10 @@ open class CoderProtocolHandler(
                 val bestRelease = ideFeedManager.findBestMatch(
                     productCode,
                     IdeType.RELEASE,
-                    availableBuilds.map { it.substringAfter("$productCode-") })
+                    availableBuilds
+                )
 
-                return if (bestRelease != null) {
+                if (bestRelease != null) {
                     bestRelease.build
                 } else {
                     if (availableBuilds.isEmpty()) {
@@ -342,7 +343,7 @@ open class CoderProtocolHandler(
                         )
                         return null
                     }
-                    val fallback = availableBuilds.maxBy { it }
+                    val fallback = availableBuilds.maxByOrNull { it }
                     context.logger.info("No Release found for $productCode, falling back to latest available: $fallback")
                     fallback
                 }
@@ -350,19 +351,19 @@ open class CoderProtocolHandler(
 
             "latest_installed" -> {
                 if (installed.isNotEmpty()) {
-                    return installed.maxBy { it }
-                }
-                if (availableBuilds.isEmpty()) {
+                    installed.maxByOrNull { it }
+                } else if (availableBuilds.isEmpty()) {
                     context.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
                         "Can't launch latest installed version for $productCode because there is no version installed nor available for install on $environmentId"
                     )
-                    return null
+                    null
+                } else {
+                    // Fallback to latest available if valid
+                    val fallback = availableBuilds.maxByOrNull { it }
+                    context.logger.info("No installed IDE found, falling back to latest available: $fallback")
+                    fallback
                 }
-                // Fallback to latest available if valid
-                val fallback = availableBuilds.maxBy { it }
-                context.logger.info("No installed IDE found, falling back to latest available: $fallback")
-                return fallback
             }
 
             else -> {
@@ -370,21 +371,22 @@ open class CoderProtocolHandler(
                 // then in the available list of builds
                 val installedMatch = installed.firstOrNull { it.contains(buildNumberHint) }
                 if (installedMatch != null) {
-                    return installedMatch
-                }
-                val availableMatch = availableBuilds.filter { it.contains(buildNumberHint) }.maxByOrNull { it }
-                if (availableMatch != null) {
-                    return availableMatch
+                    installedMatch
                 } else {
-                    context.logAndShowError(
-                        CAN_T_HANDLE_URI_TITLE,
-                        "Can't launch $productCode-$buildNumberHint because there is no matching version installed nor available for install on $environmentId"
-                    )
-                    return null
+                    val availableMatch = availableBuilds.filter { it.contains(buildNumberHint) }.maxByOrNull { it }
+                    if (availableMatch != null) {
+                        availableMatch
+                    } else {
+                        context.logAndShowError(
+                            CAN_T_HANDLE_URI_TITLE,
+                            "Can't launch $productCode-$buildNumberHint because there is no matching version installed nor available for install on $environmentId"
+                        )
+                        null
+                    }
                 }
-
             }
         }
+        return resolvedBuildNumber?.let { "$productCode-$it" }
     }
 
     private fun installJBClient(selectedIde: String, environmentId: String): Job =
