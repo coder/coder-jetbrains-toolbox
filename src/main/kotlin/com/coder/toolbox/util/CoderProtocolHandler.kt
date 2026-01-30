@@ -260,6 +260,7 @@ open class CoderProtocolHandler(
         val selectedIde = resolveIdeIdentifier(environmentId, productCode, buildNumberHint) ?: return null
         val installedIdeVersions = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
 
+        context.logger.info("Selected IDE $installedIdeVersions for $productCode for $environmentId")
         if (installedIdeVersions.contains(selectedIde)) {
             context.logger.info("$selectedIde is already installed on $environmentId")
             return selectedIde
@@ -292,9 +293,13 @@ open class CoderProtocolHandler(
         buildNumberHint: String
     ): String? {
         val availableBuilds = context.remoteIdeOrchestrator.getAvailableRemoteTools(environmentId, productCode)
-            .map { it.substringAfter("$productCode-") }
+            .map { it.substringAfter("$productCode-") }.apply {
+                context.logger.info("Available $productCode IDEs: $this")
+            }
         val installed = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
-            .map { it.substringAfter("$productCode-") }
+            .map { it.substringAfter("$productCode-") }.apply {
+                context.logger.info("Installed $productCode IDEs: $this")
+            }
 
         when (buildNumberHint) {
             "latest_eap" -> {
