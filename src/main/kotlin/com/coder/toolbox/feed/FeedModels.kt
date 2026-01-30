@@ -23,7 +23,7 @@ data class IdeProduct(
  */
 @JsonClass(generateAdapter = true)
 data class IdeRelease(
-    @Json(name = "build") val build: String,
+    @Json(name = "build") val build: String?,
     @Json(name = "version") val version: String,
     @Json(name = "type") val type: IdeType,
     @Json(name = "date") val date: String
@@ -75,13 +75,15 @@ data class Ide(
         /**
          * Create an Ide from an IdeProduct and IdeRelease.
          */
-        fun from(product: IdeProduct, release: IdeRelease): Ide {
-            return Ide(
-                code = product.intellijProductCode ?: product.code,
-                build = release.build,
-                version = release.version,
-                type = release.type
-            )
+        fun from(product: IdeProduct, release: IdeRelease): Ide? {
+            return release.build?.let {
+                Ide(
+                    code = product.intellijProductCode ?: product.code,
+                    build = it,
+                    version = release.version,
+                    type = release.type
+                )
+            }
         }
     }
 }

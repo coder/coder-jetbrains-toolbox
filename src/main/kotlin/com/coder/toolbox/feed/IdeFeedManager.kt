@@ -161,10 +161,13 @@ class IdeFeedManager(
             }
 
             val json = path.readText()
-            val listType = Types.newParameterizedType(List::class.java, Ide::class.java)
-            val adapter = moshi.adapter<List<Ide>>(listType)
-            val ides = adapter.fromJson(json) ?: emptyList()
-
+            val listType = Types.newParameterizedType(List::class.java, IdeProduct::class.java)
+            val adapter = moshi.adapter<List<IdeProduct>>(listType)
+            val ides = (adapter.fromJson(json) ?: emptyList()).flatMap { product ->
+                product.releases.mapNotNull { release ->
+                    Ide.from(product, release)
+                }
+            }
             context.logger.info("Loaded ${ides.size} IDEs from $path")
             ides
         } catch (e: Exception) {
@@ -199,6 +202,7 @@ class IdeFeedManager(
         val ides = loadIdes()
 
         return ides
+            .asSequence()
             .filter { it.code == productCode }
             .filter { it.type == type }
             .filter { it.build in availableBuilds }

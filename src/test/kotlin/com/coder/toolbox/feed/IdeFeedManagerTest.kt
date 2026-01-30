@@ -23,22 +23,54 @@ class IdeFeedManagerTest {
 
     private val originalUserHome = System.getProperty("user.home")
 
-    private val releaseIdes = listOf(
-        Ide("RR", "241.1", "2024.1", IdeType.RELEASE),
-        Ide("RR", "242.1", "2024.2", IdeType.RELEASE),
-        Ide("RR", "242.2", "2024.2.1", IdeType.RELEASE),
-        Ide("IU", "241.1", "2024.1", IdeType.RELEASE),
-        Ide("IU", "242.1", "2024.2", IdeType.RELEASE),
-        Ide("IC", "241.1", "2024.1", IdeType.RELEASE),
-        Ide("GO", "241.1", "2024.1", IdeType.RELEASE),
-        Ide("RS", "2025.3.2.65536", "2025.3.2", IdeType.RELEASE)
+    private val releaseProducts = listOf(
+        IdeProduct(
+            "RustRover", "RR", "RustRover", listOf(
+                IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01"),
+                IdeRelease("242.1", "2024.2", IdeType.RELEASE, "2024-01-01"),
+                IdeRelease("242.2", "2024.2.1", IdeType.RELEASE, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "IntelliJ IDEA Ultimate", "IU", "IntelliJ IDEA Ultimate", listOf(
+                IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01"),
+                IdeRelease("242.1", "2024.2", IdeType.RELEASE, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "IntelliJ IDEA Community Edition", "IC", "IntelliJ IDEA Community Edition", listOf(
+                IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "GoLand", "GO", "GoLand", listOf(
+                IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "Rider", "RS", "Rider", listOf(
+                IdeRelease("2025.3.2.65536", "2025.3.2", IdeType.RELEASE, "2024-01-01"),
+            )
+        )
     )
 
-    private val eapIdes = listOf(
-        Ide("RR", "243.1", "2024.3", IdeType.EAP),
-        Ide("RR", "242.1", "2024.2-EAP", IdeType.EAP),
-        Ide("IU", "243.1", "2024.3", IdeType.EAP),
-        Ide("GO", "243.1", "2024.3", IdeType.EAP)
+    private val eapProducts = listOf(
+        IdeProduct(
+            "RustRover", "RR", "RustRover", listOf(
+                IdeRelease("243.1", "2024.3", IdeType.EAP, "2024-01-01"),
+                IdeRelease("242.1", "2024.2-EAP", IdeType.EAP, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "IntelliJ IDEA Ultimate", "IU", "IntelliJ IDEA Ultimate", listOf(
+                IdeRelease("243.1", "2024.3", IdeType.EAP, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "GoLand", "GO", "GoLand", listOf(
+                IdeRelease("243.1", "2024.3", IdeType.EAP, "2024-01-01"),
+            )
+        )
     )
 
     @BeforeEach
@@ -67,8 +99,12 @@ class IdeFeedManagerTest {
     fun `given a list of available release builds when findBestMatch is called with a valid product code and type then it returns the matching IDE with highest build`() =
         runTest {
             // Given
-            coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
-            coEvery { feedService.fetchEapFeed() } returns eapIdes
+            coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
+            coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
 
             // When
             val result = ideFeedManager.findBestMatch("RR", IdeType.RELEASE, listOf("241.1", "242.1"))
@@ -84,8 +120,12 @@ class IdeFeedManagerTest {
     fun `given a list of available release builds when findBestMatch is called with a valid product code that has a null intellijProductCode then it returns the matching IDE with highest build`() =
         runTest {
             // Given
-            coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
-            coEvery { feedService.fetchEapFeed() } returns eapIdes
+            coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
+            coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
 
             // When
             val result = ideFeedManager.findBestMatch("RS", IdeType.RELEASE, listOf("2025.3.2.65536"))
@@ -101,8 +141,12 @@ class IdeFeedManagerTest {
     fun `given available builds that do not intersect with loaded IDEs when findBestMatch is called then it returns null`() =
         runTest {
             // Given
-            coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
-            coEvery { feedService.fetchEapFeed() } returns eapIdes
+            coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
+            coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
 
             // When
             val result = ideFeedManager.findBestMatch(
@@ -118,8 +162,12 @@ class IdeFeedManagerTest {
     @Test
     fun `given multiple matching builds when findBestMatch is called then it returns the highest build`() = runTest {
         // Given
-        coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
-        coEvery { feedService.fetchEapFeed() } returns eapIdes
+        coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+            product.releases.mapNotNull { release -> Ide.from(product, release) }
+        }
+        coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+            product.releases.mapNotNull { release -> Ide.from(product, release) }
+        }
 
         // When
         val result = ideFeedManager.findBestMatch(
@@ -136,8 +184,12 @@ class IdeFeedManagerTest {
     @Test
     fun `given eap type requested when findBestMatch is called then it filters for eap ides`() = runTest {
         // Given
-        coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
-        coEvery { feedService.fetchEapFeed() } returns eapIdes
+        coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+            product.releases.mapNotNull { release -> Ide.from(product, release) }
+        }
+        coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+            product.releases.mapNotNull { release -> Ide.from(product, release) }
+        }
 
         // When
         val result = ideFeedManager.findBestMatch(
@@ -158,8 +210,12 @@ class IdeFeedManagerTest {
         runTest {
             // Given
             // In our dataset: RR release has 241.1, 242.1, 242.2. RR eap has 242.1, 243.1.
-            coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
-            coEvery { feedService.fetchEapFeed() } returns eapIdes
+            coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
+            coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
 
             // When requesting RELEASE 243.1 (which exists as EAP) or 242.1 (exists as both)
             // We only ask for 242.1 and 243.1. 243.1 is EAP only. 242.1 is both.
@@ -180,8 +236,12 @@ class IdeFeedManagerTest {
         runTest {
             // Given
             // In our dataset: RR release has 242.2 (higher than 242.1). RR eap has 242.1.
-            coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
-            coEvery { feedService.fetchEapFeed() } returns eapIdes
+            coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
+            coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
 
             // When we ask for EAP, and list includes 242.2 (release only) and 242.1 (EAP and Release)
             val result = ideFeedManager.findBestMatch(
@@ -199,8 +259,12 @@ class IdeFeedManagerTest {
     @Test
     fun `given empty available builds list when finding best match then it returns null`() = runTest {
         // Given
-        coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
-        coEvery { feedService.fetchEapFeed() } returns eapIdes
+        coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+            product.releases.mapNotNull { release -> Ide.from(product, release) }
+        }
+        coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+            product.releases.mapNotNull { release -> Ide.from(product, release) }
+        }
 
         // When
         val result = ideFeedManager.findBestMatch(
@@ -216,8 +280,12 @@ class IdeFeedManagerTest {
     @Test
     fun `given loaded ides do not match product code when finding best match then it returns null`() = runTest {
         // Given
-        coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
-        coEvery { feedService.fetchEapFeed() } returns eapIdes
+        coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+            product.releases.mapNotNull { release -> Ide.from(product, release) }
+        }
+        coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+            product.releases.mapNotNull { release -> Ide.from(product, release) }
+        }
 
         // When asking for a non-existent product code "XX"
         val result = ideFeedManager.findBestMatch(
@@ -234,8 +302,12 @@ class IdeFeedManagerTest {
     fun `given available builds contains values not in loaded ides when finding best match then it only considers the highest build that intersects the two lists`() =
         runTest {
             // Given
-            coEvery { feedService.fetchReleaseFeed() } returns releaseIdes
-            coEvery { feedService.fetchEapFeed() } returns eapIdes
+            coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
+            coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
 
             // When: requesting 241.1 (exists) and 999.9 (does not exist) for RR Release
             val result = ideFeedManager.findBestMatch(
@@ -267,10 +339,25 @@ class IdeFeedManagerTest {
     fun `given feed containing unknown types when findBestMatch is called then it ignores unsupported types`() =
         runTest {
             // Given
-            val unknownTypeIde = Ide("RR", "245.1", "2024.5", IdeType.UNSUPPORTED)
-            val validIde = Ide("RR", "241.1", "2024.1", IdeType.RELEASE)
+            val unknownTypeProduct = IdeProduct(
+                "RustRover",
+                "RR",
+                "RustRover",
+                listOf(IdeRelease("245.1", "2024.5", IdeType.UNSUPPORTED, "2024-01-01"))
+            )
+            val validProduct = IdeProduct(
+                "RustRover",
+                "RR",
+                "RustRover",
+                listOf(IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01"))
+            )
 
-            coEvery { feedService.fetchReleaseFeed() } returns listOf(unknownTypeIde, validIde)
+            coEvery { feedService.fetchReleaseFeed() } returns listOf(
+                unknownTypeProduct,
+                validProduct
+            ).flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
             coEvery { feedService.fetchEapFeed() } returns emptyList()
 
             // When
@@ -283,6 +370,44 @@ class IdeFeedManagerTest {
             // Then
             assertNotNull(result)
             assertEquals("241.1", result?.build) // Should match valid IDE, ignoring the unsupported one
+            assertEquals(IdeType.RELEASE, result?.type)
+        }
+
+    @Test
+    fun `given feed containing null builds when findBestMatch is called then it ignores them`() =
+        runTest {
+            // Given
+            val nullBuildProduct = IdeProduct(
+                "RustRover",
+                "RR",
+                "RustRover",
+                listOf(IdeRelease(null, "2024.5", IdeType.RELEASE, "2024-01-01"))
+            )
+            val validProduct = IdeProduct(
+                "RustRover",
+                "RR",
+                "RustRover",
+                listOf(IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01"))
+            )
+
+            coEvery { feedService.fetchReleaseFeed() } returns listOf(
+                nullBuildProduct,
+                validProduct
+            ).flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
+            coEvery { feedService.fetchEapFeed() } returns emptyList()
+
+            // When
+            val result = ideFeedManager.findBestMatch(
+                "RR",
+                IdeType.RELEASE,
+                listOf("241.1")
+            )
+
+            // Then
+            assertNotNull(result)
+            assertEquals("241.1", result?.build)
             assertEquals(IdeType.RELEASE, result?.type)
         }
 }

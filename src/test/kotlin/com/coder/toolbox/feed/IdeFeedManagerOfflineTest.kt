@@ -30,22 +30,54 @@ class IdeFeedManagerOfflineTest {
 
     private val originalUserHome = System.getProperty("user.home")
 
-    private val releaseIdes = listOf(
-        Ide("RR", "241.1", "2024.1", IdeType.RELEASE),
-        Ide("RR", "242.1", "2024.2", IdeType.RELEASE),
-        Ide("RR", "242.2", "2024.2.1", IdeType.RELEASE),
-        Ide("IU", "241.1", "2024.1", IdeType.RELEASE),
-        Ide("IU", "242.1", "2024.2", IdeType.RELEASE),
-        Ide("IC", "241.1", "2024.1", IdeType.RELEASE),
-        Ide("GO", "241.1", "2024.1", IdeType.RELEASE),
-        Ide("RS", "2025.3.2.65536", "2025.3.2", IdeType.RELEASE)
+    private val releaseProducts = listOf(
+        IdeProduct(
+            "RustRover", "RR", "RustRover", listOf(
+                IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01"),
+                IdeRelease("242.1", "2024.2", IdeType.RELEASE, "2024-01-01"),
+                IdeRelease("242.2", "2024.2.1", IdeType.RELEASE, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "IntelliJ IDEA Ultimate", "IU", "IntelliJ IDEA Ultimate", listOf(
+                IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01"),
+                IdeRelease("242.1", "2024.2", IdeType.RELEASE, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "IntelliJ IDEA Community Edition", "IC", "IntelliJ IDEA Community Edition", listOf(
+                IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "GoLand", "GO", "GoLand", listOf(
+                IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "Rider", "RS", "Rider", listOf(
+                IdeRelease("2025.3.2.65536", "2025.3.2", IdeType.RELEASE, "2024-01-01"),
+            )
+        )
     )
 
-    private val eapIdes = listOf(
-        Ide("RR", "243.1", "2024.3", IdeType.EAP),
-        Ide("RR", "242.1", "2024.2-EAP", IdeType.EAP),
-        Ide("IU", "243.1", "2024.3", IdeType.EAP),
-        Ide("GO", "243.1", "2024.3", IdeType.EAP)
+    private val eapProducts = listOf(
+        IdeProduct(
+            "RustRover", "RR", "RustRover", listOf(
+                IdeRelease("243.1", "2024.3", IdeType.EAP, "2024-01-01"),
+                IdeRelease("242.1", "2024.2-EAP", IdeType.EAP, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "IntelliJ IDEA Ultimate", "IU", "IntelliJ IDEA Ultimate", listOf(
+                IdeRelease("243.1", "2024.3", IdeType.EAP, "2024-01-01"),
+            )
+        ),
+        IdeProduct(
+            "GoLand", "GO", "GoLand", listOf(
+                IdeRelease("243.1", "2024.3", IdeType.EAP, "2024-01-01"),
+            )
+        )
     )
 
     @BeforeEach
@@ -62,17 +94,17 @@ class IdeFeedManagerOfflineTest {
         every { settingsStore.globalDataDirectory } returns tempDir.toString()
 
         // Write cache files
-        writeIdsToFile(tempDir.resolve("release.json"), releaseIdes)
-        writeIdsToFile(tempDir.resolve("eap.json"), eapIdes)
+        writeProductsToFile(tempDir.resolve("release.json"), releaseProducts)
+        writeProductsToFile(tempDir.resolve("eap.json"), eapProducts)
 
         // Initialize IdeFeedManager in offline mode
         ideFeedManager = IdeFeedManager(context, null) { true }
     }
 
-    private fun writeIdsToFile(path: Path, ides: List<Ide>) {
-        val listType = Types.newParameterizedType(List::class.java, Ide::class.java)
-        val adapter = moshi.adapter<List<Ide>>(listType)
-        val json = adapter.toJson(ides)
+    private fun writeProductsToFile(path: Path, products: List<IdeProduct>) {
+        val listType = Types.newParameterizedType(List::class.java, IdeProduct::class.java)
+        val adapter = moshi.adapter<List<IdeProduct>>(listType)
+        val json = adapter.toJson(products)
         path.writeText(json)
     }
 
@@ -246,5 +278,37 @@ class IdeFeedManagerOfflineTest {
 
             // Then
             assertEquals(0, result.size)
+        }
+
+    @Test
+    fun `given cache containing null builds when findBestMatch is called then it ignores them`() =
+        runTest {
+            // Given
+            val nullBuildProduct = IdeProduct(
+                "RustRover", "RR", "RustRover", listOf(
+                    IdeRelease(null, "2024.5", IdeType.RELEASE, "2024-01-01")
+                )
+            )
+            val validProduct = IdeProduct(
+                "RustRover", "RR", "RustRover", listOf(
+                    IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01")
+                )
+            )
+            val tempDir = java.nio.file.Paths.get(context.settingsStore.globalDataDirectory)
+            writeProductsToFile(tempDir.resolve("release.json"), listOf(nullBuildProduct, validProduct))
+            val newIdeFeedManager = IdeFeedManager(context, null) { true }
+
+
+            // When
+            val result = newIdeFeedManager.findBestMatch(
+                "RR",
+                IdeType.RELEASE,
+                listOf("241.1")
+            )
+
+            // Then
+            assertNotNull(result)
+            assertEquals("241.1", result?.build)
+            assertEquals(IdeType.RELEASE, result?.type)
         }
 }

@@ -61,7 +61,7 @@ class JetBrainsFeedService(
 
                 // Flatten all products and their releases into a list of Ide objects
                 products.flatMap { product ->
-                    product.releases.map { release ->
+                    product.releases.mapNotNull { release ->
                         Ide.from(product, release)
                     }
                 }
