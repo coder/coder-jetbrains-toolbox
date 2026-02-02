@@ -351,8 +351,6 @@ class CoderRemoteEnvironment(
         }
     }
 
-    fun isConnected(): Boolean = isConnected.value
-
     /**
      * An environment is equal if it has the same ID.
      */
