@@ -6,6 +6,10 @@
 
 - support for configuring the SSH connection timeout, defaults to 10 seconds
 
+### Fixed
+
+- environment actions failing after URI execution by refreshing http client and CLI references
+
 ## 0.8.4 - 2026-01-20
 
 ### Fixed
