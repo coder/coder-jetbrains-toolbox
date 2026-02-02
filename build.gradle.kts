@@ -68,6 +68,7 @@ dependencies {
     testImplementation(libs.coroutines.test)
     testImplementation(libs.mokk)
     testImplementation(libs.bundles.toolbox.plugin.api)
+    testImplementation(libs.coroutines.test)
 }
 
 val extension = ExtensionJson(
