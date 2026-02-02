@@ -49,8 +49,8 @@ private val POLL_INTERVAL = 5.seconds
  */
 class CoderRemoteEnvironment(
     private val context: CoderToolboxContext,
-    private val client: CoderRestClient,
-    private val cli: CoderCLIManager,
+    internal var client: CoderRestClient,
+    internal var cli: CoderCLIManager,
     private var workspace: Workspace,
     private var agent: WorkspaceAgent,
 ) : RemoteProviderEnvironment("${workspace.name}.${agent.name}"), BeforeConnectionHook, AfterDisconnectHook {
@@ -368,5 +368,13 @@ class CoderRemoteEnvironment(
 
     override fun toString(): String {
         return "CoderRemoteEnvironment(name='$name')"
+    }
+
+    /**
+     * Update the client and CLI manager for this environment.
+     */
+    fun updateClientAndCli(client: CoderRestClient, cli: CoderCLIManager) {
+        this.client = client
+        this.cli = cli
     }
 }
