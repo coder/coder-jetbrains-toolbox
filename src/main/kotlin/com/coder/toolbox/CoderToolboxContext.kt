@@ -4,6 +4,7 @@ import com.coder.toolbox.oauth.CoderAccount
 import com.coder.toolbox.oauth.CoderOAuthCfg
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
+import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.toURL
 import com.jetbrains.toolbox.api.core.auth.PluginAuthManager
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
@@ -34,6 +35,7 @@ data class CoderToolboxContext(
     val settingsStore: CoderSettingsStore,
     val secrets: CoderSecretsStore,
     val proxySettings: ToolboxProxySettings,
+    val connectionMonitoringService: ConnectionMonitoringService,
 ) {
     /**
      * Try to find a URL.

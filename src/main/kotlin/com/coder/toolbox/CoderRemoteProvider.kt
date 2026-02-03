@@ -2,11 +2,21 @@ package com.coder.toolbox
 
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.feed.IdeFeedManager
+import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
+import com.coder.toolbox.util.TOKEN
+import com.coder.toolbox.util.URL
+import com.coder.toolbox.util.WebUrlValidationResult.Invalid
+import com.coder.toolbox.util.toQueryParameters
+import com.coder.toolbox.util.toURL
+import com.coder.toolbox.util.token
+import com.coder.toolbox.util.url
+import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.util.waitForTrue
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
@@ -37,13 +47,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.net.URI
+import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
-import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as DropDownMenu
 import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as dropDownFactory
 
 private val POLL_INTERVAL = 5.seconds
+private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CoderRemoteProvider(
@@ -51,34 +63,49 @@ class CoderRemoteProvider(
 ) : RemoteProvider("Coder") {
     // Current polling job.
     private var pollJob: Job? = null
-    private val lastEnvironments = mutableSetOf<CoderRemoteEnvironment>()
+    internal val lastEnvironments = mutableListOf<CoderRemoteEnvironment>()
 
     private val settings = context.settingsStore.readOnly()
 
     private val triggerSshConfig = Channel<Boolean>(Channel.CONFLATED)
     private val triggerProviderVisible = Channel<Boolean>(Channel.CONFLATED)
-    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig)
     private val dialogUi = DialogUi(context)
 
     // The REST client, if we are signed in
     private var client: CoderRestClient? = null
+    private var cli: CoderCLIManager? = null
 
     // On the first load, automatically log in if we can.
     private var firstRun = true
+
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    private val isHandlingUri: AtomicBoolean = AtomicBoolean(false)
     private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
+    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig) {
+        client?.let { restClient ->
+            if (context.settingsStore.useAppNameAsTitle) {
+                coderHeaderPage.setTitle(context.i18n.pnotr(restClient.appName))
+            } else {
+                coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
+            }
+        }
+    }
     private val visibilityState = MutableStateFlow(
         ProviderVisibilityState(
             applicationVisible = false,
             providerVisible = false
         )
     )
-    private val linkHandler = CoderProtocolHandler(context, dialogUi, settingsPage, visibilityState, isInitialized)
+    private val linkHandler = CoderProtocolHandler(context, IdeFeedManager(context))
 
     override val loadingEnvironmentsDescription: LocalizableString = context.i18n.ptrl("Loading workspaces...")
     override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
         LoadableState.Loading
     )
+    private val accountDropdownField = dropDownFactory(context.i18n.pnotr("")) {
+        logout()
+        context.envPageManager.showPluginEnvironmentsPage()
+    }
 
     private val errorBuffer = mutableListOf<Throwable>()
 
@@ -93,30 +120,7 @@ class CoderRemoteProvider(
             while (isActive) {
                 try {
                     context.logger.debug("Fetching workspace agents from ${client.url}")
-                    val resolvedEnvironments = client.workspaces().flatMap { ws ->
-                        // Agents are not included in workspaces that are off
-                        // so fetch them separately.
-                        when (ws.latestBuild.status) {
-                            WorkspaceStatus.RUNNING -> ws.latestBuild.resources
-                            else -> emptyList()
-                        }.ifEmpty {
-                            client.resources(ws)
-                        }.flatMap { resource ->
-                            resource.agents?.distinctBy {
-                                // There can be duplicates with coder_agent_instance.
-                                // TODO: Can we just choose one or do they hold
-                                //       different information?
-                                it.name
-                            }?.map { agent ->
-                                // If we have an environment already, update that.
-                                val env = CoderRemoteEnvironment(context, client, cli, ws, agent)
-                                lastEnvironments.firstOrNull { it == env }?.let {
-                                    it.update(ws, agent)
-                                    it
-                                } ?: env
-                            } ?: emptyList()
-                        }
-                    }.toSet()
+                    val resolvedEnvironments = resolveWorkspaceEnvironments(client, cli)
 
                     // In case we logged out while running the query.
                     if (!isActive) {
@@ -130,7 +134,7 @@ class CoderRemoteProvider(
                     }
 
                     environments.update {
-                        LoadableState.Value(resolvedEnvironments.toList())
+                        LoadableState.Value(resolvedEnvironments)
                     }
                     if (!isInitialized.value) {
                         context.logger.info("Environments for ${client.url} are now initialized")
@@ -140,23 +144,8 @@ class CoderRemoteProvider(
                     }
                     lastEnvironments.apply {
                         clear()
-                        addAll(resolvedEnvironments.sortedBy { it.id })
+                        addAll(resolvedEnvironments)
                     }
-
-                    if (WorkspaceConnectionManager.shouldEstablishWorkspaceConnections) {
-                        WorkspaceConnectionManager.allConnected().forEach { wsId ->
-                            val env = lastEnvironments.firstOrNull() { it.id == wsId }
-                            if (env != null && !env.isConnected()) {
-                                context.logger.info("Establishing lost SSH connection for workspace with id $wsId")
-                                if (!env.startSshConnection()) {
-                                    context.logger.info("Can't establish lost SSH connection for workspace with id $wsId")
-                                }
-                            }
-                        }
-                        WorkspaceConnectionManager.reset()
-                    }
-
-                    WorkspaceConnectionManager.collectStatuses(lastEnvironments)
                 } catch (_: CancellationException) {
                     context.logger.debug("${client.url} polling loop canceled")
                     break
@@ -167,7 +156,6 @@ class CoderRemoteProvider(
                     } else {
                         context.logger.error(ex, "workspace polling error encountered")
                         if (ex is APIResponseException && ex.isTokenExpired) {
-                            WorkspaceConnectionManager.shouldEstablishWorkspaceConnections = true
                             close()
                             context.envPageManager.showPluginEnvironmentsPage()
                             errorBuffer.add(ex)
@@ -197,12 +185,47 @@ class CoderRemoteProvider(
         }
 
     /**
+     * Resolves workspace agents into remote environments.
+     *
+     * For each workspace:
+     * - If running, uses agents from the latest build resources
+     * - If not running, fetches resources separately
+     *
+     * @return a sorted list of resolved remote environments
+     */
+    internal suspend fun resolveWorkspaceEnvironments(
+        client: CoderRestClient,
+        cli: CoderCLIManager,
+    ): List<CoderRemoteEnvironment> {
+        return client.workspaces().flatMap { ws ->
+            // Agents are not included in workspaces that are off
+            // so fetch them separately.
+            val resources = when (ws.latestBuild.status) {
+                WorkspaceStatus.RUNNING -> ws.latestBuild.resources
+                else -> emptyList()
+            }.ifEmpty {
+                client.resources(ws)
+            }
+            resources
+                .flatMap { it.agents ?: emptyList() }
+                .distinctBy { it.name }
+                .map { agent ->
+                    lastEnvironments.firstOrNull { it.id == "${ws.name}.${agent.name}" }
+                        ?.also {
+                            // If we have an environment already, update that.
+                            it.update(ws, agent)
+                        } ?: CoderRemoteEnvironment(context, client, cli, ws, agent)
+                }
+
+        }.sortedBy { it.id }
+    }
+
+    /**
      * Stop polling, clear the client and environments, then go back to the
      * first page.
      */
     private fun logout() {
         context.logger.info("Logging out ${client?.me?.username}...")
-        WorkspaceConnectionManager.reset()
         close()
         context.logger.info("User ${client?.me?.username} logged out successfully")
     }
@@ -210,21 +233,16 @@ class CoderRemoteProvider(
     /**
      * A dropdown that appears at the top of the environment list to the right.
      */
-    override fun getAccountDropDown(): DropDownMenu? {
-        val username = client?.me?.username
-        if (username != null) {
-            return dropDownFactory(context.i18n.pnotr(username)) {
-                logout()
-                context.envPageManager.showPluginEnvironmentsPage()
-            }
-        }
-        return null
-    }
+    override fun getAccountDropDown() = accountDropdownField
 
     override val additionalPluginActions: StateFlow<List<ActionDescription>> = MutableStateFlow(
         listOf(
             Action(context, "Create workspace") {
-                context.desktop.browse(client?.url?.withPath("/templates").toString()) {
+                val url = context.settingsStore.workspaceCreateUrl ?: client?.url?.withPath("/templates").toString()
+                context.desktop.browse(
+                    url
+                        .replace("\$workspaceOwner", client?.me?.username ?: "")
+                ) {
                     context.ui.showErrorInfoPopup(it)
                 }
             },
@@ -241,6 +259,17 @@ class CoderRemoteProvider(
      * Also called as part of our own logout.
      */
     override fun close() {
+        softClose()
+        client = null
+        cli = null
+        lastEnvironments.clear()
+        environments.value = LoadableState.Value(emptyList())
+        isInitialized.update { false }
+        CoderCliSetupWizardState.goToFirstStep()
+        context.logger.info("Coder plugin is now closed")
+    }
+
+    private fun softClose() {
         pollJob?.let {
             it.cancel()
             context.logger.info("Cancelled workspace poll job ${pollJob.toString()}")
@@ -249,12 +278,6 @@ class CoderRemoteProvider(
             it.close()
             context.logger.info("REST API client closed and resources released")
         }
-        client = null
-        lastEnvironments.clear()
-        environments.value = LoadableState.Value(emptyList())
-        isInitialized.update { false }
-        CoderCliSetupWizardState.goToFirstStep()
-        context.logger.info("Coder plugin is now closed")
     }
 
     override val svgIcon: SvgIcon =
@@ -318,30 +341,54 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         try {
-
             if (context.oauthManager.canHandle(uri)) {
                 context.oauthManager.handle(uri)
                 return
             }
 
-            linkHandler.handle(
-                uri,
-                shouldDoAutoSetup()
-            ) { restClient, cli ->
-                context.logger.info("Stopping workspace polling and de-initializing resources")
-                close()
-                isInitialized.update {
-                    false
-                }
-                context.logger.info("Starting initialization with the new settings")
-                this@CoderRemoteProvider.client = restClient
-                coderHeaderPage.setTitle(context.i18n.pnotr(restClient.url.toString()))
-
-                environments.showLoadingMessage()
-                pollJob = poll(restClient, cli)
-                context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI $uri")
-                isInitialized.waitForTrue()
+            val params = uri.toQueryParameters()
+            if (params.isEmpty()) {
+                // probably a plugin installation scenario
+                context.logAndShowInfo("URI will not be handled", "No query parameters were provided")
+                return
             }
+            isHandlingUri.set(true)
+            // this switches to the main plugin screen, even
+            // if last opened provider was not Coder
+            context.envPageManager.showPluginEnvironmentsPage()
+            coderHeaderPage.isBusy.update { true }
+            context.logger.info("Handling $uri...")
+            val newUrl = resolveDeploymentUrl(params)?.toURL() ?: return
+            val newToken = if (context.settingsStore.requiresMTlsAuth) null else resolveToken(params) ?: return
+            if (sameUrl(newUrl, client?.url)) {
+                if (context.settingsStore.requiresTokenAuth) {
+                    newToken?.let {
+                        refreshSession(newUrl, it)
+                    }
+                }
+            } else {
+                CoderCliSetupContext.apply {
+                    url = newUrl
+                    token = newToken
+                }
+                CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
+                CoderCliSetupWizardPage(
+                    context, settingsPage, visibilityState,
+                    initialAutoSetup = true,
+                    jumpToMainPageOnError = true,
+                    connectSynchronously = true,
+                    onConnect = ::onConnect
+                ).apply {
+                    beforeShow()
+                }
+            }
+            // force the poll loop to run
+            triggerProviderVisible.send(true)
+            // wait for environments to be populated
+            isInitialized.waitForTrue()
+
+            linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
+            coderHeaderPage.isBusy.update { false }
         } catch (ex: Exception) {
             val textError = if (ex is APIResponseException) {
                 if (!ex.reason.isNullOrBlank()) {
@@ -353,7 +400,64 @@ class CoderRemoteProvider(
                 textError ?: ""
             )
             context.envPageManager.showPluginEnvironmentsPage()
+        } finally {
+            coderHeaderPage.isBusy.update { false }
+            isHandlingUri.set(false)
+            firstRun = false
         }
+    }
+
+    private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
+        val deploymentURL = params.url() ?: askUrl()
+        if (deploymentURL.isNullOrBlank()) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"${URL}\" is missing from URI")
+            return null
+        }
+        val validationResult = deploymentURL.validateStrictWebUrl()
+        if (validationResult is Invalid) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
+            return null
+        }
+        return deploymentURL
+    }
+
+    private suspend fun resolveToken(params: Map<String, String>): String? {
+        val token = params.token()
+        if (token.isNullOrBlank()) {
+            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")
+            return null
+        }
+        return token
+    }
+
+    private fun sameUrl(first: URL, second: URL?): Boolean = first.toURI().normalize() == second?.toURI()?.normalize()
+
+    private suspend fun refreshSession(url: URL, token: String): Pair<CoderRestClient, CoderCLIManager> {
+        context.logger.info("Stopping workspace polling and re-initializing the http client and cli with a new token")
+        softClose()
+        val newRestClient = CoderRestClient(
+            context,
+            url,
+            token,
+            PluginManager.pluginInfo.version,
+        ).apply { initializeSession() }
+        val newCli = CoderCLIManager(context, url).apply {
+            login(token)
+        }
+        this.client = newRestClient
+        this.cli = newCli
+        lastEnvironments.forEach { it.updateClientAndCli(newRestClient, newCli) }
+        pollJob = poll(newRestClient, newCli)
+        context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI")
+        return newRestClient to newCli
+    }
+
+    private suspend fun askUrl(): String? {
+        context.popupPluginMainPage()
+        return dialogUi.ask(
+            context.i18n.ptrl("Deployment URL"),
+            context.i18n.ptrl("Enter the full URL of your Coder deployment")
+        )
     }
 
     /**
@@ -363,6 +467,9 @@ class CoderRemoteProvider(
      * list.
      */
     override fun getOverrideUiPage(): UiPage? {
+        if (isHandlingUri.get()) {
+            return null
+        }
         // Show the setup page if we have not configured the client yet.
         if (client == null) {
             // When coming back to the application, initializeSession immediately.
@@ -404,27 +511,34 @@ class CoderRemoteProvider(
      * Auto-login only on first the firs run if there is a url & token configured or the auth
      * should be done via certificates.
      */
-    private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !settings.requireTokenAuth)
+    private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !settings.requiresTokenAuth)
 
     fun canAutoLogin(): Boolean = !context.secrets.tokenFor(context.deploymentUrl).isNullOrBlank()
 
     private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
+        close()
         context.settingsStore.updateLastUsedUrl(client.url)
-        if (context.settingsStore.requireTokenAuth) {
+        if (context.settingsStore.requiresTokenAuth) {
             context.secrets.storeTokenFor(client.url, client.token ?: "")
             context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
         } else {
             context.logger.info("Deployment URL was stored and will be available for automatic connection")
         }
         this.client = client
-        pollJob?.let {
-            it.cancel()
-            context.logger.info("Cancelled workspace poll job ${pollJob.toString()} in order to start a new one")
-        }
+        this.cli = cli
+        lastEnvironments.forEach { it.updateClientAndCli(client, cli) }
         environments.showLoadingMessage()
-        coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
-        context.logger.info("Displaying ${client.url} in the UI")
+        if (context.settingsStore.useAppNameAsTitle) {
+            context.logger.info("Displaying ${client.appName} as main page title")
+            coderHeaderPage.setTitle(context.i18n.pnotr(client.appName))
+        } else {
+            context.logger.info("Displaying ${client.url} as main page title")
+            coderHeaderPage.setTitle(context.i18n.pnotr(client.url.toString()))
+        }
+        accountDropdownField.labelState.update {
+            context.i18n.pnotr(client.me.username)
+        }
         pollJob = poll(client, cli)
         context.logger.info("Workspace poll job with name ${pollJob.toString()} was created")
     }

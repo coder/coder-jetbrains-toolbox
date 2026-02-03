@@ -6,6 +6,8 @@ internal const val LAST_USED_URL = "lastDeploymentURL"
 
 internal const val DEFAULT_URL = "defaultURL"
 
+internal const val APP_NAME_AS_TITLE = "useAppNameAsTitle"
+
 internal const val BINARY_SOURCE = "binarySource"
 
 internal const val BINARY_DIRECTORY = "binaryDirectory"
@@ -34,7 +36,11 @@ internal const val TLS_CA_PATH = "tlsCAPath"
 
 internal const val TLS_ALTERNATE_HOSTNAME = "tlsAlternateHostname"
 
+internal const val TLS_CERT_REFRESH_COMMAND = "tlsCertRefreshCommand"
+
 internal const val DISABLE_AUTOSTART = "disableAutostart"
+
+internal const val SSH_CONNECTION_TIMEOUT_IN_SECONDS = "sshConnectionTimeoutInSeconds"
 
 internal const val ENABLE_SSH_WILDCARD_CONFIG = "enableSshWildcardConfig"
 
@@ -45,6 +51,9 @@ internal const val SSH_LOG_DIR = "sshLogDir"
 internal const val SSH_CONFIG_OPTIONS = "sshConfigOptions"
 
 internal const val NETWORK_INFO_DIR = "networkInfoDir"
+
+internal const val WORKSPACE_VIEW_URL = "workspaceViewUrl"
+internal const val WORKSPACE_CREATE_URL = "workspaceCreateUrl"
 
 internal const val SSH_AUTO_CONNECT_PREFIX = "ssh_auto_connect_"
 

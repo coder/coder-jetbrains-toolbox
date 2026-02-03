@@ -25,6 +25,7 @@ import com.coder.toolbox.store.NETWORK_INFO_DIR
 import com.coder.toolbox.store.SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.SSH_CONFIG_PATH
 import com.coder.toolbox.store.SSH_LOG_DIR
+import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
@@ -104,7 +105,9 @@ internal class CoderCLIManagerTest {
 
             override fun removeProxyChangeListener(listener: Runnable) {
             }
-        })
+        },
+        mockk<ConnectionMonitoringService>()
+    )
 
     @BeforeTest
     fun setup() {
@@ -980,8 +983,24 @@ internal class CoderCLIManagerTest {
         val tests =
             listOf(
                 Pair("2.5.0", Features(true)),
-                Pair("2.13.0", Features(true, true)),
-                Pair("4.9.0", Features(true, true, true)),
+                Pair("2.13.0", Features(disableAutostart = true, reportWorkspaceUsage = true)),
+                Pair(
+                    "2.25.0",
+                    Features(
+                        disableAutostart = true,
+                        reportWorkspaceUsage = true,
+                        wildcardSsh = true,
+                        buildReason = true
+                    )
+                ),
+                Pair(
+                    "4.9.0", Features(
+                        disableAutostart = true,
+                        reportWorkspaceUsage = true,
+                        wildcardSsh = true,
+                        buildReason = true
+                    )
+                ),
                 Pair("2.4.9", Features(false)),
                 Pair("1.0.1", Features(false)),
             )

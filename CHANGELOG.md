@@ -2,6 +2,68 @@
 
 ## Unreleased
 
+### Added
+
+- support for configuring the SSH connection timeout, defaults to 10 seconds
+
+### Fixed
+
+- environment actions failing after URI execution by refreshing http client and CLI references
+
+## 0.8.4 - 2026-01-20
+
+### Fixed
+
+- improved SSH connection reliability during transient network failures
+
+## 0.8.3 - 2026-01-14
+
+### Fixed
+
+- mTLS certificate refresh and http request retrying logic
+- account name is now rendered immediately after login
+
+## 0.8.2 - 2026-01-06
+
+### Changed
+
+- the proxy command now always logs in verbose mode when the log directory is enabled
+
+### Fixed
+
+- no longer spam Toolbox with requests to establish the SSH connections every 5 seconds
+
+## 0.8.1 - 2025-12-11
+
+### Changed
+
+- streamlined URI handling with a faster workflow, clearer progress, and an overall smoother experience
+
+### Fixed
+
+- URI handling on Linux can now launch IDEs on newly started workspaces
+
+## 0.8.0 - 2025-12-03
+
+### Added
+
+- application name can now be displayed as the main title page instead of the URL
+- automatic mTLS certificate regeneration and retry mechanism
+
+### Changed
+
+- workspaces are now started with the help of the CLI
+
+## 0.7.2 - 2025-11-03
+
+### Changed
+
+- URI handling no longer waits for confirmation to use latest build if the provided build number is too old
+
+### Fixed
+
+- IDE is now launched when URI is handled by an already running Toolbox instance.
+
 ## 0.7.1 - 2025-10-13
 
 ### Fixed

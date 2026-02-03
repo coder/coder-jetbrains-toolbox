@@ -13,10 +13,12 @@ import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 
 private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
@@ -28,6 +30,7 @@ class ConnectStep(
     private val context: CoderToolboxContext,
     private val shouldAutoLogin: StateFlow<Boolean>,
     private val jumpToMainPageOnError: Boolean,
+    private val connectSynchronously: Boolean,
     visibilityState: StateFlow<ProviderVisibilityState>,
     private val refreshWizard: () -> Unit,
     private val onConnect: suspend (client: CoderRestClient, cli: CoderCLIManager) -> Unit,
@@ -49,7 +52,7 @@ class ConnectStep(
             context.i18n.pnotr("")
         }
 
-        if (context.settingsStore.requireTokenAuth && CoderCliSetupContext.isNotReadyForAuth()) {
+        if (context.settingsStore.requiresTokenAuth && CoderCliSetupContext.isNotReadyForAuth()) {
             errorField.textState.update {
                 context.i18n.pnotr("URL and token were not properly configured. Please go back and provide a proper URL and token!")
             }
@@ -70,21 +73,25 @@ class ConnectStep(
             return
         }
 
-        if (context.settingsStore.requireTokenAuth && !CoderCliSetupContext.hasToken()) {
+        if (context.settingsStore.requiresTokenAuth && !CoderCliSetupContext.hasToken()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
+
         // Capture the host name early for error reporting
         val hostName = url.host
 
+        // Cancel previous job regardless of the new mode
         signInJob?.cancel()
-        signInJob = context.cs.launch(CoroutineName("Http and CLI Setup")) {
+
+        // 1. Extract the logic into a reusable suspend lambda
+        val connectionLogic: suspend CoroutineScope.() -> Unit = {
             try {
                 context.logger.info("Setting up the HTTP client...")
                 val client = CoderRestClient(
                     context,
                     url,
-                    if (context.settingsStore.requireTokenAuth) CoderCliSetupContext.token else null,
+                    if (context.settingsStore.requiresTokenAuth) CoderCliSetupContext.token else null,
                     PluginManager.pluginInfo.version,
                 )
                 // allows interleaving with the back/cancel action
@@ -98,7 +105,7 @@ class ConnectStep(
                     statusField.textState.update { (context.i18n.pnotr(progress)) }
                 }
                 // We only need to log in if we are using token-based auth.
-                if (context.settingsStore.requireTokenAuth) {
+                if (context.settingsStore.requiresTokenAuth) {
                     logAndReportProgress("Configuring Coder CLI...")
                     // allows interleaving with the back/cancel action
                     yield()
@@ -125,6 +132,17 @@ class ConnectStep(
                 refreshWizard()
             }
         }
+
+        // 2. Choose the execution strategy based on the flag
+        if (connectSynchronously) {
+            // Blocks the current thread until connectionLogic completes
+            runBlocking(CoroutineName("Synchronous Http and CLI Setup")) {
+                connectionLogic()
+            }
+        } else {
+            // Runs asynchronously using the context's scope
+            signInJob = context.cs.launch(CoroutineName("Async Http and CLI Setup"), block = connectionLogic)
+        }
     }
 
     private fun logAndReportProgress(msg: String) {
@@ -144,7 +162,7 @@ class ConnectStep(
                 CoderCliSetupWizardState.goToFirstStep()
             }
         } else {
-            if (context.settingsStore.requireTokenAuth) {
+            if (context.settingsStore.requiresTokenAuth) {
                 CoderCliSetupWizardState.goToPreviousStep()
             } else {
                 CoderCliSetupWizardState.goToFirstStep()

@@ -1,11 +1,13 @@
 package com.coder.toolbox.views
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.jetbrains.toolbox.api.remoteDev.environments.SshEnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.ssh.SshConnectionInfo
 import java.net.URL
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * A view for a single environment.  It displays the projects and IDEs.
@@ -16,15 +18,18 @@ import java.net.URL
  * SSH must be configured before this will work.
  */
 class EnvironmentView(
+    private val context: CoderToolboxContext,
     private val url: URL,
     private val cli: CoderCLIManager,
     private val workspace: Workspace,
     private val agent: WorkspaceAgent,
 ) : SshEnvironmentContentsView {
-    override suspend fun getConnectionInfo(): SshConnectionInfo = WorkspaceSshConnectionInfo(url, cli, workspace, agent)
+    override suspend fun getConnectionInfo(): SshConnectionInfo =
+        WorkspaceSshConnectionInfo(context, url, cli, workspace, agent)
 }
 
 private class WorkspaceSshConnectionInfo(
+    private val context: CoderToolboxContext,
     url: URL,
     cli: CoderCLIManager,
     private val workspace: Workspace,
@@ -44,6 +49,9 @@ private class WorkspaceSshConnectionInfo(
      * The username is ignored by the Coder proxy command.
      */
     override val userName: String? = null
+
+    override val connectionTimeoutMillis: Long
+        get() = context.settingsStore.sshConnectionTimeoutInSeconds.seconds.inWholeMilliseconds
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

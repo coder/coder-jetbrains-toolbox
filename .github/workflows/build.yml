@@ -20,7 +20,7 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-java@v5
         with:
@@ -35,7 +35,7 @@ jobs:
 
       # Collect Tests Result of failed tests
       - if: ${{ failure() }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: tests-result
           path: ${{ github.workspace }}/build/reports/tests
@@ -50,7 +50,7 @@ jobs:
     steps:
       # Check out current repository
       - name: Fetch Sources
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       # Setup Java 21 environment for the next steps
       - name: Setup Java
@@ -79,13 +79,13 @@ jobs:
 
       # Store already-built plugin as an artifact for downloading
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: zip-artifacts
           path: ./build/distributions/*.zip
 
       - name: Upload Release Notes
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: release-notes
           path: RELEASE_NOTES.md
@@ -101,7 +101,7 @@ jobs:
 
       # Check out current repository
       - name: Fetch Sources
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       # Remove old release drafts by using GitHub CLI
       - name: Remove Old Release Drafts
@@ -113,7 +113,7 @@ jobs:
             | xargs -I '{}' gh api -X DELETE repos/${{ github.repository }}/releases/{}
 
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: zip-artifacts
           path: artifacts/
@@ -121,7 +121,7 @@ jobs:
         run: ls -R artifacts/
 
       - name: Download Release Notes
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: release-notes
           path: notes/

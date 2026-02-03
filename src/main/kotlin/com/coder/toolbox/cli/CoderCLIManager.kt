@@ -19,6 +19,7 @@ import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.settings.SignatureFallbackStrategy.ALLOW
 import com.coder.toolbox.util.InvalidVersionException
+import com.coder.toolbox.util.ReloadableTlsContext
 import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.escapeSubcommand
@@ -125,6 +126,7 @@ data class Features(
     val disableAutostart: Boolean = false,
     val reportWorkspaceUsage: Boolean = false,
     val wildcardSsh: Boolean = false,
+    val buildReason: Boolean = false,
 )
 
 /**
@@ -152,7 +154,8 @@ class CoderCLIManager(
         }
         val okHttpClient = CoderHttpClientBuilder.build(
             context,
-            interceptors
+            interceptors,
+            ReloadableTlsContext(context.settingsStore.readOnly().tls)
         )
 
         val retrofit = Retrofit.Builder()
@@ -305,6 +308,25 @@ class CoderCLIManager(
     }
 
     /**
+     * Start a workspace. Throws if the command execution fails.
+     */
+    fun startWorkspace(workspaceOwner: String, workspaceName: String, feats: Features = features): String {
+        val args = mutableListOf(
+            "--global-config",
+            coderConfigPath.toString(),
+            "start",
+            "--yes",
+            "$workspaceOwner/$workspaceName"
+        )
+
+        if (feats.buildReason) {
+            args.addAll(listOf("--reason", "jetbrains_connection"))
+        }
+
+        return exec(*args.toTypedArray())
+    }
+
+    /**
      * Configure SSH to use this binary.
      *
      * This can take supported features for testing purposes only.
@@ -362,8 +384,7 @@ class CoderCLIManager(
                 "--network-info-dir ${escape(context.settingsStore.networkInfoDir)}"
             )
         val proxyArgs = baseArgs + listOfNotNull(
-            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let { "--log-dir" },
-            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let { escape(it) },
+            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let { "--log-dir ${escape(it)} -v" },
             if (feats.reportWorkspaceUsage) "--usage-app=jetbrains" else null,
         )
         val extraConfig = context.settingsStore.sshConfigOptions
@@ -371,7 +392,7 @@ class CoderCLIManager(
             ?.let { "\n" + it.prependIndent("  ") }
             ?: ""
         val options = """
-            ConnectTimeout 0
+            ConnectTimeout ${context.settingsStore.sshConnectionTimeoutInSeconds}
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
             LogLevel ERROR
@@ -569,7 +590,8 @@ class CoderCLIManager(
                 Features(
                     disableAutostart = version >= SemVer(2, 5, 0),
                     reportWorkspaceUsage = version >= SemVer(2, 13, 0),
-                    version >= SemVer(2, 19, 0),
+                    wildcardSsh = version >= SemVer(2, 19, 0),
+                    buildReason = version >= SemVer(2, 25, 0),
                 )
             }
         }

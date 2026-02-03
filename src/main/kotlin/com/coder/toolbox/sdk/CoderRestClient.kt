@@ -10,6 +10,7 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.sdk.v2.CoderV2RestFacade
 import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
+import com.coder.toolbox.sdk.v2.models.Appearance
 import com.coder.toolbox.sdk.v2.models.BuildInfo
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
 import com.coder.toolbox.sdk.v2.models.Template
@@ -19,8 +20,12 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
+import com.coder.toolbox.util.ReloadableTlsContext
 import com.squareup.moshi.Moshi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import org.zeroturnaround.exec.ProcessExecutor
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -39,12 +44,14 @@ open class CoderRestClient(
     val token: String?,
     private val pluginVersion: String = "development",
 ) {
+    private lateinit var tlsContext: ReloadableTlsContext
     private lateinit var moshi: Moshi
     private lateinit var httpClient: OkHttpClient
     private lateinit var retroRestClient: CoderV2RestFacade
 
     lateinit var me: User
     lateinit var buildVersion: String
+    lateinit var appName: String
 
     init {
         setupSession()
@@ -58,8 +65,11 @@ open class CoderRestClient(
                 .add(OSConverter())
                 .add(UUIDConverter())
                 .build()
+
+        tlsContext = ReloadableTlsContext(context.settingsStore.readOnly().tls)
+
         val interceptors = buildList {
-            if (context.settingsStore.requireTokenAuth) {
+            if (context.settingsStore.requiresTokenAuth) {
                 if (token.isNullOrBlank()) {
                     throw IllegalStateException("Token is required for $url deployment")
                 }
@@ -72,7 +82,8 @@ open class CoderRestClient(
 
         httpClient = CoderHttpClientBuilder.build(
             context,
-            interceptors
+            interceptors,
+            tlsContext
         )
 
         retroRestClient =
@@ -94,6 +105,7 @@ open class CoderRestClient(
     suspend fun initializeSession(): User {
         me = me()
         buildVersion = buildInfo().version
+        appName = appearance().applicationName
         return me
     }
 
@@ -101,8 +113,8 @@ open class CoderRestClient(
      * Retrieve the current user.
      * @throws [APIResponseException].
      */
-    suspend fun me(): User {
-        val userResponse = retroRestClient.me()
+    internal suspend fun me(): User {
+        val userResponse = callWithRetry { retroRestClient.me() }
         if (!userResponse.isSuccessful) {
             throw APIResponseException(
                 "initializeSession",
@@ -118,11 +130,30 @@ open class CoderRestClient(
     }
 
     /**
+     * Retrieves the visual dashboard configuration.
+     */
+    internal suspend fun appearance(): Appearance {
+        val appearanceResponse = callWithRetry { retroRestClient.appearance() }
+        if (!appearanceResponse.isSuccessful) {
+            throw APIResponseException(
+                "initializeSession",
+                url,
+                appearanceResponse.code(),
+                appearanceResponse.parseErrorBody(moshi)
+            )
+        }
+
+        return requireNotNull(appearanceResponse.body()) {
+            "Successful response returned null body for visual dashboard configuration"
+        }
+    }
+
+    /**
      * Retrieves the available workspaces created by the user.
      * @throws [APIResponseException].
      */
     suspend fun workspaces(): List<Workspace> {
-        val workspacesResponse = retroRestClient.workspaces("owner:me")
+        val workspacesResponse = callWithRetry { retroRestClient.workspaces("owner:me") }
         if (!workspacesResponse.isSuccessful) {
             throw APIResponseException(
                 "retrieve workspaces",
@@ -142,7 +173,7 @@ open class CoderRestClient(
      * @throws [APIResponseException].
      */
     suspend fun workspace(workspaceID: UUID): Workspace {
-        val workspaceResponse = retroRestClient.workspace(workspaceID)
+        val workspaceResponse = callWithRetry { retroRestClient.workspace(workspaceID) }
         if (!workspaceResponse.isSuccessful) {
             throw APIResponseException(
                 "retrieve workspace",
@@ -165,8 +196,9 @@ open class CoderRestClient(
      * @throws [APIResponseException].
      */
     suspend fun resources(workspace: Workspace): List<WorkspaceResource> {
-        val resourcesResponse =
+        val resourcesResponse = callWithRetry {
             retroRestClient.templateVersionResources(workspace.latestBuild.templateVersionID)
+        }
         if (!resourcesResponse.isSuccessful) {
             throw APIResponseException(
                 "retrieve resources for ${workspace.name}",
@@ -182,7 +214,7 @@ open class CoderRestClient(
     }
 
     suspend fun buildInfo(): BuildInfo {
-        val buildInfoResponse = retroRestClient.buildInfo()
+        val buildInfoResponse = callWithRetry { retroRestClient.buildInfo() }
         if (!buildInfoResponse.isSuccessful) {
             throw APIResponseException(
                 "retrieve build information",
@@ -201,7 +233,7 @@ open class CoderRestClient(
      * @throws [APIResponseException].
      */
     private suspend fun template(templateID: UUID): Template {
-        val templateResponse = retroRestClient.template(templateID)
+        val templateResponse = callWithRetry { retroRestClient.template(templateID) }
         if (!templateResponse.isSuccessful) {
             throw APIResponseException(
                 "retrieve template with ID $templateID",
@@ -219,6 +251,7 @@ open class CoderRestClient(
     /**
      * @throws [APIResponseException].
      */
+    @Deprecated(message = "This operation needs to be delegated to the CLI")
     suspend fun startWorkspace(workspace: Workspace): WorkspaceBuild {
         val buildRequest = CreateWorkspaceBuildRequest(
             null,
@@ -226,7 +259,7 @@ open class CoderRestClient(
             null,
             WorkspaceBuildReason.JETBRAINS_CONNECTION
         )
-        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
+        val buildResponse = callWithRetry { retroRestClient.createWorkspaceBuild(workspace.id, buildRequest) }
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
             throw APIResponseException(
                 "start workspace ${workspace.name}",
@@ -245,7 +278,7 @@ open class CoderRestClient(
      */
     suspend fun stopWorkspace(workspace: Workspace): WorkspaceBuild {
         val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.STOP)
-        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
+        val buildResponse = callWithRetry { retroRestClient.createWorkspaceBuild(workspace.id, buildRequest) }
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
             throw APIResponseException(
                 "stop workspace ${workspace.name}",
@@ -265,7 +298,7 @@ open class CoderRestClient(
      */
     suspend fun removeWorkspace(workspace: Workspace) {
         val buildRequest = CreateWorkspaceBuildRequest(null, WorkspaceTransition.DELETE, false)
-        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
+        val buildResponse = callWithRetry { retroRestClient.createWorkspaceBuild(workspace.id, buildRequest) }
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
             throw APIResponseException(
                 "delete workspace ${workspace.name}",
@@ -290,7 +323,7 @@ open class CoderRestClient(
         val template = template(workspace.templateID)
         val buildRequest =
             CreateWorkspaceBuildRequest(template.activeVersionID, WorkspaceTransition.START)
-        val buildResponse = retroRestClient.createWorkspaceBuild(workspace.id, buildRequest)
+        val buildResponse = callWithRetry { retroRestClient.createWorkspaceBuild(workspace.id, buildRequest) }
         if (buildResponse.code() != HttpURLConnection.HTTP_CREATED) {
             throw APIResponseException(
                 "update workspace ${workspace.name}",
@@ -302,6 +335,58 @@ open class CoderRestClient(
 
         return requireNotNull(buildResponse.body()) {
             "Successful response returned null body or workspace build"
+        }
+    }
+
+    /**
+     * Executes a Retrofit call with a retry mechanism specifically for expired certificates.
+     */
+    private suspend fun <T> callWithRetry(block: suspend () -> Response<T>): Response<T> {
+        return try {
+            block()
+        } catch (e: Exception) {
+            if (context.settingsStore.requiresMTlsAuth && isCertExpired(e)) {
+                context.logger.info("Certificate expired detected. Attempting refresh...")
+                if (refreshCertificates()) {
+                    context.logger.info("Certificates refreshed, retrying the request...")
+                    return block()
+                }
+            }
+            throw e
+        }
+    }
+
+    private fun isCertExpired(e: Exception): Boolean {
+        return (e is javax.net.ssl.SSLHandshakeException || e is javax.net.ssl.SSLPeerUnverifiedException) &&
+                e.message?.contains("certificate_expired", ignoreCase = true) == true
+    }
+
+    private suspend fun refreshCertificates(): Boolean = withContext(Dispatchers.IO) {
+        val command = context.settingsStore.readOnly().tls.certRefreshCommand
+        if (command.isNullOrBlank()) return@withContext false
+
+        return@withContext try {
+            val result = ProcessExecutor()
+                .command(command.split(" ").toList())
+                .exitValueNormal()
+                .readOutput(true)
+                .execute()
+
+            if (result.exitValue == 0) {
+                context.logger.info("Certificate refresh successful. Reloading TLS and evicting pool.")
+                tlsContext.reload()
+
+                // This is the "Magic Fix":
+                // It forces OkHttp to close the broken HTTP/2 connection.
+                httpClient.connectionPool.evictAll()
+                return@withContext true
+            } else {
+                context.logger.error("Refresh command failed with code ${result.exitValue}")
+                false
+            }
+        } catch (ex: Exception) {
+            context.logger.error(ex, "Failed to execute refresh command")
+            false
         }
     }
 

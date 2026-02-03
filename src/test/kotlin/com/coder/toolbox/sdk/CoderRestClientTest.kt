@@ -20,6 +20,7 @@ import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.TLS_ALTERNATE_HOSTNAME
 import com.coder.toolbox.store.TLS_CA_PATH
+import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.util.sslContextFromPEMs
 import com.jetbrains.toolbox.api.core.auth.PluginAuthManager
@@ -126,7 +127,9 @@ class CoderRestClientTest {
 
             override fun removeProxyChangeListener(listener: Runnable) {
             }
-        })
+        },
+        mockk<ConnectionMonitoringService>()
+    )
 
 
     data class TestWorkspace(var workspace: Workspace, var resources: List<WorkspaceResource>? = emptyList())

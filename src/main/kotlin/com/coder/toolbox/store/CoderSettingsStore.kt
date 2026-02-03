@@ -32,12 +32,14 @@ class CoderSettingsStore(
         override val certPath: String?,
         override val keyPath: String?,
         override val caPath: String?,
-        override val altHostname: String?
+        override val altHostname: String?,
+        override val certRefreshCommand: String?
     ) : ReadOnlyTLSSettings
 
     // Properties implementation
     override val lastDeploymentURL: String? get() = store[LAST_USED_URL]
     override val defaultURL: String get() = store[DEFAULT_URL] ?: "https://dev.coder.com"
+    override val useAppNameAsTitle: Boolean get() = store[APP_NAME_AS_TITLE]?.toBooleanStrictOrNull() ?: false
     override val binarySource: String? get() = store[BINARY_SOURCE]
     override val binaryDirectory: String? get() = store[BINARY_DIRECTORY]
     override val disableSignatureVerification: Boolean
@@ -61,11 +63,15 @@ class CoderSettingsStore(
             certPath = store[TLS_CERT_PATH],
             keyPath = store[TLS_KEY_PATH],
             caPath = store[TLS_CA_PATH],
-            altHostname = store[TLS_ALTERNATE_HOSTNAME]
+            altHostname = store[TLS_ALTERNATE_HOSTNAME],
+            certRefreshCommand = store[TLS_CERT_REFRESH_COMMAND]
         )
-    override val requireTokenAuth: Boolean get() = tls.certPath.isNullOrBlank() || tls.keyPath.isNullOrBlank()
+    override val requiresTokenAuth: Boolean get() = tls.certPath.isNullOrBlank() || tls.keyPath.isNullOrBlank()
+    override val requiresMTlsAuth: Boolean get() = tls.certPath?.isNotBlank() == true && tls.keyPath?.isNotBlank() == true
     override val disableAutostart: Boolean
         get() = store[DISABLE_AUTOSTART]?.toBooleanStrictOrNull() ?: (getOS() == OS.MAC)
+    override val sshConnectionTimeoutInSeconds: Int
+        get() = store[SSH_CONNECTION_TIMEOUT_IN_SECONDS]?.toIntOrNull() ?: 0
     override val isSshWildcardConfigEnabled: Boolean
         get() = store[ENABLE_SSH_WILDCARD_CONFIG]?.toBooleanStrictOrNull() ?: true
     override val sshConfigPath: String
@@ -81,6 +87,11 @@ class CoderSettingsStore(
             .toString()
     override val preferAuthViaApiToken: Boolean
         get() = store[PREFER_AUTH_VIA_API_TOKEN]?.toBooleanStrictOrNull() ?: false
+
+    override val workspaceViewUrl: String?
+        get() = store[WORKSPACE_VIEW_URL]
+    override val workspaceCreateUrl: String?
+        get() = store[WORKSPACE_CREATE_URL]
 
     /**
      * Where the specified deployment should put its data.
@@ -162,6 +173,10 @@ class CoderSettingsStore(
         store[LAST_USED_URL] = url.toString()
     }
 
+    fun updateUseAppNameAsTitle(appNameAsTitle: Boolean) {
+        store[APP_NAME_AS_TITLE] = appNameAsTitle.toString()
+    }
+
     fun updateBinarySource(source: String) {
         store[BINARY_SOURCE] = source
     }
@@ -222,6 +237,10 @@ class CoderSettingsStore(
         store[DISABLE_AUTOSTART] = shouldDisableAutostart.toString()
     }
 
+    fun updateSshConnectionTimeoutInSeconds(sshConnectionTimeoutInSeconds: Int) {
+        store[SSH_CONNECTION_TIMEOUT_IN_SECONDS] = sshConnectionTimeoutInSeconds.toString()
+    }
+
     fun updateEnableSshWildcardConfig(enable: Boolean) {
         store[ENABLE_SSH_WILDCARD_CONFIG] = enable.toString()
     }
@@ -244,16 +263,40 @@ class CoderSettingsStore(
 
     private fun getDefaultGlobalDataDir(): Path {
         return when (getOS()) {
-            OS.WINDOWS -> Paths.get(env.get("LOCALAPPDATA"), "coder-toolbox")
-            OS.MAC -> Paths.get(env.get("HOME"), "Library/Application Support/coder-toolbox")
-            else -> {
-                val dir = env.get("XDG_DATA_HOME")
-                if (dir.isNotBlank()) {
-                    return Paths.get(dir, "coder-toolbox")
-                }
-                return Paths.get(env.get("HOME"), ".local/share/coder-toolbox")
-            }
+            OS.WINDOWS -> Paths.get(getWinAppData(), "coder-toolbox")
+            OS.MAC -> Paths.get(getMacAppData(), "coder-toolbox")
+            else -> Paths.get(getLinuxAppData(), "coder-toolbox")
         }
+    }
+
+    private fun getWinAppData(): String {
+        val appDataD: String = env.get("LOCALAPPDATA")
+        if (appDataD.isNotBlank()) {
+            return appDataD
+        }
+        return "${System.getProperty("user.home")}\\AppData\\Local"
+    }
+
+    private fun getMacAppData(): String {
+        val appData = env.get("HOME")
+        if (appData.isNotBlank()) {
+            return "$appData/Library/Application Support"
+        }
+        return "${System.getProperty("user.home")}/Library/Application Support"
+    }
+
+    private fun getLinuxAppData(): String {
+        val appData = env.get("XDG_DATA_HOME")
+        if (appData.isNotBlank()) {
+            return appData
+        }
+
+        val home = env.get("HOME")
+        if (home.isNotBlank()) {
+            return "$home/.local/share"
+        }
+
+        return "${System.getProperty("user.home")}/.local/share"
     }
 
     private fun getDefaultGlobalConfigDir(): Path {
@@ -271,7 +314,7 @@ class CoderSettingsStore(
                 if (dir.isNotBlank()) {
                     return Paths.get(dir, "coderv2")
                 }
-                return Paths.get(env.get("HOME"), ".config/coderv2")
+                Paths.get(env.get("HOME"), ".config/coderv2")
             }
         }
     }

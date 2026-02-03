@@ -163,7 +163,7 @@ class DeploymentUrlStep(
             }
         }
 
-        if (context.settingsStore.requireTokenAuth) {
+        if (context.settingsStore.requiresTokenAuth) {
             CoderCliSetupWizardState.goToNextStep()
         } else {
             CoderCliSetupWizardState.goToLastStep()

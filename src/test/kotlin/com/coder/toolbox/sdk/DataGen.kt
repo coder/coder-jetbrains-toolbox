@@ -12,6 +12,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.Arch
 import com.coder.toolbox.util.OS
 import java.util.UUID
+import kotlin.random.Random
 
 class DataGen {
     companion object {
@@ -20,19 +21,19 @@ class DataGen {
             agentId: String,
         ): WorkspaceResource = WorkspaceResource(
             agents =
-            listOf(
-                WorkspaceAgent(
-                    id = UUID.fromString(agentId),
-                    status = WorkspaceAgentStatus.CONNECTED,
-                    name = agentName,
-                    architecture = Arch.from("amd64"),
-                    operatingSystem = OS.from("linux"),
-                    directory = null,
-                    expandedDirectory = null,
-                    lifecycleState = WorkspaceAgentLifecycleState.READY,
-                    loginBeforeReady = false,
+                listOf(
+                    WorkspaceAgent(
+                        id = UUID.fromString(agentId),
+                        status = WorkspaceAgentStatus.CONNECTED,
+                        name = agentName,
+                        architecture = Arch.from("amd64"),
+                        operatingSystem = OS.from("linux"),
+                        directory = null,
+                        expandedDirectory = null,
+                        lifecycleState = WorkspaceAgentLifecycleState.READY,
+                        loginBeforeReady = false,
+                    ),
                 ),
-            ),
         )
 
         fun workspace(
@@ -48,9 +49,9 @@ class DataGen {
                 templateDisplayName = "template-display-name",
                 templateIcon = "template-icon",
                 latestBuild =
-                build(
-                    resources = agents.map { resource(it.key, it.value) },
-                ),
+                    build(
+                        resources = agents.map { resource(it.key, it.value) },
+                    ),
                 outdated = false,
                 name = name,
                 ownerName = "owner",
@@ -61,6 +62,8 @@ class DataGen {
             templateVersionID: UUID = UUID.randomUUID(),
             resources: List<WorkspaceResource> = emptyList(),
         ): WorkspaceBuild = WorkspaceBuild(
+            id = UUID.randomUUID(),
+            buildNumber = Random.nextInt(),
             templateVersionID = templateVersionID,
             resources = resources,
             status = WorkspaceStatus.RUNNING,

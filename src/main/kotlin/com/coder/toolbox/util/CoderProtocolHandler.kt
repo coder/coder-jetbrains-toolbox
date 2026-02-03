@@ -2,28 +2,21 @@ package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.feed.IdeFeedManager
+import com.coder.toolbox.feed.IdeType
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.coder.toolbox.util.WebUrlValidationResult.Invalid
-import com.coder.toolbox.views.CoderCliSetupWizardPage
-import com.coder.toolbox.views.CoderSettingsPage
-import com.coder.toolbox.views.state.CoderCliSetupContext
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
-import com.coder.toolbox.views.state.WizardStep
-import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.withTimeout
-import java.net.URI
+import java.net.URL
 import java.util.UUID
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -35,10 +28,7 @@ private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
 @Suppress("UnstableApiUsage")
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
-    private val dialogUi: DialogUi,
-    private val settingsPage: CoderSettingsPage,
-    private val visibilityState: MutableStateFlow<ProviderVisibilityState>,
-    private val isInitialized: StateFlow<Boolean>,
+    private val ideFeedManager: IdeFeedManager,
 ) {
     private val settings = context.settingsStore.readOnly()
 
@@ -50,40 +40,15 @@ open class CoderProtocolHandler(
      * connectable state.
      */
     suspend fun handle(
-        uri: URI,
-        shouldWaitForAutoLogin: Boolean,
-        reInitialize: suspend (CoderRestClient, CoderCLIManager) -> Unit
+        params: Map<String, String>,
+        url: URL,
+        restClient: CoderRestClient,
+        cli: CoderCLIManager
     ) {
-        val params = uri.toQueryParameters()
-        if (params.isEmpty()) {
-            // probably a plugin installation scenario
-            context.logAndShowInfo("URI will not be handled", "No query parameters were provided")
-            return
-        }
-        // this switches to the main plugin screen, even
-        // if last opened provider was not Coder
-        context.envPageManager.showPluginEnvironmentsPage()
-        if (shouldWaitForAutoLogin) {
-            isInitialized.waitForTrue()
-        }
-
-        context.logger.info("Handling $uri...")
-        val deploymentURL = resolveDeploymentUrl(params) ?: return
-        val token = if (!context.settingsStore.requireTokenAuth) null else resolveToken(params) ?: return
         val workspaceName = resolveWorkspaceName(params) ?: return
-
-        suspend fun onConnect(
-            restClient: CoderRestClient,
-            cli: CoderCLIManager
-        ) {
-            val workspace = restClient.workspaces().matchName(workspaceName, deploymentURL)
-            if (workspace == null) {
-                context.envPageManager.showPluginEnvironmentsPage()
-                return
-            }
-            reInitialize(restClient, cli)
-            context.envPageManager.showPluginEnvironmentsPage()
-            if (!prepareWorkspace(workspace, restClient, workspaceName, deploymentURL)) return
+        val workspace = restClient.workspaces().matchName(workspaceName, url)
+        if (workspace != null) {
+            if (!prepareWorkspace(workspace, restClient, cli, url)) return
             // we resolve the agent after the workspace is started otherwise we can get misleading
             // errors like: no agent available while workspace is starting or stopping
             // we also need to retrieve the workspace again to have the latest resources (ex: agent)
@@ -104,43 +69,8 @@ open class CoderProtocolHandler(
             if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
                 launchIde(environmentId, productCode, buildNumber, projectFolder)
             }
-        }
 
-        CoderCliSetupContext.apply {
-            url = deploymentURL.toURL()
-            CoderCliSetupContext.token = token
         }
-        CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
-        context.ui.showUiPage(
-            CoderCliSetupWizardPage(
-                context, settingsPage, visibilityState, true,
-                jumpToMainPageOnError = true,
-                onConnect = ::onConnect
-            )
-        )
-    }
-
-    private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
-        val deploymentURL = params.url() ?: askUrl()
-        if (deploymentURL.isNullOrBlank()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$URL\" is missing from URI")
-            return null
-        }
-        val validationResult = deploymentURL.validateStrictWebUrl()
-        if (validationResult is Invalid) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
-            return null
-        }
-        return deploymentURL
-    }
-
-    private suspend fun resolveToken(params: Map<String, String>): String? {
-        val token = params.token()
-        if (token.isNullOrBlank()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")
-            return null
-        }
-        return token
     }
 
     private suspend fun resolveWorkspaceName(params: Map<String, String>): String? {
@@ -152,7 +82,7 @@ open class CoderProtocolHandler(
         return workspace
     }
 
-    private suspend fun List<Workspace>.matchName(workspaceName: String, deploymentURL: String): Workspace? {
+    private suspend fun List<Workspace>.matchName(workspaceName: String, deploymentURL: URL): Workspace? {
         val workspace = this.firstOrNull { it.name == workspaceName }
         if (workspace == null) {
             context.logAndShowError(
@@ -167,15 +97,15 @@ open class CoderProtocolHandler(
     private suspend fun prepareWorkspace(
         workspace: Workspace,
         restClient: CoderRestClient,
-        workspaceName: String,
-        deploymentURL: String
+        cli: CoderCLIManager,
+        url: URL
     ): Boolean {
         when (workspace.latestBuild.status) {
             WorkspaceStatus.PENDING, WorkspaceStatus.STARTING ->
                 if (!restClient.waitForReady(workspace)) {
                     context.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
-                        "$workspaceName from $deploymentURL could not be ready on time"
+                        "${workspace.name} from $url could not be ready on time"
                     )
                     return false
                 }
@@ -185,7 +115,7 @@ open class CoderProtocolHandler(
                 if (settings.disableAutostart) {
                     context.logAndShowWarning(
                         CAN_T_HANDLE_URI_TITLE,
-                        "$workspaceName from $deploymentURL is not running and autostart is disabled"
+                        "${workspace.name} from $url is not running and autostart is disabled"
                     )
                     return false
                 }
@@ -194,12 +124,12 @@ open class CoderProtocolHandler(
                     if (workspace.outdated) {
                         restClient.updateWorkspace(workspace)
                     } else {
-                        restClient.startWorkspace(workspace)
+                        cli.startWorkspace(workspace.ownerName, workspace.name)
                     }
                 } catch (e: Exception) {
                     context.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
-                        "$workspaceName from $deploymentURL could not be started",
+                        "${workspace.name} from $url could not be started",
                         e
                     )
                     return false
@@ -208,7 +138,7 @@ open class CoderProtocolHandler(
                 if (!restClient.waitForReady(workspace)) {
                     context.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
-                        "$workspaceName from $deploymentURL could not be started on time",
+                        "${workspace.name} from $url could not be started on time",
                     )
                     return false
                 }
@@ -217,7 +147,7 @@ open class CoderProtocolHandler(
             WorkspaceStatus.FAILED, WorkspaceStatus.DELETING, WorkspaceStatus.DELETED -> {
                 context.logAndShowError(
                     CAN_T_HANDLE_URI_TITLE,
-                    "Unable to connect to $workspaceName from $deploymentURL"
+                    "Unable to connect to ${workspace.name} from $url"
                 )
                 return false
             }
@@ -307,75 +237,156 @@ open class CoderProtocolHandler(
     private fun launchIde(
         environmentId: String,
         productCode: String,
-        buildNumber: String,
+        buildNumberHint: String,
         projectFolder: String?
     ) {
         context.cs.launch(CoroutineName("Launch Remote IDE")) {
-            val selectedIde = selectAndInstallRemoteIde(productCode, buildNumber, environmentId) ?: return@launch
-            context.logger.info("$productCode-$buildNumber is already on $environmentId. Going to launch JBClient")
+            val selectedIde = selectAndInstallRemoteIde(productCode, buildNumberHint, environmentId) ?: return@launch
+            context.logger.info("Selected IDE $selectedIde for $productCode with hint $buildNumberHint")
+
+            // Ensure JBClient is prepared (installed/downloaded locally)
             installJBClient(selectedIde, environmentId).join()
+
+            // Launch
             launchJBClient(selectedIde, environmentId, projectFolder)
         }
     }
 
     private suspend fun selectAndInstallRemoteIde(
         productCode: String,
-        buildNumber: String,
+        buildNumberHint: String,
         environmentId: String
     ): String? {
-        val installedIdes = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
+        val selectedIde = resolveIdeIdentifier(environmentId, productCode, buildNumberHint) ?: return null
+        val installedIdeVersions = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
 
-        var selectedIde = "$productCode-$buildNumber"
-        if (installedIdes.firstOrNull { it.contains(buildNumber) } != null) {
+        context.logger.info("Selected IDE $installedIdeVersions for $productCode for $environmentId")
+        if (installedIdeVersions.contains(selectedIde)) {
             context.logger.info("$selectedIde is already installed on $environmentId")
             return selectedIde
         }
 
-        selectedIde = resolveAvailableIde(environmentId, productCode, buildNumber) ?: return null
+        context.logger.info("Installing $selectedIde on $environmentId...")
+        context.remoteIdeOrchestrator.installRemoteTool(environmentId, selectedIde)
 
-        // needed otherwise TBX will install it again
-        if (!installedIdes.contains(selectedIde)) {
-            context.logger.info("Installing $selectedIde on $environmentId...")
-            context.remoteIdeOrchestrator.installRemoteTool(environmentId, selectedIde)
-
-            if (context.remoteIdeOrchestrator.waitForIdeToBeInstalled(environmentId, selectedIde)) {
-                context.logger.info("Successfully installed $selectedIde on $environmentId...")
-                return selectedIde
-            } else {
-                context.ui.showSnackbar(
-                    UUID.randomUUID().toString(),
-                    context.i18n.pnotr("$selectedIde could not be installed"),
-                    context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
-                    context.i18n.ptrl("OK")
-                )
-                return null
-            }
-        } else {
-            context.logger.info("$selectedIde is already present on $environmentId...")
+        if (context.remoteIdeOrchestrator.waitForIdeToBeInstalled(environmentId, selectedIde)) {
+            context.logger.info("Successfully installed $selectedIde on $environmentId.")
             return selectedIde
+        } else {
+            context.ui.showSnackbar(
+                UUID.randomUUID().toString(),
+                context.i18n.pnotr("$selectedIde could not be installed"),
+                context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
+                context.i18n.ptrl("OK")
+            )
+            return null
         }
     }
 
-    private suspend fun resolveAvailableIde(environmentId: String, productCode: String, buildNumber: String): String? {
-        val availableVersions = context
-            .remoteIdeOrchestrator
-            .getAvailableRemoteTools(environmentId, productCode)
+    /**
+     * Resolves the full IDE identifier (e.g., "RR-241.14494.240") based on the build hint.
+     * Supports: latest_eap, latest_release, latest_installed, or specific build number.
+     */
+    internal suspend fun resolveIdeIdentifier(
+        environmentId: String,
+        productCode: String,
+        buildNumberHint: String
+    ): String? {
+        val availableBuilds = context.remoteIdeOrchestrator.getAvailableRemoteTools(environmentId, productCode)
+            .map { it.substringAfter("$productCode-") }.apply {
+                context.logger.info("Available $productCode IDEs: $this")
+            }
+        val installed = context.remoteIdeOrchestrator.getInstalledRemoteTools(environmentId, productCode)
+            .map { it.substringAfter("$productCode-") }.apply {
+                context.logger.info("Installed $productCode IDEs: $this")
+            }
 
-        if (availableVersions.isEmpty()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "$productCode is not available on $environmentId")
-            return null
-        }
+        val resolvedBuildNumber = when (buildNumberHint) {
+            "latest_eap" -> {
+                val bestEap = ideFeedManager.findBestMatch(
+                    productCode,
+                    IdeType.EAP,
+                    availableBuilds
+                )
 
-        val buildNumberIsNotAvailable = availableVersions.firstOrNull { it.contains(buildNumber) } == null
-        if (buildNumberIsNotAvailable) {
-            val selectedIde = availableVersions.maxOf { it }
-            context.logAndShowInfo(
-                "$productCode-$buildNumber not available",
-                "$productCode-$buildNumber is not available, we've selected the latest $selectedIde"
-            )
-            return selectedIde
+                if (bestEap != null) {
+                    bestEap.build
+                } else {
+                    if (availableBuilds.isEmpty()) {
+                        context.logAndShowError(
+                            CAN_T_HANDLE_URI_TITLE,
+                            "Can't launch EAP for $productCode because no version is available on $environmentId"
+                        )
+                        return null
+                    }
+                    // Fallback to max available
+                    val fallback = availableBuilds.maxByOrNull { it }
+                    context.logger.info("No EAP found for $productCode, falling back to latest available: $fallback")
+                    fallback
+                }
+            }
+
+            "latest_release" -> {
+                val bestRelease = ideFeedManager.findBestMatch(
+                    productCode,
+                    IdeType.RELEASE,
+                    availableBuilds
+                )
+
+                if (bestRelease != null) {
+                    bestRelease.build
+                } else {
+                    if (availableBuilds.isEmpty()) {
+                        context.logAndShowError(
+                            CAN_T_HANDLE_URI_TITLE,
+                            "Can't launch Release for $productCode because no version is available on $environmentId"
+                        )
+                        return null
+                    }
+                    val fallback = availableBuilds.maxByOrNull { it }
+                    context.logger.info("No Release found for $productCode, falling back to latest available: $fallback")
+                    fallback
+                }
+            }
+
+            "latest_installed" -> {
+                if (installed.isNotEmpty()) {
+                    installed.maxByOrNull { it }
+                } else if (availableBuilds.isEmpty()) {
+                    context.logAndShowError(
+                        CAN_T_HANDLE_URI_TITLE,
+                        "Can't launch latest installed version for $productCode because there is no version installed nor available for install on $environmentId"
+                    )
+                    null
+                } else {
+                    // Fallback to latest available if valid
+                    val fallback = availableBuilds.maxByOrNull { it }
+                    context.logger.info("No installed IDE found, falling back to latest available: $fallback")
+                    fallback
+                }
+            }
+
+            else -> {
+                // Specific build number. First check it in the installed list of builds
+                // then in the available list of builds
+                val installedMatch = installed.firstOrNull { it.contains(buildNumberHint) }
+                if (installedMatch != null) {
+                    installedMatch
+                } else {
+                    val availableMatch = availableBuilds.filter { it.contains(buildNumberHint) }.maxByOrNull { it }
+                    if (availableMatch != null) {
+                        availableMatch
+                    } else {
+                        context.logAndShowError(
+                            CAN_T_HANDLE_URI_TITLE,
+                            "Can't launch $productCode-$buildNumberHint because there is no matching version installed nor available for install on $environmentId"
+                        )
+                        null
+                    }
+                }
+            }
         }
-        return "$productCode-$buildNumber"
+        return resolvedBuildNumber?.let { "$productCode-$it" }
     }
 
     private fun installJBClient(selectedIde: String, environmentId: String): Job =
@@ -414,7 +425,9 @@ open class CoderProtocolHandler(
             withTimeout(waitTime.toJavaDuration()) {
                 while (!isInstalled) {
                     delay(5.seconds)
-                    isInstalled = getInstalledRemoteTools(environmentId, ideHint).isNotEmpty()
+                    val installed = getInstalledRemoteTools(environmentId, ideHint) // Hint matching
+                    // Check if *specific* IDE is installed now
+                    isInstalled = installed.contains(ideHint) || installed.any { it.contains(ideHint) }
                 }
             }
             return true
@@ -422,19 +435,9 @@ open class CoderProtocolHandler(
             return false
         }
     }
-
-    private suspend fun askUrl(): String? {
-        context.popupPluginMainPage()
-        return dialogUi.ask(
-            context.i18n.ptrl("Deployment URL"),
-            context.i18n.ptrl("Enter the full URL of your Coder deployment")
-        )
-    }
 }
 
 private suspend fun CoderToolboxContext.showEnvironmentPage(envId: String) {
     this.ui.showWindow()
     this.envPageManager.showEnvironmentPage(envId, false)
 }
-
-class MissingArgumentException(message: String, ex: Throwable? = null) : IllegalArgumentException(message, ex)

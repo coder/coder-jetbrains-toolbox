@@ -10,21 +10,21 @@ internal class URLExtensionsTest {
     @Test
     fun testToURL() {
         assertEquals(
-            URL("https", "localhost", 8080, "/path"),
-            "https://localhost:8080/path".toURL(),
+            expected = URI.create("https://localhost:8080/path").toURL(),
+            actual = "https://localhost:8080/path".toURL(),
         )
     }
 
     @Test
     fun testWithPath() {
         assertEquals(
-            URL("https", "localhost", 8080, "/foo/bar"),
-            URL("https", "localhost", 8080, "/").withPath("/foo/bar"),
+            expected = "https://localhost:8080/foo/bar".toURL(),
+            actual = "https://localhost:8080/".toURL().withPath("/foo/bar"),
         )
 
         assertEquals(
-            URL("https", "localhost", 8080, "/foo/bar"),
-            URL("https", "localhost", 8080, "/old/path").withPath("/foo/bar"),
+            expected = "https://localhost:8080/foo/bar".toURL(),
+            actual = "https://localhost:8080/old/path".toURL().withPath("/foo/bar"),
         )
     }
 

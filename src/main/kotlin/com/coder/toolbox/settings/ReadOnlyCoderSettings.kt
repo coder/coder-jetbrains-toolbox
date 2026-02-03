@@ -20,6 +20,12 @@ interface ReadOnlyCoderSettings {
     val defaultURL: String
 
     /**
+     * Whether to display the application name instead of the URL
+     * in the main screen. Defaults to URL
+     */
+    val useAppNameAsTitle: Boolean
+
+    /**
      * Used to download the Coder CLI which is necessary to proxy SSH
      * connections.  The If-None-Match header will be set to the SHA1 of the CLI
      * and can be used for caching.  Absolute URLs will be used as-is; otherwise
@@ -108,7 +114,12 @@ interface ReadOnlyCoderSettings {
     /**
      * Whether login should be done with a token
      */
-    val requireTokenAuth: Boolean
+    val requiresTokenAuth: Boolean
+
+    /**
+     * Whether the authentication is done with certificates.
+     */
+    val requiresMTlsAuth: Boolean
 
     /**
      * Whether to add --disable-autostart to the proxy command.  This works
@@ -121,6 +132,11 @@ interface ReadOnlyCoderSettings {
      * Whether SSH wildcard config is enabled
      */
     val isSshWildcardConfigEnabled: Boolean
+
+    /**
+     * Timeout duration in seconds for establishing an SSH connection.
+     */
+    val sshConnectionTimeoutInSeconds: Int
 
     /**
      * The location of the SSH config.  Defaults to ~/.ssh/config.
@@ -136,6 +152,18 @@ interface ReadOnlyCoderSettings {
      * Extra SSH config options
      */
     val sshConfigOptions: String?
+
+    /**
+     * A custom full URL to the dashboard page used for viewing details about a workspace.
+     * Supports `$workspaceOwner` and `$workspaceName` as placeholders.
+     */
+    val workspaceViewUrl: String?
+
+    /**
+     * A custom full URL to the dashboard page used for creating workspaces.
+     * Supports `$workspaceOwner` as placeholder.
+     */
+    val workspaceCreateUrl: String?
 
     /**
      * The path where network information for SSH hosts are stored
@@ -204,6 +232,12 @@ interface ReadOnlyTLSSettings {
      * Coder service does not match the hostname in the TLS certificate.
      */
     val altHostname: String?
+
+    /**
+     * Command to run when certificates expire and SSLHandshakeException
+     * is raised with `Received fatal alert: certificate_expired` as message
+     */
+    val certRefreshCommand: String?
 }
 
 enum class SignatureFallbackStrategy {

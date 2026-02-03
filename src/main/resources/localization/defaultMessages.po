@@ -189,3 +189,12 @@ msgstr ""
 
 msgid "Workspace name"
 msgstr ""
+
+msgid "Use app name as main page title instead of URL"
+msgstr ""
+
+msgid "Unstable connection detected"
+msgstr ""
+
+msgid "Unstable connection between Coder server and workspace detected. Your active sessions may disconnect"
+msgstr ""

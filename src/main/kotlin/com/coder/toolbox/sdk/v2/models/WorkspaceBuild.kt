@@ -10,20 +10,43 @@ import java.util.UUID
  */
 @JsonClass(generateAdapter = true)
 data class WorkspaceBuild(
-    @Json(name = "template_version_id") val templateVersionID: UUID,
-    @Json(name = "resources") val resources: List<WorkspaceResource>,
-    @Json(name = "status") val status: WorkspaceStatus,
+    @property:Json(name = "id") val id: UUID,
+    @property:Json(name = "build_number") val buildNumber: Int,
+    @property:Json(name = "template_version_id") val templateVersionID: UUID,
+    @property:Json(name = "resources") val resources: List<WorkspaceResource>,
+    @property:Json(name = "status") val status: WorkspaceStatus,
 )
 
 enum class WorkspaceStatus {
-    @Json(name = "pending") PENDING,
-    @Json(name = "starting") STARTING,
-    @Json(name = "running") RUNNING,
-    @Json(name = "stopping") STOPPING,
-    @Json(name = "stopped") STOPPED,
-    @Json(name = "failed") FAILED,
-    @Json(name = "canceling") CANCELING,
-    @Json(name = "canceled") CANCELED,
-    @Json(name = "deleting") DELETING,
-    @Json(name = "deleted") DELETED,
+    @Json(name = "pending")
+    PENDING,
+
+    @Json(name = "starting")
+    STARTING,
+
+    @Json(name = "running")
+    RUNNING,
+
+    @Json(name = "stopping")
+    STOPPING,
+
+    @Json(name = "stopped")
+    STOPPED,
+
+    @Json(name = "failed")
+    FAILED,
+
+    @Json(name = "canceling")
+    CANCELING,
+
+    @Json(name = "canceled")
+    CANCELED,
+
+    @Json(name = "deleting")
+    DELETING,
+
+    @Json(name = "deleted")
+    DELETED;
+
+    fun isNotStarted(): Boolean = this != STARTING && this != RUNNING
 }

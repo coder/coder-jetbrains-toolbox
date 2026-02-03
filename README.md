@@ -89,15 +89,15 @@ as:
 jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
 ```
 
-| Query param      | 	Description                                                                 | Mandatory |
-|------------------|------------------------------------------------------------------------------|-----------|
-| url              | 	Your Coder deployment URL (encoded)                                         | Yes       |
-| token            | 	Coder authentication token                                                  | Yes       |
-| workspace        | 	Name of the Coder workspace to connect to.                                  | Yes       |
-| agent_name       | 	The name of the agent with the workspace                                    | No        |
-| ide_product_code | 	JetBrains IDE product code (e.g., GO for GoLand, RR for Rider)              | No        |
-| ide_build_number | 	Specific build number of the JetBrains IDE to install on the workspace      | No        |
-| folder           | 	Absolute path to the project folder to open in the remote IDE (URL-encoded) | No        |
+| Query param      | 	Description                                                                                       | Mandatory |
+|------------------|----------------------------------------------------------------------------------------------------|-----------|
+| url              | 	Your Coder deployment URL (encoded)                                                               | Yes       |
+| token            | 	Coder authentication token                                                                        | Yes       |
+| workspace        | 	Name of the Coder workspace to connect to.                                                        | Yes       |
+| agent_name       | 	The name of the agent with the workspace                                                          | No        |
+| ide_product_code | 	JetBrains IDE product code (e.g., GO for GoLand, RR for Rider)                                    | No        |
+| ide_build_number | 	Specific build number or placeholder (see below) of the JetBrains IDE to install on the workspace | No        |
+| folder           | 	Absolute path to the project folder to open in the remote IDE (URL-encoded)                       | No        |
 
 > [!NOTE]
 > If only a single agent is available, specifying an agent name is optional. However, if multiple agents exist, you must
@@ -108,6 +108,107 @@ jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
 If `ide_product_code` and `ide_build_number` is missing, Toolbox will only open and highlight the workspace environment
 page. Coder Toolbox will attempt to start the workspace if it’s not already running; however, for the most reliable
 experience, it’s recommended to ensure the workspace is running prior to initiating the connection.
+
+### Resolving IDE and Build Number
+
+When handling URIs, the Coder Toolbox plugin can resolve the IDE and its build number in several ways. This allows for
+flexible and automated IDE management.
+
+The `ide_build_number` parameter supports the following values:
+
+- `latest_eap`:  Finds the latest available Early Access Program (EAP) version of the specified `ide_product_code`.
+    - **Fallback**: If no EAP version is found, it falls back to the latest available build (release or EAP). If no
+      builds are available at all, an error is shown.
+- `latest_release`: Finds the latest available stable release version of the specified `ide_product_code`.
+    - **Fallback**: If no release version is found, it falls back to the latest available build (release or EAP). If no
+      builds are available at all, an error is shown.
+- `latest_installed`: Uses the latest installed version of the IDE on the Coder workspace.
+    - **Fallback**: If no IDE is installed, it falls back to the latest available version for installation. If no builds
+      are available for installation, an error is shown.
+- A specific build number (e.g., `241.14494.240`):  The plugin will look for and use this exact build number.
+    - **Fallback**: If the specific build number is not found among installed or available IDEs, an error is shown.
+
+The plugin first checks for installed IDEs on the remote workspace, then queries for all available (but not yet
+installed) IDEs. Based on the `ide_build_number` hint, it will either pick an already installed IDE or install a new
+one.
+
+### Offline Mode
+
+The Coder Toolbox plugin supports an offline mode, which allows it to function without an internet connection. This is
+particularly useful in environments with restricted network access.
+
+To enable offline mode, the JetBrains Toolbox must be launched with the `--offline-mode` flag. In this mode, the plugin
+relies on local JSON files (`release.json` and `eap.json`) that you must provide in the plugin's data directory. The
+plugin does **not** cache these files automatically.
+
+While online, the plugin fetches the latest IDE feeds from JetBrains' data services. In offline mode, it bypasses these
+network requests and uses the local files instead.
+
+#### Offline Mode File Schema and Location
+
+The feed files must be placed in the plugin's data directory, which varies by operating system:
+
+- **macOS**: `~/Library/Application Support/coder-toolbox/`
+- **Linux**: `~/.local/share/coder-toolbox/`
+- **Windows**: `%LOCALAPPDATA%/coder-toolbox/`
+
+Two files are used for the feeds:
+
+- `release.json`: Contains the stable release versions of JetBrains IDEs.
+- `eap.json`: Contains the Early Access Program (EAP) versions.
+
+You can obtain these files by downloading them from the following URLs:
+
+- **Release feed
+  **: [https://data.services.jetbrains.com/products?type=release](https://data.services.jetbrains.com/products?type=release)
+- **EAP feed
+  **: [https://data.services.jetbrains.com/products?type=eap](https://data.services.jetbrains.com/products?type=eap)
+
+The schema for these JSON files is a list of `IdeProduct` objects. Each `IdeProduct` contains a list of `IdeRelease`
+objects.
+
+**Example `release.json` entry:**
+
+```json
+[
+  {
+    "code": "RR",
+    "intellijProductCode": "RR",
+    "name": "RustRover",
+    "releases": [
+      {
+        "build": "241.14494.240",
+        "version": "2024.1",
+        "type": "release",
+        "date": "2024-04-03"
+      }
+    ]
+  }
+]
+```
+
+**Example `eap.json` entry:**
+
+```json
+[
+  {
+    "code": "RR",
+    "intellijProductCode": "RR",
+    "name": "RustRover",
+    "releases": [
+      {
+        "build": "241.14494.120",
+        "version": "2024.1 EAP 5",
+        "type": "eap",
+        "date": "2024-03-15"
+      }
+    ]
+  }
+]
+```
+
+By providing these files, the plugin can resolve and launch the correct IDE version even when it cannot access the
+internet.
 
 ## GPG Signature Verification
 
@@ -360,6 +461,16 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
   The environment variable CODER_URL will be available to the command process.
 
+- `lastDeploymentURL` the last Coder deployment URL that Coder Toolbox successfully authenticated to.
+
+- `workspaceViewUrl` specifies the dashboard page full URL where users can view details about a workspace.
+  Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment workspace page.
+  This setting supports `$workspaceOwner` and `$workspaceName` as placeholders.
+
+- `workspaceCreateUrl` specifies the dashboard page full URL where users can create new workspaces.
+  Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment templates page.
+  This setting supports `$workspaceOwner` as placeholder with the replacing value being the username that logged in.
+
 ### TLS settings
 
 The following options control the secure communication behavior of the plugin with Coder deployment and its available
@@ -387,6 +498,10 @@ The following options control the SSH behavior of the Coder CLI.
 
 - `Enable SSH wildcard config` enables or disables wildcard entries in the SSH configuration, which allow generic
   rules for matching multiple workspaces.
+
+- `SSH connnection timeout (seconds)` controls how long the SSH client will wait while trying to establish a TCP
+  connection to the remote host before giving up. Defaults to 0 seconds which means it uses the system’s TCP timeout
+  settings instead.
 
 - `SSH proxy log directory` directory where SSH proxy logs are written. Useful for debugging SSH connection issues.
 
