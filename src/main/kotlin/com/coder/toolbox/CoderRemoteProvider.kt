@@ -441,6 +441,7 @@ class CoderRemoteProvider(
         }
         this.client = newRestClient
         this.cli = newCli
+        lastEnvironments.forEach { it.updateClientAndCli(newRestClient, newCli) }
         pollJob = poll(newRestClient, newCli)
         context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI")
         return newRestClient to newCli
@@ -521,6 +522,7 @@ class CoderRemoteProvider(
         }
         this.client = client
         this.cli = cli
+        lastEnvironments.forEach { it.updateClientAndCli(client, cli) }
         environments.showLoadingMessage()
         if (context.settingsStore.useAppNameAsTitle) {
             context.logger.info("Displaying ${client.appName} as main page title")
