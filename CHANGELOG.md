@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.5 - 2026-02-03
+
 ### Added
 
 - support for configuring the SSH connection timeout, defaults to 10 seconds
