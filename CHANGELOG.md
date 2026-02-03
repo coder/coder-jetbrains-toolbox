@@ -2,9 +2,12 @@
 
 ## Unreleased
 
+## 0.8.5 - 2026-02-03
+
 ### Added
 
 - support for configuring the SSH connection timeout, defaults to 10 seconds
+- enhanced IDE resolution by supporting latest EAP, latest release, latest installed labels with clear fallback behavior in URI handlers
 
 ### Fixed
 
