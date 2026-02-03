@@ -9,6 +9,7 @@ import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.sdk.interceptors.Interceptors
+import com.coder.toolbox.util.ReloadableTlsContext
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
@@ -60,9 +61,9 @@ class DeploymentUrlStep(
     }
     val okHttpClient = CoderHttpClientBuilder.build(
         context,
-        interceptors
+        interceptors,
+        ReloadableTlsContext(context.settingsStore.readOnly().tls)
     )
-
 
     override val panel: RowGroup
         get() {
@@ -127,6 +128,7 @@ class DeploymentUrlStep(
                     "Successful response returned null body or oauth server discovery metadata"
                 }
                 context.logger.info(">> registering coder-jetbrains-toolbox as client app $response")
+                // TODO - until https://github.com/coder/coder/issues/20370 is delivered
                 val clientResponse = service.registerClient(
                     ClientRegistrationRequest(
                         clientName = "coder-jetbrains-toolbox",
@@ -147,7 +149,6 @@ class DeploymentUrlStep(
                         authUrl = authServer.authorizationEndpoint,
                         tokenUrl = authServer.tokenEndpoint,
                         clientId = clientResponse.clientId,
-                        clientSecret = clientResponse.clientSecret,
                     )
 
                     val loginUrl = context.oauthManager.initiateLogin(oauthCfg)
