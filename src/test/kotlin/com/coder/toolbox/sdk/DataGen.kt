@@ -75,6 +75,7 @@ class DataGen {
         )
 
         fun user(): User = User(
+            UUID.randomUUID(),
             "tester",
         )
     }
