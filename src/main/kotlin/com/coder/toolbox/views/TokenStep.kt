@@ -50,7 +50,7 @@ class TokenStep(
         }
     }
 
-    override fun onNext(): Boolean {
+    override suspend fun onNext(): Boolean {
         val token = tokenField.textState.value
         if (token.isBlank()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }

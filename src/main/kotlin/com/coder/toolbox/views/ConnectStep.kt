@@ -170,7 +170,7 @@ class ConnectStep(
         }
     }
 
-    override fun onNext(): Boolean {
+    override suspend fun onNext(): Boolean {
         return false
     }
 
