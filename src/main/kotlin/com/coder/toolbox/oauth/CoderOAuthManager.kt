@@ -38,7 +38,8 @@ class CoderOAuthManager : PluginAuthInterface<CoderAccount, CoderOAuthCfg> {
             user.username,
             config.baseUrl,
             config.tokenUrl,
-            config.tokenParams["client_id"]!!
+            config.tokenParams["client_id"]!!,
+            config.tokenParams["client_secret"]
         )
     }
 
@@ -52,7 +53,8 @@ class CoderOAuthManager : PluginAuthInterface<CoderAccount, CoderOAuthCfg> {
             user.username,
             account.baseUrl,
             account.refreshUrl,
-            account.clientId
+            account.clientId,
+            account.clientSecret
         )
     }
 
@@ -80,17 +82,22 @@ class CoderOAuthManager : PluginAuthInterface<CoderAccount, CoderOAuthCfg> {
         val codeVerifier = PKCEGenerator.generateCodeVerifier()
         val codeChallenge = PKCEGenerator.generateCodeChallenge(codeVerifier)
 
+        val tokenParams = buildMap {
+            put("grant_type", "authorization_code")
+            put("client_id", loginConfiguration.clientId)
+            put("code_verifier", codeVerifier)
+
+            loginConfiguration.clientSecret?.let {
+                put("client_secret", it)
+            }
+        }
         return AuthConfiguration(
             authParams = mapOf(
                 "client_id" to loginConfiguration.clientId,
                 "response_type" to "code",
                 "code_challenge" to codeChallenge
             ),
-            tokenParams = mapOf(
-                "grant_type" to "authorization_code",
-                "client_id" to loginConfiguration.clientId,
-                "code_verifier" to codeVerifier
-            ),
+            tokenParams = tokenParams,
             baseUrl = loginConfiguration.baseUrl,
             authUrl = loginConfiguration.authUrl,
             tokenUrl = loginConfiguration.tokenUrl,
@@ -104,10 +111,13 @@ class CoderOAuthManager : PluginAuthInterface<CoderAccount, CoderOAuthCfg> {
     override fun createRefreshConfig(account: CoderAccount): RefreshConfiguration {
         return object : RefreshConfiguration {
             override val refreshUrl: String = account.baseUrl
-            override val parameters: Map<String, String> = mapOf(
-                "grant_type" to "refresh_token",
-                "client_id" to account.clientId
-            )
+            override val parameters: Map<String, String> = buildMap {
+                put("grant_type", "refresh_token")
+                put("client_id", account.clientId)
+                if (account.clientSecret != null) {
+                    put("client_secret", account.clientSecret)
+                }
+            }
             override val authorization: String? = null
             override val contentType: ContentType = FORM_URL_ENCODED
         }
@@ -118,5 +128,6 @@ data class CoderOAuthCfg(
     val baseUrl: String,
     val authUrl: String,
     val tokenUrl: String,
-    val clientId: String
+    val clientId: String,
+    val clientSecret: String? = null
 )

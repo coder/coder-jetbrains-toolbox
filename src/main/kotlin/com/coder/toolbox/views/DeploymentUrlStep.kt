@@ -148,6 +148,7 @@ class DeploymentUrlStep(
             authUrl = authServer.authorizationEndpoint,
             tokenUrl = authServer.tokenEndpoint,
             clientId = clientResponse.clientId,
+            clientSecret = clientResponse.clientSecret
         )
 
         val loginUrl = context.oauthManager.initiateLogin(oauthCfg)
