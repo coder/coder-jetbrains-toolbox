@@ -6,6 +6,7 @@ import com.coder.toolbox.oauth.AuthorizationServer
 import com.coder.toolbox.oauth.ClientRegistrationRequest
 import com.coder.toolbox.oauth.CoderAuthorizationApi
 import com.coder.toolbox.oauth.CoderOAuthCfg
+import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
@@ -190,7 +191,13 @@ class DeploymentUrlStep(
                 grantTypes = listOf("authorization_code", "refresh_token"),
                 responseTypes = authServer.supportedResponseTypes,
                 scope = "coder:workspaces.operate coder:workspaces.delete coder:workspaces.access user:read",
-                tokenEndpointAuthMethod = "client_secret_post"
+                tokenEndpointAuthMethod = if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_POST)) {
+                    "client_secret_post"
+                } else if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_BASIC)) {
+                    "client_secret_basic"
+                } else {
+                    "none"
+                }
             )
         )
 
