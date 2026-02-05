@@ -15,7 +15,7 @@ data class ClientRegistrationResponse(
     @field:Json(name = "grant_types") val grantTypes: List<String>,
     @field:Json(name = "response_types") val responseTypes: List<String>,
     @field:Json(name = "scope") val scope: String,
-    @field:Json(name = "token_endpoint_auth_method") val tokenEndpointAuthMethod: String,
+    @field:Json(name = "token_endpoint_auth_method") val tokenEndpointAuthMethod: TokenEndpointAuthMethod,
     @field:Json(name = "client_id_issued_at") val clientIdIssuedAt: Long?,
     @field:Json(name = "client_secret_expires_at") val clientSecretExpiresAt: Long?,
     @field:Json(name = "registration_client_uri") val registrationClientUri: String,

@@ -10,6 +10,7 @@ import com.jetbrains.toolbox.api.core.auth.OAuthToken
 import com.jetbrains.toolbox.api.core.auth.PluginAuthInterface
 import com.jetbrains.toolbox.api.core.auth.RefreshConfiguration
 import com.squareup.moshi.Moshi
+import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -82,29 +83,32 @@ class CoderOAuthManager : PluginAuthInterface<CoderAccount, CoderOAuthCfg> {
         val codeVerifier = PKCEGenerator.generateCodeVerifier()
         val codeChallenge = PKCEGenerator.generateCodeChallenge(codeVerifier)
 
-        val tokenParams = buildMap {
-            put("grant_type", "authorization_code")
-            put("client_id", loginConfiguration.clientId)
-            put("code_verifier", codeVerifier)
-
-            loginConfiguration.clientSecret?.let {
-                put("client_secret", it)
-            }
-        }
         return AuthConfiguration(
             authParams = mapOf(
                 "client_id" to loginConfiguration.clientId,
                 "response_type" to "code",
                 "code_challenge" to codeChallenge
             ),
-            tokenParams = tokenParams,
+            tokenParams = buildMap {
+                put("grant_type", "authorization_code")
+                put("code", loginConfiguration.clientSecret)
+                if (loginConfiguration.tokenAuthMethod == TokenEndpointAuthMethod.CLIENT_SECRET_POST) {
+                    put("client_id", loginConfiguration.clientId)
+                    put("client_secret", loginConfiguration.clientSecret)
+                }
+                put("redirect_uri", loginConfiguration.redirectUri)
+            },
             baseUrl = loginConfiguration.baseUrl,
             authUrl = loginConfiguration.authUrl,
             tokenUrl = loginConfiguration.tokenUrl,
             codeChallengeParamName = "code_challenge",
             codeChallengeMethod = "S256",
             verifierParamName = "code_verifier",
-            authorization = null
+            authorization = if (loginConfiguration.tokenAuthMethod == TokenEndpointAuthMethod.CLIENT_SECRET_BASIC) {
+                Credentials.basic(loginConfiguration.clientId, loginConfiguration.clientSecret)
+            } else {
+                null
+            }
         )
     }
 
@@ -129,5 +133,7 @@ data class CoderOAuthCfg(
     val authUrl: String,
     val tokenUrl: String,
     val clientId: String,
-    val clientSecret: String? = null
+    val clientSecret: String,
+    val tokenAuthMethod: TokenEndpointAuthMethod,
+    val redirectUri: String
 )

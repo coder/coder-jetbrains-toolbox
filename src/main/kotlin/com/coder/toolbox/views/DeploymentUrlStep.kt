@@ -33,6 +33,8 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.MalformedURLException
 import java.net.URL
 
+private const val REDIRECT_URI = "jetbrains://gateway/com.coder.toolbox/auth"
+
 /**
  * A page with a field for providing the Coder deployment URL.
  *
@@ -148,7 +150,9 @@ class DeploymentUrlStep(
             authUrl = authServer.authorizationEndpoint,
             tokenUrl = authServer.tokenEndpoint,
             clientId = clientResponse.clientId,
-            clientSecret = clientResponse.clientSecret
+            clientSecret = clientResponse.clientSecret,
+            tokenAuthMethod = clientResponse.tokenEndpointAuthMethod,
+            redirectUri = REDIRECT_URI
         )
 
         val loginUrl = context.oauthManager.initiateLogin(oauthCfg)
@@ -188,7 +192,7 @@ class DeploymentUrlStep(
         val clientResponse = service.registerClient(
             ClientRegistrationRequest(
                 clientName = "coder-jetbrains-toolbox",
-                redirectUris = listOf("jetbrains://gateway/com.coder.toolbox/auth"),
+                redirectUris = listOf(REDIRECT_URI),
                 grantTypes = listOf("authorization_code", "refresh_token"),
                 responseTypes = authServer.supportedResponseTypes,
                 scope = "coder:workspaces.operate coder:workspaces.delete coder:workspaces.access user:read",
