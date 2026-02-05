@@ -192,10 +192,10 @@ class DeploymentUrlStep(
                 grantTypes = listOf("authorization_code", "refresh_token"),
                 responseTypes = authServer.supportedResponseTypes,
                 scope = "coder:workspaces.operate coder:workspaces.delete coder:workspaces.access user:read",
-                tokenEndpointAuthMethod = if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_POST)) {
-                    "client_secret_post"
-                } else if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_BASIC)) {
+                tokenEndpointAuthMethod = if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_BASIC)) {
                     "client_secret_basic"
+                } else if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_POST)) {
+                    "client_secret_port"
                 } else {
                     "none"
                 }
