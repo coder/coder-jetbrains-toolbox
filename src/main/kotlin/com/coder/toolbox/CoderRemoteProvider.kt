@@ -341,6 +341,11 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         try {
+            if (context.oauthManager.canHandle(uri)) {
+                context.oauthManager.handle(uri)
+                return
+            }
+
             val params = uri.toQueryParameters()
             if (params.isEmpty()) {
                 // probably a plugin installation scenario
