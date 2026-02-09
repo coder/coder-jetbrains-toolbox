@@ -21,6 +21,11 @@ object CoderCliSetupContext {
     var token: String? = null
 
     /**
+     * The OAuth session context.
+     */
+    var oauthSession: CoderOAuthSessionContext? = null
+
+    /**
      * Returns true if a URL is currently set.
      */
     fun hasUrl(): Boolean = url != null
@@ -31,9 +36,14 @@ object CoderCliSetupContext {
     fun hasToken(): Boolean = !token.isNullOrBlank()
 
     /**
+     * Returns true if an OAuth access token is currently set.
+     */
+    fun hasOAuthToken(): Boolean = !oauthSession?.accessToken.isNullOrBlank()
+
+    /**
      * Returns true if URL or token is missing and auth is not yet possible.
      */
-    fun isNotReadyForAuth(): Boolean = !(hasUrl() && token != null)
+    fun isNotReadyForAuth(): Boolean = !(hasUrl() && (hasToken() || hasOAuthToken()))
 
     /**
      * Resets both URL and token to null.
@@ -41,5 +51,16 @@ object CoderCliSetupContext {
     fun reset() {
         url = null
         token = null
+        oauthSession = null
     }
 }
+
+data class CoderOAuthSessionContext(
+    val clientId: String,
+    val clientSecret: String,
+    val tokenCodeVerifier: String,
+    val state: String,
+    val tokenEndpoint: String,
+    var accessToken: String? = null,
+    var refreshToken: String? = null
+)

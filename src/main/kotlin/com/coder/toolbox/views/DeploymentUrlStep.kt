@@ -5,7 +5,7 @@ import com.coder.toolbox.browser.browse
 import com.coder.toolbox.oauth.AuthorizationServer
 import com.coder.toolbox.oauth.ClientRegistrationRequest
 import com.coder.toolbox.oauth.CoderAuthorizationApi
-import com.coder.toolbox.oauth.CoderOAuthCfg
+import com.coder.toolbox.oauth.PKCEGenerator
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
@@ -17,6 +17,7 @@ import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.views.state.CoderCliSetupContext
 import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.LabelField
@@ -28,16 +29,20 @@ import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.MalformedURLException
 import java.net.URL
+import java.util.UUID
 
 private const val REDIRECT_URI = "jetbrains://gateway/com.coder.toolbox/auth"
+private const val OAUTH2_SCOPE: String =
+    "coder:workspaces.operate coder:workspaces.delete coder:workspaces.access user:read"
 
 /**
  * A page with a field for providing the Coder deployment URL.
- *
+ *\
  * Populates with the provided URL, at which point the user can accept or
  * enter their own.
  */
@@ -107,59 +112,69 @@ class DeploymentUrlStep(
 
     override suspend fun onNext(): Boolean {
         context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
-        val urlString = urlField.textState.value
-        if (urlString.isBlank()) {
+        val rawUrl = urlField.contentState.value
+        if (rawUrl.isBlank()) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return false
         }
 
         try {
-            CoderCliSetupContext.url = validateRawUrl(urlString)
+            CoderCliSetupContext.url = validateRawUrl(rawUrl)
         } catch (e: MalformedURLException) {
             errorReporter.report("URL is invalid", e)
             return false
         }
 
-        if (preferOAuth2IfAvailable.checkedState.value) {
+        if (context.settingsStore.requiresMTlsAuth) {
+            CoderCliSetupWizardState.goToLastStep()
+            return true
+        }
+        if (context.settingsStore.requiresTokenAuth && preferOAuth2IfAvailable.checkedState.value) {
             try {
-                handleOAuth2(urlString)
+                CoderCliSetupContext.oauthSession = handleOAuth2(rawUrl)
                 return false
             } catch (e: Exception) {
                 errorReporter.report("Failed to check OAuth support: ${e.message}", e)
             }
         }
-
-        if (context.settingsStore.requiresTokenAuth) {
-            CoderCliSetupWizardState.goToNextStep()
-        } else {
-            CoderCliSetupWizardState.goToLastStep()
-        }
+        // if all else fails try the good old API token auth
+        CoderCliSetupWizardState.goToNextStep()
         return true
     }
 
-    private suspend fun handleOAuth2(urlString: String) {
+    private suspend fun handleOAuth2(urlString: String): CoderOAuthSessionContext? {
         val service = createAuthorizationService(urlString)
-        val authServer = fetchDiscoveryMetadata(service) ?: return
+        val authServer = fetchDiscoveryMetadata(service) ?: return null
 
-        context.logger.info(">> registering coder-jetbrains-toolbox as client app")
-        val clientResponse = registerClient(service, authServer) ?: return
+        context.logger.debug("registering coder-jetbrains-toolbox as client app")
+        val clientResponse = registerClient(service, authServer) ?: return null
 
-        context.logger.info(">> initiating oauth login with $clientResponse")
-        val oauthCfg = CoderOAuthCfg(
-            baseUrl = CoderCliSetupContext.url!!.toString(),
-            authUrl = authServer.authorizationEndpoint,
-            tokenUrl = authServer.tokenEndpoint,
-            clientId = clientResponse.clientId,
-            clientSecret = clientResponse.clientSecret,
-            tokenAuthMethod = clientResponse.tokenEndpointAuthMethod,
-            redirectUri = REDIRECT_URI
-        )
+        val codeVerifier = PKCEGenerator.generateCodeVerifier()
+        val codeChallenge = PKCEGenerator.generateCodeChallenge(codeVerifier)
+        val state = UUID.randomUUID().toString()
 
-        val loginUrl = context.oauthManager.initiateLogin(oauthCfg)
-        context.logger.info(">> launching browser for login")
+        val loginUrl = authServer.authorizationEndpoint.toHttpUrl().newBuilder()
+            .addQueryParameter("client_id", clientResponse.clientId)
+            .addQueryParameter("response_type", "code")
+            .addQueryParameter("code_challenge", codeChallenge)
+            .addQueryParameter("code_challenge_method", "S256")
+            .addQueryParameter("code_challenge", codeChallenge)
+            .addQueryParameter("scope", OAUTH2_SCOPE)
+            .build()
+            .toString()
+
+        context.logger.info("Launching browser for OAuth2 authentication")
         context.desktop.browse(loginUrl) {
             context.ui.showErrorInfoPopup(it)
         }
+
+        return CoderOAuthSessionContext(
+            clientId = clientResponse.clientId,
+            clientSecret = clientResponse.clientSecret,
+            tokenCodeVerifier = codeVerifier,
+            state = state,
+            tokenEndpoint = authServer.tokenEndpoint
+        )
     }
 
     private fun createAuthorizationService(urlString: String): CoderAuthorizationApi {
@@ -181,6 +196,7 @@ class DeploymentUrlStep(
         if (response.isSuccessful) {
             return response.body()
         }
+        context.logger.info("OAuth discovery failed: ${response.code()} ${response.message()} || ${response.errorBody()}")
         return null
     }
 
@@ -195,11 +211,11 @@ class DeploymentUrlStep(
                 redirectUris = listOf(REDIRECT_URI),
                 grantTypes = listOf("authorization_code", "refresh_token"),
                 responseTypes = authServer.supportedResponseTypes,
-                scope = "coder:workspaces.operate coder:workspaces.delete coder:workspaces.access user:read",
+                scope = OAUTH2_SCOPE,
                 tokenEndpointAuthMethod = if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_BASIC)) {
                     "client_secret_basic"
                 } else if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_POST)) {
-                    "client_secret_port"
+                    "client_secret_post"
                 } else {
                     "none"
                 }
