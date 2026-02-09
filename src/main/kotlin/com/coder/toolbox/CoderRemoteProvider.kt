@@ -347,6 +347,7 @@ class CoderRemoteProvider(
         try {
             if (uri.toString().startsWith("jetbrains://gateway/com.coder.toolbox/auth")) {
                 handleOAuthUri(uri)
+                return
             }
 
             val params = uri.toQueryParameters()
