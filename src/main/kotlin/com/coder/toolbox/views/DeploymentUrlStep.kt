@@ -7,11 +7,8 @@ import com.coder.toolbox.oauth.ClientRegistrationRequest
 import com.coder.toolbox.oauth.CoderAuthorizationApi
 import com.coder.toolbox.oauth.PKCEGenerator
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
-import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
-import com.coder.toolbox.sdk.interceptors.Interceptors
-import com.coder.toolbox.util.ReloadableTlsContext
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
@@ -68,15 +65,7 @@ class DeploymentUrlStep(
 
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
 
-    val interceptors = buildList {
-        add((Interceptors.userAgent(PluginManager.pluginInfo.version)))
-        add(Interceptors.logging(context))
-    }
-    val okHttpClient = CoderHttpClientBuilder.build(
-        context,
-        interceptors,
-        ReloadableTlsContext(context.settingsStore.readOnly().tls)
-    )
+    val okHttpClient = CoderHttpClientBuilder.default(context)
 
     override val panel: RowGroup
         get() {

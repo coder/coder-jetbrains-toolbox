@@ -1,6 +1,8 @@
 package com.coder.toolbox.sdk
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.plugin.PluginManager
+import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.ReloadableTlsContext
 import com.jetbrains.toolbox.api.remoteDev.connection.ProxyAuth
@@ -47,5 +49,17 @@ object CoderHttpClientBuilder {
 
         }
         return builder.build()
+    }
+
+    fun default(context: CoderToolboxContext): OkHttpClient {
+        val interceptors = buildList {
+            add((Interceptors.userAgent(PluginManager.pluginInfo.version)))
+            add(Interceptors.logging(context))
+        }
+        return build(
+            context,
+            interceptors,
+            ReloadableTlsContext(context.settingsStore.readOnly().tls)
+        )
     }
 }

@@ -12,14 +12,11 @@ import com.coder.toolbox.cli.gpg.GPGVerifier
 import com.coder.toolbox.cli.gpg.VerificationResult
 import com.coder.toolbox.cli.gpg.VerificationResult.Failed
 import com.coder.toolbox.cli.gpg.VerificationResult.Invalid
-import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
-import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.settings.SignatureFallbackStrategy.ALLOW
 import com.coder.toolbox.util.InvalidVersionException
-import com.coder.toolbox.util.ReloadableTlsContext
 import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.escapeSubcommand
@@ -148,15 +145,8 @@ class CoderCLIManager(
     val coderConfigPath: Path = context.settingsStore.dataDir(deploymentURL).resolve("config")
 
     private fun createDownloadService(): CoderDownloadService {
-        val interceptors = buildList {
-            add((Interceptors.userAgent(PluginManager.pluginInfo.version)))
-            add(Interceptors.logging(context))
-        }
-        val okHttpClient = CoderHttpClientBuilder.build(
-            context,
-            interceptors,
-            ReloadableTlsContext(context.settingsStore.readOnly().tls)
-        )
+
+        val okHttpClient = CoderHttpClientBuilder.default(context)
 
         val retrofit = Retrofit.Builder()
             .baseUrl(deploymentURL.toString())
