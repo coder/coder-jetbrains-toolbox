@@ -149,6 +149,7 @@ class DeploymentUrlStep(
             .addQueryParameter("code_challenge_method", "S256")
             .addQueryParameter("code_challenge", codeChallenge)
             .addQueryParameter("scope", OAUTH2_SCOPE)
+            .addQueryParameter("state", state)
             .build()
             .toString()
 
