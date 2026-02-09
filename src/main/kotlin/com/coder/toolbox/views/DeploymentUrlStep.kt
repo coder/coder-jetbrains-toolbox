@@ -7,6 +7,7 @@ import com.coder.toolbox.oauth.ClientRegistrationRequest
 import com.coder.toolbox.oauth.CoderAuthorizationApi
 import com.coder.toolbox.oauth.PKCEGenerator
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
+import com.coder.toolbox.oauth.getPreferredOrAvailable
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
@@ -162,7 +163,8 @@ class DeploymentUrlStep(
             clientSecret = clientResponse.clientSecret,
             tokenCodeVerifier = codeVerifier,
             state = state,
-            tokenEndpoint = authServer.tokenEndpoint
+            tokenEndpoint = authServer.tokenEndpoint,
+            tokenAuthMethod = authServer.authMethodForTokenEndpoint.getPreferredOrAvailable()
         )
     }
 

@@ -3,7 +3,9 @@ package com.coder.toolbox
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.feed.IdeFeedManager
+import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.plugin.PluginManager
+import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
@@ -35,6 +37,7 @@ import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -48,6 +51,7 @@ import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.net.URI
 import java.net.URL
+import java.util.Base64
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
@@ -341,9 +345,8 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         try {
-            if (context.oauthManager.canHandle(uri)) {
-                context.oauthManager.handle(uri)
-                return
+            if (uri.toString().startsWith("jetbrains://gateway/com.coder.toolbox/auth")) {
+                handleOAuthUri(uri)
             }
 
             val params = uri.toQueryParameters()
@@ -404,6 +407,94 @@ class CoderRemoteProvider(
             coderHeaderPage.isBusy.update { false }
             isHandlingUri.set(false)
             firstRun = false
+        }
+    }
+
+    private suspend fun handleOAuthUri(uri: URI) {
+        val params = uri.toQueryParameters()
+        val code = params["code"]
+        val state = params["state"]
+
+        if (code != null && state != null && state == CoderCliSetupContext.oauthSession?.state) {
+            if (CoderCliSetupContext.oauthSession == null) {
+                context.logAndShowError(
+                    "Failed to handle OAuth code",
+                    "We received an OAuth code but our OAuth session is null"
+                )
+                return
+            }
+            exchangeOAuthCodeForToken(code)
+        }
+    }
+
+    private suspend fun exchangeOAuthCodeForToken(code: String) {
+        try {
+            context.logger.info("Handling OAuth callback...")
+            val session = CoderCliSetupContext.oauthSession ?: return
+
+            // we need to make a POST request to the token endpoint
+            val formBodyBuilder = okhttp3.FormBody.Builder()
+                .add("code", code)
+                .add("grant_type", "authorization_code")
+                .add("code_verifier", session.tokenCodeVerifier)
+                .add("redirect_uri", "jetbrains://gateway/com.coder.toolbox/auth")
+
+            val requestBuilder = okhttp3.Request.Builder()
+                .url(session.tokenEndpoint)
+
+            when (session.tokenAuthMethod) {
+                TokenEndpointAuthMethod.CLIENT_SECRET_BASIC -> {
+                    val credentials = "${session.clientId}:${session.clientSecret}"
+                    val encoded = Base64.getEncoder().encodeToString(credentials.toByteArray())
+                    requestBuilder.header("Authorization", "Basic $encoded")
+                }
+
+                TokenEndpointAuthMethod.CLIENT_SECRET_POST -> {
+                    formBodyBuilder.add("client_id", session.clientId)
+                    formBodyBuilder.add("client_secret", session.clientSecret)
+                }
+
+                else -> {
+                    formBodyBuilder.add("client_id", session.clientId)
+                }
+            }
+
+            val request = requestBuilder
+                .post(formBodyBuilder.build())
+                .build()
+
+            val response = CoderHttpClientBuilder.default(context)
+                .newCall(request)
+                .execute()
+
+            if (!response.isSuccessful) {
+                context.logAndShowError("OAuth Error", "Failed to exchange code for token")
+                return
+            }
+
+            val responseBody = response.body?.string() ?: return
+            val adapter = Moshi
+                .Builder()
+                .build()
+                .adapter(com.coder.toolbox.oauth.OAuthTokenResponse::class.java)
+            val tokenResponse = adapter.fromJson(responseBody) ?: return
+
+            session.accessToken = tokenResponse.accessToken
+            session.refreshToken = tokenResponse.refreshToken
+
+            CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
+            CoderCliSetupWizardPage(
+                context, settingsPage, visibilityState,
+                initialAutoSetup = true,
+                jumpToMainPageOnError = true,
+                connectSynchronously = true,
+                onConnect = ::onConnect
+            ).apply {
+                beforeShow()
+            }
+
+        } catch (e: Exception) {
+            context.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
         }
     }
 
@@ -520,7 +611,9 @@ class CoderRemoteProvider(
         close()
         context.settingsStore.updateLastUsedUrl(client.url)
         if (context.settingsStore.requiresTokenAuth) {
-            context.secrets.storeTokenFor(client.url, client.token ?: "")
+            if (client.token != null) {
+                context.secrets.storeTokenFor(client.url, client.token)
+            }
             context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
         } else {
             context.logger.info("Deployment URL was stored and will be available for automatic connection")

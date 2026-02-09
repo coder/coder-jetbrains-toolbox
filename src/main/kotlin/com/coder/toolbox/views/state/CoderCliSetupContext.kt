@@ -1,5 +1,6 @@
 package com.coder.toolbox.views.state
 
+import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import java.net.URL
 
 /**
@@ -62,5 +63,6 @@ data class CoderOAuthSessionContext(
     val state: String,
     val tokenEndpoint: String,
     var accessToken: String? = null,
-    var refreshToken: String? = null
+    var refreshToken: String? = null,
+    val tokenAuthMethod: TokenEndpointAuthMethod
 )
