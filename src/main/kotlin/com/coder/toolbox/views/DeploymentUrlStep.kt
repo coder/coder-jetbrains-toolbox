@@ -146,7 +146,6 @@ class DeploymentUrlStep(
         val loginUrl = authServer.authorizationEndpoint.toHttpUrl().newBuilder()
             .addQueryParameter("client_id", clientResponse.clientId)
             .addQueryParameter("response_type", "code")
-            .addQueryParameter("code_challenge", codeChallenge)
             .addQueryParameter("code_challenge_method", "S256")
             .addQueryParameter("code_challenge", codeChallenge)
             .addQueryParameter("scope", OAUTH2_SCOPE)
