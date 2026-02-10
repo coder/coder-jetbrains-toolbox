@@ -22,3 +22,13 @@ enum class TokenEndpointAuthMethod {
     @Json(name = "client_secret_basic")
     CLIENT_SECRET_BASIC,
 }
+
+fun List<TokenEndpointAuthMethod>.getPreferredOrAvailable(): TokenEndpointAuthMethod {
+    return when {
+        // secret basic is preferred by coder
+        TokenEndpointAuthMethod.CLIENT_SECRET_BASIC in this -> TokenEndpointAuthMethod.CLIENT_SECRET_BASIC
+        TokenEndpointAuthMethod.CLIENT_SECRET_POST in this -> TokenEndpointAuthMethod.CLIENT_SECRET_POST
+        else -> TokenEndpointAuthMethod.NONE
+
+    }
+}
