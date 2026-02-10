@@ -73,7 +73,7 @@ class ConnectStep(
             return
         }
 
-        if (context.settingsStore.requiresTokenAuth && !CoderCliSetupContext.hasToken()) {
+        if (context.settingsStore.requiresTokenAuth && !CoderCliSetupContext.hasToken() && !CoderCliSetupContext.hasOAuthToken()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
@@ -92,7 +92,8 @@ class ConnectStep(
                     context,
                     url,
                     if (context.settingsStore.requiresTokenAuth) CoderCliSetupContext.token else null,
-                    PluginManager.pluginInfo.version,
+                    if (context.settingsStore.requiresTokenAuth && CoderCliSetupContext.hasOAuthToken()) CoderCliSetupContext.oauthSession!!.accessToken else null,
+                    PluginManager.pluginInfo.version
                 )
                 // allows interleaving with the back/cancel action
                 yield()
@@ -109,7 +110,11 @@ class ConnectStep(
                     logAndReportProgress("Configuring Coder CLI...")
                     // allows interleaving with the back/cancel action
                     yield()
-                    cli.login(client.token!!)
+                    if (CoderCliSetupContext.hasOAuthToken()) {
+                        cli.login(CoderCliSetupContext.oauthSession!!.accessToken!!)
+                    } else {
+                        cli.login(client.token!!)
+                    }
                 }
                 logAndReportProgress("Successfully configured ${hostName}...")
                 // allows interleaving with the back/cancel action

@@ -42,6 +42,7 @@ open class CoderRestClient(
     private val context: CoderToolboxContext,
     val url: URL,
     val token: String?,
+    val oauthToken: String?,
     private val pluginVersion: String = "development",
 ) {
     private lateinit var tlsContext: ReloadableTlsContext
@@ -70,10 +71,11 @@ open class CoderRestClient(
 
         val interceptors = buildList {
             if (context.settingsStore.requiresTokenAuth) {
-                if (token.isNullOrBlank()) {
-                    throw IllegalStateException("Token is required for $url deployment")
+                val oauthOrApiToken = oauthToken ?: token
+                if (oauthOrApiToken.isNullOrBlank()) {
+                    throw IllegalStateException("OAuth or API token is required for $url deployment")
                 }
-                add(Interceptors.tokenAuth(token))
+                add(Interceptors.tokenAuth(oauthOrApiToken))
             }
             add((Interceptors.userAgent(pluginVersion)))
             add(Interceptors.externalHeaders(context, url))
