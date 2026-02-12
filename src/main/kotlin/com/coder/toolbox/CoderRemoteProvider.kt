@@ -3,6 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.feed.IdeFeedManager
+import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
@@ -49,9 +50,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
+import okhttp3.Credentials
 import java.net.URI
 import java.net.URL
-import java.util.Base64
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
@@ -381,7 +382,8 @@ class CoderRemoteProvider(
                     initialAutoSetup = true,
                     jumpToMainPageOnError = true,
                     connectSynchronously = true,
-                    onConnect = ::onConnect
+                    onConnect = ::onConnect,
+                    onTokenRefreshed = ::onTokenRefreshed
                 ).apply {
                     beforeShow()
                 }
@@ -445,9 +447,7 @@ class CoderRemoteProvider(
 
             when (session.tokenAuthMethod) {
                 TokenEndpointAuthMethod.CLIENT_SECRET_BASIC -> {
-                    val credentials = "${session.clientId}:${session.clientSecret}"
-                    val encoded = Base64.getEncoder().encodeToString(credentials.toByteArray())
-                    requestBuilder.header("Authorization", "Basic $encoded")
+                    requestBuilder.header("Authorization", Credentials.basic(session.clientId, session.clientSecret))
                 }
 
                 TokenEndpointAuthMethod.CLIENT_SECRET_POST -> {
@@ -477,11 +477,10 @@ class CoderRemoteProvider(
             val adapter = Moshi
                 .Builder()
                 .build()
-                .adapter(com.coder.toolbox.oauth.OAuthTokenResponse::class.java)
+                .adapter(OAuthTokenResponse::class.java)
             val tokenResponse = adapter.fromJson(responseBody) ?: return
 
-            session.accessToken = tokenResponse.accessToken
-            session.refreshToken = tokenResponse.refreshToken
+            session.tokenResponse = tokenResponse
 
             CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
             CoderCliSetupWizardPage(
@@ -489,7 +488,8 @@ class CoderRemoteProvider(
                 initialAutoSetup = true,
                 jumpToMainPageOnError = true,
                 connectSynchronously = true,
-                onConnect = ::onConnect
+                onConnect = ::onConnect,
+                onTokenRefreshed = ::onTokenRefreshed
             ).apply {
                 beforeShow()
             }
@@ -531,6 +531,7 @@ class CoderRemoteProvider(
             context,
             url,
             token,
+            null,
             PluginManager.pluginInfo.version,
         ).apply { initializeSession() }
         val newCli = CoderCLIManager(context, url).apply {
@@ -576,7 +577,8 @@ class CoderRemoteProvider(
                         context, settingsPage, visibilityState,
                         initialAutoSetup = true,
                         jumpToMainPageOnError = false,
-                        onConnect = ::onConnect
+                        onConnect = ::onConnect,
+                        onTokenRefreshed = ::onTokenRefreshed
                     )
                 } catch (ex: Exception) {
                     errorBuffer.add(ex)
@@ -587,7 +589,13 @@ class CoderRemoteProvider(
 
             // Login flow.
             val setupWizardPage =
-                CoderCliSetupWizardPage(context, settingsPage, visibilityState, onConnect = ::onConnect)
+                CoderCliSetupWizardPage(
+                    context,
+                    settingsPage,
+                    visibilityState,
+                    onConnect = ::onConnect,
+                    onTokenRefreshed = ::onTokenRefreshed
+                )
             // We might have navigated here due to a polling error.
             errorBuffer.forEach {
                 setupWizardPage.notify("Error encountered", it)
@@ -606,6 +614,10 @@ class CoderRemoteProvider(
     private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !settings.requiresTokenAuth)
 
     fun canAutoLogin(): Boolean = !context.secrets.tokenFor(context.deploymentUrl).isNullOrBlank()
+
+    private suspend fun onTokenRefreshed(token: OAuthTokenResponse) {
+        cli?.login(token.accessToken)
+    }
 
     private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.

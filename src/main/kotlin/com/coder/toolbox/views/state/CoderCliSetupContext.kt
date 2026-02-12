@@ -1,5 +1,6 @@
 package com.coder.toolbox.views.state
 
+import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import java.net.URL
 
@@ -39,12 +40,12 @@ object CoderCliSetupContext {
     /**
      * Returns true if an OAuth access token is currently set.
      */
-    fun hasOAuthToken(): Boolean = !oauthSession?.accessToken.isNullOrBlank()
+    fun hasOAuthSession(): Boolean = oauthSession?.tokenResponse?.accessToken != null
 
     /**
      * Returns true if URL or token is missing and auth is not yet possible.
      */
-    fun isNotReadyForAuth(): Boolean = !(hasUrl() && (hasToken() || hasOAuthToken()))
+    fun isNotReadyForAuth(): Boolean = !(hasUrl() && (hasToken() || hasOAuthSession()))
 
     /**
      * Resets both URL and token to null.
@@ -62,7 +63,8 @@ data class CoderOAuthSessionContext(
     val tokenCodeVerifier: String,
     val state: String,
     val tokenEndpoint: String,
-    var accessToken: String? = null,
-    var refreshToken: String? = null,
+    var tokenResponse: OAuthTokenResponse? = null,
     val tokenAuthMethod: TokenEndpointAuthMethod
 )
+
+fun CoderOAuthSessionContext?.hasRefreshToken(): Boolean = this?.tokenResponse?.refreshToken != null

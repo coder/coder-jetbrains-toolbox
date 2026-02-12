@@ -3,6 +3,7 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
+import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.views.state.CoderCliSetupContext
@@ -34,6 +35,7 @@ class ConnectStep(
     visibilityState: StateFlow<ProviderVisibilityState>,
     private val refreshWizard: () -> Unit,
     private val onConnect: suspend (client: CoderRestClient, cli: CoderCLIManager) -> Unit,
+    private val onTokenRefreshed: (suspend (token: OAuthTokenResponse) -> Unit)? = null
 ) : WizardStep {
     private var signInJob: Job? = null
 
@@ -73,7 +75,7 @@ class ConnectStep(
             return
         }
 
-        if (context.settingsStore.requiresTokenAuth && !CoderCliSetupContext.hasToken() && !CoderCliSetupContext.hasOAuthToken()) {
+        if (context.settingsStore.requiresTokenAuth && !CoderCliSetupContext.hasToken() && !CoderCliSetupContext.hasOAuthSession()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
@@ -92,8 +94,9 @@ class ConnectStep(
                     context,
                     url,
                     if (context.settingsStore.requiresTokenAuth) CoderCliSetupContext.token else null,
-                    if (context.settingsStore.requiresTokenAuth && CoderCliSetupContext.hasOAuthToken()) CoderCliSetupContext.oauthSession!!.accessToken else null,
-                    PluginManager.pluginInfo.version
+                    if (context.settingsStore.requiresTokenAuth && CoderCliSetupContext.hasOAuthSession()) CoderCliSetupContext.oauthSession!!.copy() else null,
+                    PluginManager.pluginInfo.version,
+                    onTokenRefreshed
                 )
                 // allows interleaving with the back/cancel action
                 yield()
@@ -110,8 +113,8 @@ class ConnectStep(
                     logAndReportProgress("Configuring Coder CLI...")
                     // allows interleaving with the back/cancel action
                     yield()
-                    if (CoderCliSetupContext.hasOAuthToken()) {
-                        cli.login(CoderCliSetupContext.oauthSession!!.accessToken!!)
+                    if (CoderCliSetupContext.hasOAuthSession()) {
+                        cli.login(CoderCliSetupContext.oauthSession!!.tokenResponse!!.accessToken)
                     } else {
                         cli.login(client.token!!)
                     }
