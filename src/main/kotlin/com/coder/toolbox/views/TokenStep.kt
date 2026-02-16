@@ -2,8 +2,8 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.withPath
-import com.coder.toolbox.views.state.CoderCliSetupContext
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.coder.toolbox.views.state.CoderSetupWizardContext
+import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.jetbrains.toolbox.api.ui.components.LinkField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
@@ -35,9 +35,9 @@ class TokenStep(
         errorField.textState.update {
             context.i18n.pnotr("")
         }
-        if (CoderCliSetupContext.hasUrl()) {
+        if (CoderSetupWizardContext.hasUrl()) {
             tokenField.textState.update {
-                context.secrets.tokenFor(CoderCliSetupContext.url!!) ?: ""
+                context.secrets.tokenFor(CoderSetupWizardContext.url!!) ?: ""
             }
         } else {
             errorField.textState.update {
@@ -46,7 +46,7 @@ class TokenStep(
             }
         }
         (linkField.urlState as MutableStateFlow).update {
-            CoderCliSetupContext.url!!.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
+            CoderSetupWizardContext.url!!.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
         }
     }
 
@@ -57,12 +57,12 @@ class TokenStep(
             return false
         }
 
-        CoderCliSetupContext.token = token
-        CoderCliSetupWizardState.goToNextStep()
+        CoderSetupWizardContext.token = token
+        CoderSetupWizardState.goToNextStep()
         return true
     }
 
     override fun onBack() {
-        CoderCliSetupWizardState.goToPreviousStep()
+        CoderSetupWizardState.goToPreviousStep()
     }
 }

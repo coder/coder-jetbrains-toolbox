@@ -5,13 +5,13 @@ import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import java.net.URL
 
 /**
- * Singleton that holds Coder CLI setup context (URL and token) across multiple
+ * Singleton that holds Coder setup wizard context (URL and token) across multiple
  * Toolbox window lifecycle events.
  *
  * This ensures that user input (URL and token) is not lost when the Toolbox
  * window is temporarily closed or recreated.
  */
-object CoderCliSetupContext {
+object CoderSetupWizardContext {
     /**
      * The currently entered URL.
      */

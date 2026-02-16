@@ -6,8 +6,8 @@ import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.views.state.CoderCliSetupContext
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.coder.toolbox.views.state.CoderSetupWizardContext
+import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
@@ -54,14 +54,14 @@ class ConnectStep(
             context.i18n.pnotr("")
         }
 
-        if (context.settingsStore.requiresTokenAuth && CoderCliSetupContext.isNotReadyForAuth()) {
+        if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.isNotReadyForAuth()) {
             errorField.textState.update {
                 context.i18n.pnotr("URL and token were not properly configured. Please go back and provide a proper URL and token!")
             }
             return
         }
 
-        statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderCliSetupContext.url?.host ?: "unknown host"}...") }
+        statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderSetupWizardContext.url?.host ?: "unknown host"}...") }
         connect()
     }
 
@@ -69,13 +69,13 @@ class ConnectStep(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
-        val url = CoderCliSetupContext.url
+        val url = CoderSetupWizardContext.url
         if (url == null) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return
         }
 
-        if (context.settingsStore.requiresTokenAuth && !CoderCliSetupContext.hasToken() && !CoderCliSetupContext.hasOAuthSession()) {
+        if (context.settingsStore.requiresTokenAuth && !CoderSetupWizardContext.hasToken() && !CoderSetupWizardContext.hasOAuthSession()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
@@ -93,8 +93,8 @@ class ConnectStep(
                 val client = CoderRestClient(
                     context,
                     url,
-                    if (context.settingsStore.requiresTokenAuth) CoderCliSetupContext.token else null,
-                    if (context.settingsStore.requiresTokenAuth && CoderCliSetupContext.hasOAuthSession()) CoderCliSetupContext.oauthSession!!.copy() else null,
+                    if (context.settingsStore.requiresTokenAuth) CoderSetupWizardContext.token else null,
+                    if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.hasOAuthSession()) CoderSetupWizardContext.oauthSession!!.copy() else null,
                     PluginManager.pluginInfo.version,
                     onTokenRefreshed
                 )
@@ -113,8 +113,8 @@ class ConnectStep(
                     logAndReportProgress("Configuring Coder CLI...")
                     // allows interleaving with the back/cancel action
                     yield()
-                    if (CoderCliSetupContext.hasOAuthSession()) {
-                        cli.login(CoderCliSetupContext.oauthSession!!.tokenResponse!!.accessToken)
+                    if (CoderSetupWizardContext.hasOAuthSession()) {
+                        cli.login(CoderSetupWizardContext.oauthSession!!.tokenResponse!!.accessToken)
                     } else {
                         cli.login(client.token!!)
                     }
@@ -125,8 +125,8 @@ class ConnectStep(
                 context.logger.info("Connection setup done, initializing the workspace poller...")
                 onConnect(client, cli)
 
-                CoderCliSetupContext.reset()
-                CoderCliSetupWizardState.goToFirstStep()
+                CoderSetupWizardContext.reset()
+                CoderSetupWizardState.goToFirstStep()
                 context.envPageManager.showPluginEnvironmentsPage()
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
@@ -163,17 +163,17 @@ class ConnectStep(
      */
     private fun handleNavigation() {
         if (shouldAutoLogin.value) {
-            CoderCliSetupContext.reset()
+            CoderSetupWizardContext.reset()
             if (jumpToMainPageOnError) {
                 context.popupPluginMainPage()
             } else {
-                CoderCliSetupWizardState.goToFirstStep()
+                CoderSetupWizardState.goToFirstStep()
             }
         } else {
             if (context.settingsStore.requiresTokenAuth) {
-                CoderCliSetupWizardState.goToPreviousStep()
+                CoderSetupWizardState.goToPreviousStep()
             } else {
-                CoderCliSetupWizardState.goToFirstStep()
+                CoderSetupWizardState.goToFirstStep()
             }
         }
     }

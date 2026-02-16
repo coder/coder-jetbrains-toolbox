@@ -13,9 +13,9 @@ import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
-import com.coder.toolbox.views.state.CoderCliSetupContext
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.CoderSetupWizardContext
+import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.LabelField
@@ -109,26 +109,26 @@ class DeploymentUrlStep(
         }
 
         try {
-            CoderCliSetupContext.url = validateRawUrl(rawUrl)
+            CoderSetupWizardContext.url = validateRawUrl(rawUrl)
         } catch (e: MalformedURLException) {
             errorReporter.report("URL is invalid", e)
             return false
         }
 
         if (context.settingsStore.requiresMTlsAuth) {
-            CoderCliSetupWizardState.goToLastStep()
+            CoderSetupWizardState.goToLastStep()
             return true
         }
         if (context.settingsStore.requiresTokenAuth && preferOAuth2IfAvailable.checkedState.value) {
             try {
-                CoderCliSetupContext.oauthSession = handleOAuth2(rawUrl)
+                CoderSetupWizardContext.oauthSession = handleOAuth2(rawUrl)
                 return false
             } catch (e: Exception) {
                 errorReporter.report("Failed to check OAuth support: ${e.message}", e)
             }
         }
         // if all else fails try the good old API token auth
-        CoderCliSetupWizardState.goToNextStep()
+        CoderSetupWizardState.goToNextStep()
         return true
     }
 

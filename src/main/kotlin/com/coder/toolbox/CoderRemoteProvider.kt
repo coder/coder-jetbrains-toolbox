@@ -27,8 +27,8 @@ import com.coder.toolbox.views.CoderCliSetupWizardPage
 import com.coder.toolbox.views.CoderDelimiter
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.NewEnvironmentPage
-import com.coder.toolbox.views.state.CoderCliSetupContext
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.coder.toolbox.views.state.CoderSetupWizardContext
+import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
@@ -270,7 +270,7 @@ class CoderRemoteProvider(
         lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
-        CoderCliSetupWizardState.goToFirstStep()
+        CoderSetupWizardState.goToFirstStep()
         context.logger.info("Coder plugin is now closed")
     }
 
@@ -372,11 +372,11 @@ class CoderRemoteProvider(
                     }
                 }
             } else {
-                CoderCliSetupContext.apply {
+                CoderSetupWizardContext.apply {
                     url = newUrl
                     token = newToken
                 }
-                CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
+                CoderSetupWizardState.goToStep(WizardStep.CONNECT)
                 CoderCliSetupWizardPage(
                     context, settingsPage, visibilityState,
                     initialAutoSetup = true,
@@ -418,8 +418,8 @@ class CoderRemoteProvider(
         val code = params["code"]
         val state = params["state"]
 
-        if (code != null && state != null && state == CoderCliSetupContext.oauthSession?.state) {
-            if (CoderCliSetupContext.oauthSession == null) {
+        if (code != null && state != null && state == CoderSetupWizardContext.oauthSession?.state) {
+            if (CoderSetupWizardContext.oauthSession == null) {
                 context.logAndShowError(
                     "Failed to handle OAuth code",
                     "We received an OAuth code but our OAuth session is null"
@@ -433,7 +433,7 @@ class CoderRemoteProvider(
     private suspend fun exchangeOAuthCodeForToken(code: String) {
         try {
             context.logger.info("Handling OAuth callback...")
-            val session = CoderCliSetupContext.oauthSession ?: return
+            val session = CoderSetupWizardContext.oauthSession ?: return
 
             // we need to make a POST request to the token endpoint
             val formBodyBuilder = okhttp3.FormBody.Builder()
@@ -482,7 +482,7 @@ class CoderRemoteProvider(
 
             session.tokenResponse = tokenResponse
 
-            CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
+            CoderSetupWizardState.goToStep(WizardStep.CONNECT)
             CoderCliSetupWizardPage(
                 context, settingsPage, visibilityState,
                 initialAutoSetup = true,
@@ -568,11 +568,11 @@ class CoderRemoteProvider(
             // When coming back to the application, initializeSession immediately.
             if (shouldDoAutoSetup()) {
                 try {
-                    CoderCliSetupContext.apply {
+                    CoderSetupWizardContext.apply {
                         url = context.deploymentUrl
                         token = context.secrets.tokenFor(context.deploymentUrl)
                     }
-                    CoderCliSetupWizardState.goToStep(WizardStep.CONNECT)
+                    CoderSetupWizardState.goToStep(WizardStep.CONNECT)
                     return CoderCliSetupWizardPage(
                         context, settingsPage, visibilityState,
                         initialAutoSetup = true,

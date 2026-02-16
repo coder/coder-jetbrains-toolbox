@@ -4,7 +4,7 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
@@ -58,7 +58,7 @@ class CoderCliSetupWizardPage(
     }
 
     private fun displaySteps() {
-        when (CoderCliSetupWizardState.currentStep()) {
+        when (CoderSetupWizardState.currentStep()) {
             WizardStep.URL_REQUEST -> {
                 fields.update {
                     listOf(deploymentUrlStep.panel)
