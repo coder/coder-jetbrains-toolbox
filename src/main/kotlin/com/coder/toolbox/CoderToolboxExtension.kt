@@ -1,7 +1,5 @@
 package com.coder.toolbox
 
-import com.coder.toolbox.oauth.CoderAccount
-import com.coder.toolbox.oauth.CoderOAuthManager
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
@@ -35,11 +33,6 @@ class CoderToolboxExtension : RemoteDevExtension {
         val i18n = serviceLocator.getService<LocalizableStringFactory>()
         return CoderRemoteProvider(
             CoderToolboxContext(
-                serviceLocator.getAuthManager(
-                    CoderAccount::class.java,
-                    "Coder OAuth2 Manager",
-                    CoderOAuthManager()
-                ),
                 ui,
                 serviceLocator.getService<EnvironmentUiPageManager>(),
                 serviceLocator.getService<EnvironmentStateColorPalette>(),

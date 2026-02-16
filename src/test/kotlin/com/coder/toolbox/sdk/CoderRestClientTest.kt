@@ -1,8 +1,6 @@
 package com.coder.toolbox.sdk
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.oauth.CoderAccount
-import com.coder.toolbox.oauth.CoderOAuthCfg
 import com.coder.toolbox.sdk.convertors.InstantConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
@@ -23,7 +21,6 @@ import com.coder.toolbox.store.TLS_CA_PATH
 import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.util.sslContextFromPEMs
-import com.jetbrains.toolbox.api.core.auth.PluginAuthManager
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
@@ -105,7 +102,6 @@ class CoderRestClientTest {
             .build()
 
     private val context = CoderToolboxContext(
-        mockk<PluginAuthManager<CoderAccount, CoderOAuthCfg>>(),
         mockk<ToolboxUi>(),
         mockk<EnvironmentUiPageManager>(),
         mockk<EnvironmentStateColorPalette>(),
@@ -261,7 +257,7 @@ class CoderRestClientTest {
                         }
                     },
                 )
-            assertEquals(ex.message, "Token is required for https://coder.com deployment")
+            assertEquals(ex.message, "OAuth or API token is required for https://coder.com deployment")
         }
     }
 

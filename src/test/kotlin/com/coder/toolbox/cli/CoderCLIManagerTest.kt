@@ -4,8 +4,6 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
-import com.coder.toolbox.oauth.CoderAccount
-import com.coder.toolbox.oauth.CoderOAuthCfg
 import com.coder.toolbox.sdk.DataGen.Companion.workspace
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.settings.Environment
@@ -34,7 +32,6 @@ import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.util.sha1
 import com.coder.toolbox.util.toURL
-import com.jetbrains.toolbox.api.core.auth.PluginAuthManager
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
@@ -79,7 +76,6 @@ private val noOpTextProgress: (String) -> Unit = { _ -> }
 internal class CoderCLIManagerTest {
     private val ui = mockk<ToolboxUi>(relaxed = true)
     private val context = CoderToolboxContext(
-        mockk<PluginAuthManager<CoderAccount, CoderOAuthCfg>>(),
         ui,
         mockk<EnvironmentUiPageManager>(),
         mockk<EnvironmentStateColorPalette>(),
