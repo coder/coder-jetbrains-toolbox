@@ -51,7 +51,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.zeroturnaround.exec.InvalidExitValueException
-import org.zeroturnaround.exec.ProcessInitException
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -333,10 +333,10 @@ internal class CoderCLIManagerTest {
             URL("https://foo")
         )
 
-        assertFailsWith(
-            exceptionClass = ProcessInitException::class,
-            block = { ccm.login("fake-token") },
-        )
+        val exception = assertFailsWith<IOException> {
+            runBlocking { ccm.login("fake-token") }
+        }
+        assertContains(exception.message!!, Regex("Could not execute .*"))
     }
 
     @Test
@@ -722,7 +722,7 @@ internal class CoderCLIManagerTest {
     fun testFailVersionParse() {
         val tests =
             mapOf(
-                null to ProcessInitException::class,
+                null to IOException::class,
                 echo("""{"foo": true, "baz": 1}""") to MissingVersionException::class,
                 echo("""{"version": ""}""") to MissingVersionException::class,
                 echo("""v0.0.1""") to JsonEncodingException::class,
@@ -935,7 +935,7 @@ internal class CoderCLIManagerTest {
                     val ccm = runBlocking { ensureCLI(localContext, url, it.buildVersion, noOpTextProgress) }
                     assertEquals(settings.binPath(url), ccm.localBinaryPath)
                     assertFailsWith(
-                        exceptionClass = ProcessInitException::class,
+                        exceptionClass = IOException::class,
                         block = { ccm.version() },
                     )
                 }
