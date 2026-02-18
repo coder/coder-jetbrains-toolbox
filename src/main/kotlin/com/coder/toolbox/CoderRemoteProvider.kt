@@ -569,9 +569,27 @@ class CoderRemoteProvider(
             // When coming back to the application, initializeSession immediately.
             if (shouldDoAutoSetup()) {
                 try {
+                    val storedOAuthSession = context.secrets.oauthSessionFor(context.deploymentUrl.toString())
                     CoderSetupWizardContext.apply {
                         url = context.deploymentUrl
                         token = context.secrets.apiTokenFor(context.deploymentUrl)
+                        if (storedOAuthSession != null) {
+                            oauthSession = CoderOAuthSessionContext(
+                                clientId = storedOAuthSession.clientId,
+                                clientSecret = storedOAuthSession.clientSecret,
+                                tokenCodeVerifier = "",
+                                state = "",
+                                tokenEndpoint = storedOAuthSession.tokenEndpoint,
+                                tokenAuthMethod = storedOAuthSession.tokenAuthMethod,
+                                tokenResponse = OAuthTokenResponse(
+                                    accessToken = "",
+                                    tokenType = "",
+                                    expiresIn = null,
+                                    refreshToken = storedOAuthSession.refreshToken,
+                                    scope = null
+                                )
+                            )
+                        }
                     }
                     CoderSetupWizardState.goToStep(WizardStep.CONNECT)
                     return CoderCliSetupWizardPage(
@@ -614,7 +632,8 @@ class CoderRemoteProvider(
      */
     private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !settings.requiresTokenAuth)
 
-    fun canAutoLogin(): Boolean = !context.secrets.apiTokenFor(context.deploymentUrl).isNullOrBlank()
+    fun canAutoLogin(): Boolean = !context.secrets.apiTokenFor(context.deploymentUrl)
+        .isNullOrBlank() || context.secrets.oauthSessionFor(context.deploymentUrl.toString()) != null
 
     private suspend fun onTokenRefreshed(url: URL, oauthSessionCtx: CoderOAuthSessionContext) {
         oauthSessionCtx.tokenResponse?.accessToken?.let { cli?.login(it) }

@@ -67,4 +67,12 @@ data class CoderOAuthSessionContext(
     val tokenAuthMethod: TokenEndpointAuthMethod
 )
 
+data class StoredOAuthSession(
+    val clientId: String,
+    val clientSecret: String,
+    val refreshToken: String,
+    val tokenAuthMethod: TokenEndpointAuthMethod,
+    val tokenEndpoint: String
+)
+
 fun CoderOAuthSessionContext?.hasRefreshToken(): Boolean = this?.tokenResponse?.refreshToken != null

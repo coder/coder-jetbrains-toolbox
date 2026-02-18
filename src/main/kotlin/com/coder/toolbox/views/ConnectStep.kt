@@ -3,8 +3,12 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
+import com.coder.toolbox.oauth.CoderAuthorizationApi
+import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.plugin.PluginManager
+import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.CoderSetupWizardContext
 import com.coder.toolbox.views.state.CoderSetupWizardState
@@ -12,6 +16,7 @@ import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +26,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import okhttp3.Credentials
+import retrofit2.Retrofit
+import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.URL
 
 private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
@@ -90,6 +98,10 @@ class ConnectStep(
         // 1. Extract the logic into a reusable suspend lambda
         val connectionLogic: suspend CoroutineScope.() -> Unit = {
             try {
+                if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.hasOAuthSession()) {
+                    refreshOAuthToken(url)
+                }
+
                 context.logger.info("Setting up the HTTP client...")
                 val client = CoderRestClient(
                     context,
@@ -152,6 +164,51 @@ class ConnectStep(
             // Runs asynchronously using the context's scope
             signInJob = context.cs.launch(CoroutineName("Async Http and CLI Setup"), block = connectionLogic)
         }
+    }
+
+    private suspend fun refreshOAuthToken(url: URL) {
+        val session = CoderSetupWizardContext.oauthSession ?: return
+        if (!session.tokenResponse?.accessToken.isNullOrBlank()) return
+        val refreshToken = session.tokenResponse?.refreshToken ?: return
+
+        logAndReportProgress("Refreshing OAuth token...")
+        val service = createAuthorizationService(url.toString())
+
+        val tokenResponse = if (session.tokenAuthMethod == TokenEndpointAuthMethod.CLIENT_SECRET_BASIC) {
+            service.refreshToken(
+                url = session.tokenEndpoint,
+                authorization = Credentials.basic(session.clientId, session.clientSecret),
+                refreshToken = refreshToken
+            )
+        } else {
+            service.refreshToken(
+                url = session.tokenEndpoint,
+                clientId = session.clientId,
+                clientSecret = session.clientSecret,
+                refreshToken = refreshToken
+            )
+        }
+
+        if (tokenResponse.isSuccessful && tokenResponse.body() != null) {
+            context.logger.info("Successfully refreshed access token")
+            session.tokenResponse = tokenResponse.body()
+        } else {
+            throw Exception("Failed to refresh OAuth token: ${tokenResponse.code()} ${tokenResponse.message()}")
+        }
+    }
+
+    private fun createAuthorizationService(urlString: String): CoderAuthorizationApi {
+        return Retrofit.Builder()
+            .baseUrl(urlString)
+            .client(CoderHttpClientBuilder.default(context))
+            .addConverterFactory(
+                LoggingConverterFactory.wrap(
+                    context,
+                    MoshiConverterFactory.create(Moshi.Builder().build())
+                )
+            )
+            .build()
+            .create(CoderAuthorizationApi::class.java)
     }
 
     private fun logAndReportProgress(msg: String) {
