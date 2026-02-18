@@ -257,7 +257,7 @@ class CoderRestClientTest {
                         }
                     },
                 )
-            assertEquals(ex.message, "Token is required for https://coder.com deployment")
+            assertEquals(ex.message, "OAuth or API token is required for https://coder.com deployment")
         }
     }
 

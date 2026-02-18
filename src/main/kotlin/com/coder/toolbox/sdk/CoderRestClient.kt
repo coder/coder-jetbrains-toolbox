@@ -1,6 +1,8 @@
 package com.coder.toolbox.sdk
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.oauth.OAuthTokenResponse
+import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.sdk.convertors.ArchConverter
 import com.coder.toolbox.sdk.convertors.InstantConverter
 import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
@@ -21,10 +23,17 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.util.ReloadableTlsContext
+import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.hasRefreshToken
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.Credentials
+import okhttp3.FormBody
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.zeroturnaround.exec.ProcessExecutor
 import retrofit2.Response
 import retrofit2.Retrofit
@@ -42,12 +51,16 @@ open class CoderRestClient(
     private val context: CoderToolboxContext,
     val url: URL,
     val token: String?,
+    private val oauthContext: CoderOAuthSessionContext? = null,
     private val pluginVersion: String = "development",
+    private val onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) {
     private lateinit var tlsContext: ReloadableTlsContext
     private lateinit var moshi: Moshi
     private lateinit var httpClient: OkHttpClient
     private lateinit var retroRestClient: CoderV2RestFacade
+
+    private val refreshMutex = Mutex()
 
     lateinit var me: User
     lateinit var buildVersion: String
@@ -70,10 +83,11 @@ open class CoderRestClient(
 
         val interceptors = buildList {
             if (context.settingsStore.requiresTokenAuth) {
-                if (token.isNullOrBlank()) {
-                    throw IllegalStateException("Token is required for $url deployment")
+                val oauthOrApiToken = oauthContext?.tokenResponse?.accessToken ?: token
+                if (oauthOrApiToken.isNullOrBlank()) {
+                    throw IllegalStateException("OAuth or API token is required for $url deployment")
                 }
-                add(Interceptors.tokenAuth(token))
+                add(Interceptors.tokenAuth(oauthOrApiToken))
             }
             add((Interceptors.userAgent(pluginVersion)))
             add(Interceptors.externalHeaders(context, url))
@@ -342,8 +356,29 @@ open class CoderRestClient(
      * Executes a Retrofit call with a retry mechanism specifically for expired certificates.
      */
     private suspend fun <T> callWithRetry(block: suspend () -> Response<T>): Response<T> {
-        return try {
-            block()
+        try {
+            val response = block()
+            if (response.code() == HttpURLConnection.HTTP_UNAUTHORIZED && oauthContext.hasRefreshToken()) {
+                val tokenRefreshed = refreshMutex.withLock {
+                    // Check if the token was already refreshed while we were waiting for the lock.
+                    if (response.raw().request.header("Authorization") != "Bearer ${oauthContext?.tokenResponse?.accessToken}") {
+                        return@withLock true
+                    }
+                    return@withLock try {
+                        context.logger.info("Access token expired, attempting to refresh...")
+                        refreshToken()
+                        true
+                    } catch (e: Exception) {
+                        context.logger.error(e, "Failed to refresh access token")
+                        false
+                    }
+                }
+                if (tokenRefreshed) {
+                    context.logger.info("Retrying request with new token...")
+                    return block()
+                }
+            }
+            return response
         } catch (e: Exception) {
             if (context.settingsStore.requiresMTlsAuth && isCertExpired(e)) {
                 context.logger.info("Certificate expired detected. Attempting refresh...")
@@ -355,6 +390,44 @@ open class CoderRestClient(
             throw e
         }
     }
+
+    private suspend fun refreshToken() {
+        val requestBuilder = Request.Builder().url(oauthContext!!.tokenEndpoint)
+        val formBodyBuilder = FormBody.Builder()
+            .add("grant_type", "refresh_token")
+            .add("refresh_token", oauthContext.tokenResponse?.refreshToken!!)
+
+        when (oauthContext.tokenAuthMethod) {
+            TokenEndpointAuthMethod.CLIENT_SECRET_BASIC -> {
+                requestBuilder.header(
+                    "Authorization",
+                    Credentials.basic(oauthContext.clientId, oauthContext.clientSecret ?: "")
+                )
+            }
+
+            TokenEndpointAuthMethod.CLIENT_SECRET_POST -> {
+                formBodyBuilder.add("client_id", oauthContext.clientId)
+                formBodyBuilder.add("client_secret", oauthContext.clientSecret ?: "")
+            }
+
+            else -> {
+                formBodyBuilder.add("client_id", oauthContext.clientId)
+            }
+        }
+
+        val request = requestBuilder.post(formBodyBuilder.build()).build()
+        val response = httpClient.newCall(request).execute()
+
+        if (!response.isSuccessful) {
+            throw APIResponseException("refresh token", url, response.code, null)
+        }
+
+        val responseBody = response.body?.string()
+        val newAuthResponse = moshi.adapter(OAuthTokenResponse::class.java).fromJson(responseBody!!)
+        this.oauthContext.tokenResponse = newAuthResponse
+        onTokenRefreshed?.invoke(url, oauthContext)
+    }
+
 
     private fun isCertExpired(e: Exception): Boolean {
         return (e is javax.net.ssl.SSLHandshakeException || e is javax.net.ssl.SSLPeerUnverifiedException) &&

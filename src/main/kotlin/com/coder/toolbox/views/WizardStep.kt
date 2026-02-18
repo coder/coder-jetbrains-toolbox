@@ -14,6 +14,6 @@ interface WizardStep {
      * Callback when user hits next.
      * Returns true if it moved the wizard one step forward.
      */
-    fun onNext(): Boolean
+    suspend fun onNext(): Boolean
     fun onBack()
 }

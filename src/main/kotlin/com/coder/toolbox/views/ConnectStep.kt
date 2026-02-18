@@ -3,14 +3,20 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
+import com.coder.toolbox.oauth.CoderAuthorizationApi
+import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.plugin.PluginManager
+import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.views.state.CoderCliSetupContext
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
+import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.CoderSetupWizardContext
+import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +26,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import okhttp3.Credentials
+import retrofit2.Retrofit
+import retrofit2.converter.moshi.MoshiConverterFactory
+import java.net.URL
 
 private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
 
@@ -34,6 +44,7 @@ class ConnectStep(
     visibilityState: StateFlow<ProviderVisibilityState>,
     private val refreshWizard: () -> Unit,
     private val onConnect: suspend (client: CoderRestClient, cli: CoderCLIManager) -> Unit,
+    private val onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : WizardStep {
     private var signInJob: Job? = null
 
@@ -52,14 +63,14 @@ class ConnectStep(
             context.i18n.pnotr("")
         }
 
-        if (context.settingsStore.requiresTokenAuth && CoderCliSetupContext.isNotReadyForAuth()) {
+        if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.isNotReadyForAuth()) {
             errorField.textState.update {
                 context.i18n.pnotr("URL and token were not properly configured. Please go back and provide a proper URL and token!")
             }
             return
         }
 
-        statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderCliSetupContext.url?.host ?: "unknown host"}...") }
+        statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderSetupWizardContext.url?.host ?: "unknown host"}...") }
         connect()
     }
 
@@ -67,13 +78,13 @@ class ConnectStep(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
-        val url = CoderCliSetupContext.url
+        val url = CoderSetupWizardContext.url
         if (url == null) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return
         }
 
-        if (context.settingsStore.requiresTokenAuth && !CoderCliSetupContext.hasToken()) {
+        if (context.settingsStore.requiresTokenAuth && !CoderSetupWizardContext.hasToken() && !CoderSetupWizardContext.hasOAuthSession()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
@@ -87,12 +98,18 @@ class ConnectStep(
         // 1. Extract the logic into a reusable suspend lambda
         val connectionLogic: suspend CoroutineScope.() -> Unit = {
             try {
+                if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.hasOAuthSession()) {
+                    refreshOAuthToken(url)
+                }
+
                 context.logger.info("Setting up the HTTP client...")
                 val client = CoderRestClient(
                     context,
                     url,
-                    if (context.settingsStore.requiresTokenAuth) CoderCliSetupContext.token else null,
+                    if (context.settingsStore.requiresTokenAuth) CoderSetupWizardContext.token else null,
+                    if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.hasOAuthSession()) CoderSetupWizardContext.oauthSession!!.copy() else null,
                     PluginManager.pluginInfo.version,
+                    onTokenRefreshed
                 )
                 // allows interleaving with the back/cancel action
                 yield()
@@ -109,16 +126,20 @@ class ConnectStep(
                     logAndReportProgress("Configuring Coder CLI...")
                     // allows interleaving with the back/cancel action
                     yield()
-                    cli.login(client.token!!)
+                    if (CoderSetupWizardContext.hasOAuthSession()) {
+                        cli.login(CoderSetupWizardContext.oauthSession!!.tokenResponse!!.accessToken)
+                    } else {
+                        cli.login(client.token!!)
+                    }
                 }
                 logAndReportProgress("Successfully configured ${hostName}...")
                 // allows interleaving with the back/cancel action
                 yield()
                 context.logger.info("Connection setup done, initializing the workspace poller...")
                 onConnect(client, cli)
-
-                CoderCliSetupContext.reset()
-                CoderCliSetupWizardState.goToFirstStep()
+                onTokenRefreshed?.invoke(client.url, CoderSetupWizardContext.oauthSession!!)
+                CoderSetupWizardContext.reset()
+                CoderSetupWizardState.goToFirstStep()
                 context.envPageManager.showPluginEnvironmentsPage()
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
@@ -145,6 +166,51 @@ class ConnectStep(
         }
     }
 
+    private suspend fun refreshOAuthToken(url: URL) {
+        val session = CoderSetupWizardContext.oauthSession ?: return
+        if (!session.tokenResponse?.accessToken.isNullOrBlank()) return
+        val refreshToken = session.tokenResponse?.refreshToken ?: return
+
+        logAndReportProgress("Refreshing OAuth token...")
+        val service = createAuthorizationService(url.toString())
+
+        val tokenResponse = if (session.tokenAuthMethod == TokenEndpointAuthMethod.CLIENT_SECRET_BASIC) {
+            service.refreshToken(
+                url = session.tokenEndpoint,
+                authorization = Credentials.basic(session.clientId, session.clientSecret),
+                refreshToken = refreshToken
+            )
+        } else {
+            service.refreshToken(
+                url = session.tokenEndpoint,
+                clientId = session.clientId,
+                clientSecret = session.clientSecret,
+                refreshToken = refreshToken
+            )
+        }
+
+        if (tokenResponse.isSuccessful && tokenResponse.body() != null) {
+            context.logger.info("Successfully refreshed access token")
+            session.tokenResponse = tokenResponse.body()
+        } else {
+            throw Exception("Failed to refresh OAuth token: ${tokenResponse.code()} ${tokenResponse.message()}")
+        }
+    }
+
+    private fun createAuthorizationService(urlString: String): CoderAuthorizationApi {
+        return Retrofit.Builder()
+            .baseUrl(urlString)
+            .client(CoderHttpClientBuilder.default(context))
+            .addConverterFactory(
+                LoggingConverterFactory.wrap(
+                    context,
+                    MoshiConverterFactory.create(Moshi.Builder().build())
+                )
+            )
+            .build()
+            .create(CoderAuthorizationApi::class.java)
+    }
+
     private fun logAndReportProgress(msg: String) {
         context.logger.info(msg)
         statusField.textState.update { context.i18n.pnotr(msg) }
@@ -155,22 +221,22 @@ class ConnectStep(
      */
     private fun handleNavigation() {
         if (shouldAutoLogin.value) {
-            CoderCliSetupContext.reset()
+            CoderSetupWizardContext.reset()
             if (jumpToMainPageOnError) {
                 context.popupPluginMainPage()
             } else {
-                CoderCliSetupWizardState.goToFirstStep()
+                CoderSetupWizardState.goToFirstStep()
             }
         } else {
             if (context.settingsStore.requiresTokenAuth) {
-                CoderCliSetupWizardState.goToPreviousStep()
+                CoderSetupWizardState.goToPreviousStep()
             } else {
-                CoderCliSetupWizardState.goToFirstStep()
+                CoderSetupWizardState.goToFirstStep()
             }
         }
     }
 
-    override fun onNext(): Boolean {
+    override suspend fun onNext(): Boolean {
         return false
     }
 

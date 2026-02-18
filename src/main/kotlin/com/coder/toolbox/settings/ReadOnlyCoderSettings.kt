@@ -171,6 +171,12 @@ interface ReadOnlyCoderSettings {
     val networkInfoDir: String
 
     /**
+     * Indicates whether API tokens should be used for authentication instead
+     * of OAuth2 when OAuth2 is available. Defaults to false.
+     */
+    val preferAuthViaApiToken: Boolean
+
+    /**
      * Where the specified deployment should put its data.
      */
     fun dataDir(url: URL): Path

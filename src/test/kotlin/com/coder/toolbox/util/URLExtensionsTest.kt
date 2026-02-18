@@ -4,6 +4,7 @@ import java.net.URI
 import java.net.URL
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 internal class URLExtensionsTest {
     @Test
@@ -151,5 +152,38 @@ internal class URLExtensionsTest {
             WebUrlValidationResult.Invalid("The URL \"https:/coder.com\" does not include a valid website name. Please enter a full web address like \"https://example.com\""),
             result
         )
+    }
+
+    @Test
+    fun `returns base URL without path or query`() {
+        val fullUrl = "https://example.com/path/to/page?param=1"
+        val result = fullUrl.toBaseURL()
+        assertEquals(URL("https://example.com"), result)
+    }
+
+    @Test
+    fun `includes port if specified`() {
+        val fullUrl = "https://example.com:8080/api/v1/resource"
+        val result = fullUrl.toBaseURL()
+        assertEquals(URL("https://example.com:8080"), result)
+    }
+
+    @Test
+    fun `handles subdomains correctly`() {
+        val fullUrl = "http://api.subdomain.example.org/v2/users"
+        val result = fullUrl.toBaseURL()
+        assertEquals(URL("http://api.subdomain.example.org"), result)
+    }
+
+    @Test
+    fun `handles simple domain without path`() {
+        val fullUrl = "https://test.com"
+        val result = fullUrl.toBaseURL()
+        assertEquals(URL("https://test.com"), result)
+    }
+
+    @Test
+    fun `throws exception for invalid URL`() {
+        assertFailsWith<IllegalArgumentException> { "ht!tp://bad_url".toBaseURL() }
     }
 }

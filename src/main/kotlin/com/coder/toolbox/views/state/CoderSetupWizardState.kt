@@ -8,7 +8,7 @@ package com.coder.toolbox.views.state
  * of the Toolbox window. Without this object, closing and reopening the window would reset the wizard
  * to its initial state by creating a new instance.
  */
-object CoderCliSetupWizardState {
+object CoderSetupWizardState {
     private var currentStep = WizardStep.URL_REQUEST
 
     fun currentStep(): WizardStep = currentStep
