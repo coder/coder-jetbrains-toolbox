@@ -125,7 +125,7 @@ class ConnectStep(
                 yield()
                 context.logger.info("Connection setup done, initializing the workspace poller...")
                 onConnect(client, cli)
-
+                onTokenRefreshed?.invoke(client.url, CoderSetupWizardContext.oauthSession!!)
                 CoderSetupWizardContext.reset()
                 CoderSetupWizardState.goToFirstStep()
                 context.envPageManager.showPluginEnvironmentsPage()
