@@ -3,9 +3,9 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
-import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.CoderSetupWizardContext
 import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import java.net.URL
 
 private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
 
@@ -35,7 +36,7 @@ class ConnectStep(
     visibilityState: StateFlow<ProviderVisibilityState>,
     private val refreshWizard: () -> Unit,
     private val onConnect: suspend (client: CoderRestClient, cli: CoderCLIManager) -> Unit,
-    private val onTokenRefreshed: (suspend (token: OAuthTokenResponse) -> Unit)? = null
+    private val onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : WizardStep {
     private var signInJob: Job? = null
 

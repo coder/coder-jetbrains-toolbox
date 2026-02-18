@@ -37,7 +37,7 @@ class TokenStep(
         }
         if (CoderSetupWizardContext.hasUrl()) {
             tokenField.textState.update {
-                context.secrets.tokenFor(CoderSetupWizardContext.url!!) ?: ""
+                context.secrets.apiTokenFor(CoderSetupWizardContext.url!!) ?: ""
             }
         } else {
             errorField.textState.update {

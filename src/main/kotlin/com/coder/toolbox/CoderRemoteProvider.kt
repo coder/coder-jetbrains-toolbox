@@ -27,6 +27,7 @@ import com.coder.toolbox.views.CoderCliSetupWizardPage
 import com.coder.toolbox.views.CoderDelimiter
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.NewEnvironmentPage
+import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.CoderSetupWizardContext
 import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
@@ -570,7 +571,7 @@ class CoderRemoteProvider(
                 try {
                     CoderSetupWizardContext.apply {
                         url = context.deploymentUrl
-                        token = context.secrets.tokenFor(context.deploymentUrl)
+                        token = context.secrets.apiTokenFor(context.deploymentUrl)
                     }
                     CoderSetupWizardState.goToStep(WizardStep.CONNECT)
                     return CoderCliSetupWizardPage(
@@ -613,10 +614,11 @@ class CoderRemoteProvider(
      */
     private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !settings.requiresTokenAuth)
 
-    fun canAutoLogin(): Boolean = !context.secrets.tokenFor(context.deploymentUrl).isNullOrBlank()
+    fun canAutoLogin(): Boolean = !context.secrets.apiTokenFor(context.deploymentUrl).isNullOrBlank()
 
-    private suspend fun onTokenRefreshed(token: OAuthTokenResponse) {
-        cli?.login(token.accessToken)
+    private suspend fun onTokenRefreshed(url: URL, oauthSessionCtx: CoderOAuthSessionContext) {
+        oauthSessionCtx.tokenResponse?.accessToken?.let { cli?.login(it) }
+        context.secrets.storeOAuthFor(url.toString(), oauthSessionCtx)
     }
 
     private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
@@ -625,7 +627,7 @@ class CoderRemoteProvider(
         context.settingsStore.updateLastUsedUrl(client.url)
         if (context.settingsStore.requiresTokenAuth) {
             if (client.token != null) {
-                context.secrets.storeTokenFor(client.url, client.token)
+                context.secrets.storeApiTokenFor(client.url, client.token)
             }
             context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
         } else {

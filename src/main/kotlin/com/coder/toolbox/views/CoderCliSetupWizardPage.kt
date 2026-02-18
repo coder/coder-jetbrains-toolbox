@@ -2,8 +2,8 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
-import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
@@ -12,6 +12,7 @@ import com.jetbrains.toolbox.api.ui.components.UiField
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import java.net.URL
 
 class CoderCliSetupWizardPage(
     private val context: CoderToolboxContext,
@@ -24,7 +25,7 @@ class CoderCliSetupWizardPage(
         client: CoderRestClient,
         cli: CoderCLIManager,
     ) -> Unit,
-    onTokenRefreshed: (suspend (token: OAuthTokenResponse) -> Unit)? = null
+    onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
     private val shouldAutoSetup = MutableStateFlow(initialAutoSetup)
     private val settingsAction = Action(context, "Settings") {

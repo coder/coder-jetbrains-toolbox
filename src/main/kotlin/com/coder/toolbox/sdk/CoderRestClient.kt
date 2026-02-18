@@ -53,7 +53,7 @@ open class CoderRestClient(
     val token: String?,
     private val oauthContext: CoderOAuthSessionContext? = null,
     private val pluginVersion: String = "development",
-    private val onTokenRefreshed: (suspend (token: OAuthTokenResponse) -> Unit)? = null
+    private val onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) {
     private lateinit var tlsContext: ReloadableTlsContext
     private lateinit var moshi: Moshi
@@ -425,7 +425,7 @@ open class CoderRestClient(
         val responseBody = response.body?.string()
         val newAuthResponse = moshi.adapter(OAuthTokenResponse::class.java).fromJson(responseBody!!)
         this.oauthContext.tokenResponse = newAuthResponse
-        onTokenRefreshed?.invoke(newAuthResponse!!)
+        onTokenRefreshed?.invoke(url, oauthContext)
     }
 
 
