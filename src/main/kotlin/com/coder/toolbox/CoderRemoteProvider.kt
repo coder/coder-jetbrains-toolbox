@@ -20,13 +20,13 @@ import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.token
 import com.coder.toolbox.util.url
 import com.coder.toolbox.util.validateStrictWebUrl
-import com.coder.toolbox.util.waitForTrue
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderCliSetupWizardPage
 import com.coder.toolbox.views.CoderDelimiter
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.NewEnvironmentPage
+import com.coder.toolbox.views.SuspendBiConsumer
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.CoderSetupWizardContext
 import com.coder.toolbox.views.state.CoderSetupWizardState
@@ -54,7 +54,6 @@ import kotlinx.coroutines.selects.select
 import okhttp3.Credentials
 import java.net.URI
 import java.net.URL
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -85,7 +84,7 @@ class CoderRemoteProvider(
     private var firstRun = true
 
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
-    private val isHandlingUri: AtomicBoolean = AtomicBoolean(false)
+
     private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
     private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig) {
         client?.let { restClient ->
@@ -280,6 +279,7 @@ class CoderRemoteProvider(
             it.cancel()
             context.logger.info("Cancelled workspace poll job ${pollJob.toString()}")
         }
+        pollJob = null
         client?.let {
             it.close()
             context.logger.info("REST API client closed and resources released")
@@ -347,6 +347,9 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         try {
+            // Obtain focus. This switches to the main plugin screen, even
+            // if last opened provider was not Coder
+            context.envPageManager.showPluginEnvironmentsPage()
             if (uri.toString().startsWith("jetbrains://gateway/com.coder.toolbox/auth")) {
                 handleOAuthUri(uri)
                 return
@@ -358,44 +361,35 @@ class CoderRemoteProvider(
                 context.logAndShowInfo("URI will not be handled", "No query parameters were provided")
                 return
             }
-            isHandlingUri.set(true)
-            // this switches to the main plugin screen, even
-            // if last opened provider was not Coder
-            context.envPageManager.showPluginEnvironmentsPage()
-            coderHeaderPage.isBusy.update { true }
             context.logger.info("Handling $uri...")
             val newUrl = resolveDeploymentUrl(params)?.toURL() ?: return
             val newToken = if (context.settingsStore.requiresMTlsAuth) null else resolveToken(params) ?: return
+            coderHeaderPage.isBusy.update { true }
             if (sameUrl(newUrl, client?.url)) {
                 if (context.settingsStore.requiresTokenAuth) {
                     newToken?.let {
                         refreshSession(newUrl, it)
                     }
                 }
+                linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
             } else {
+                // Different URL - we need a new connection.
+                // Chain the link handling after onConnect so it runs once the connection is established.
                 CoderSetupWizardContext.apply {
                     url = newUrl
                     token = newToken
                 }
                 CoderSetupWizardState.goToStep(WizardStep.CONNECT)
-                CoderCliSetupWizardPage(
-                    context, settingsPage, visibilityState,
-                    initialAutoSetup = true,
-                    jumpToMainPageOnError = true,
-                    connectSynchronously = true,
-                    onConnect = ::onConnect,
-                    onTokenRefreshed = ::onTokenRefreshed
-                ).apply {
-                    beforeShow()
-                }
+                context.ui.showUiPage(
+                    CoderCliSetupWizardPage(
+                        context, settingsPage, visibilityState,
+                        initialAutoSetup = true,
+                        jumpToMainPageOnError = true,
+                        onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl)),
+                        onTokenRefreshed = ::onTokenRefreshed
+                    )
+                )
             }
-            // force the poll loop to run
-            triggerProviderVisible.send(true)
-            // wait for environments to be populated
-            isInitialized.waitForTrue()
-
-            linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
-            coderHeaderPage.isBusy.update { false }
         } catch (ex: Exception) {
             val textError = if (ex is APIResponseException) {
                 if (!ex.reason.isNullOrBlank()) {
@@ -409,7 +403,6 @@ class CoderRemoteProvider(
             context.envPageManager.showPluginEnvironmentsPage()
         } finally {
             coderHeaderPage.isBusy.update { false }
-            isHandlingUri.set(false)
             firstRun = false
         }
     }
@@ -484,16 +477,6 @@ class CoderRemoteProvider(
             session.tokenResponse = tokenResponse
 
             CoderSetupWizardState.goToStep(WizardStep.CONNECT)
-            CoderCliSetupWizardPage(
-                context, settingsPage, visibilityState,
-                initialAutoSetup = true,
-                jumpToMainPageOnError = true,
-                connectSynchronously = true,
-                onConnect = ::onConnect,
-                onTokenRefreshed = ::onTokenRefreshed
-            ).apply {
-                beforeShow()
-            }
 
         } catch (e: Exception) {
             context.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
@@ -561,9 +544,6 @@ class CoderRemoteProvider(
      * list.
      */
     override fun getOverrideUiPage(): UiPage? {
-        if (isHandlingUri.get()) {
-            return null
-        }
         // Show the setup page if we have not configured the client yet.
         if (client == null) {
             // When coming back to the application, initializeSession immediately.
@@ -596,7 +576,7 @@ class CoderRemoteProvider(
                         context, settingsPage, visibilityState,
                         initialAutoSetup = true,
                         jumpToMainPageOnError = false,
-                        onConnect = ::onConnect,
+                        onConnect = onConnect,
                         onTokenRefreshed = ::onTokenRefreshed
                     )
                 } catch (ex: Exception) {
@@ -612,7 +592,7 @@ class CoderRemoteProvider(
                     context,
                     settingsPage,
                     visibilityState,
-                    onConnect = ::onConnect,
+                    onConnect = onConnect,
                     onTokenRefreshed = ::onTokenRefreshed
                 )
             // We might have navigated here due to a polling error.
@@ -640,7 +620,7 @@ class CoderRemoteProvider(
         context.secrets.storeOAuthFor(url.toString(), oauthSessionCtx)
     }
 
-    private fun onConnect(client: CoderRestClient, cli: CoderCLIManager) {
+    private val onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager> = SuspendBiConsumer { client, cli ->
         // Store the URL and token for use next time.
         close()
         context.settingsStore.updateLastUsedUrl(client.url)
@@ -668,6 +648,27 @@ class CoderRemoteProvider(
         }
         pollJob = poll(client, cli)
         context.logger.info("Workspace poll job with name ${pollJob.toString()} was created")
+    }
+
+    /**
+     * Returns a [SuspendBiConsumer] that handles the given link parameters.
+     * Runs in a background coroutine so it doesn't block the connect step's
+     * post-connection flow.
+     */
+    private fun deferredLinkHandler(
+        params: Map<String, String>,
+        deploymentUrl: URL,
+    ): SuspendBiConsumer<CoderRestClient, CoderCLIManager> = SuspendBiConsumer { client, cli ->
+        context.cs.launch(CoroutineName("Deferred Link Handler")) {
+            try {
+                linkHandler.handle(params, deploymentUrl, client, cli)
+            } catch (ex: Exception) {
+                context.logAndShowError(
+                    "Error handling deferred link",
+                    ex.message ?: ""
+                )
+            }
+        }
     }
 
     private fun MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>>.showLoadingMessage() {

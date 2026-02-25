@@ -24,7 +24,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import okhttp3.Credentials
 import retrofit2.Retrofit
@@ -40,10 +39,9 @@ class ConnectStep(
     private val context: CoderToolboxContext,
     private val shouldAutoLogin: StateFlow<Boolean>,
     private val jumpToMainPageOnError: Boolean,
-    private val connectSynchronously: Boolean,
     visibilityState: StateFlow<ProviderVisibilityState>,
     private val refreshWizard: () -> Unit,
-    private val onConnect: suspend (client: CoderRestClient, cli: CoderCLIManager) -> Unit,
+    private val onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
     private val onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : WizardStep {
     private var signInJob: Job? = null
@@ -58,6 +56,7 @@ class ConnectStep(
     )
 
     override fun onVisible() {
+        context.logger.info(">> ConnectStep visible")
         errorReporter.flush()
         errorField.textState.update {
             context.i18n.pnotr("")
@@ -70,6 +69,12 @@ class ConnectStep(
             return
         }
 
+        // Don't launch another connection attempt if one is already in progress.
+        if (signInJob?.isActive == true) {
+            context.logger.info(">> ConnectStep: connection already in progress, skipping duplicate")
+            return
+        }
+
         statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderSetupWizardContext.url?.host ?: "unknown host"}...") }
         connect()
     }
@@ -78,6 +83,7 @@ class ConnectStep(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
+        context.logger.info(">> ConnectStep#onConnect called")
         val url = CoderSetupWizardContext.url
         if (url == null) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
@@ -102,12 +108,16 @@ class ConnectStep(
                     refreshOAuthToken(url)
                 }
 
+                val oauthSession =
+                    if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.hasOAuthSession()) CoderSetupWizardContext.oauthSession!!.copy() else null
+                val apiToken = if (context.settingsStore.requiresTokenAuth) CoderSetupWizardContext.token else null
+
                 context.logger.info("Setting up the HTTP client...")
                 val client = CoderRestClient(
                     context,
                     url,
-                    if (context.settingsStore.requiresTokenAuth) CoderSetupWizardContext.token else null,
-                    if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.hasOAuthSession()) CoderSetupWizardContext.oauthSession!!.copy() else null,
+                    apiToken,
+                    oauthSession,
                     PluginManager.pluginInfo.version,
                     onTokenRefreshed
                 )
@@ -126,18 +136,21 @@ class ConnectStep(
                     logAndReportProgress("Configuring Coder CLI...")
                     // allows interleaving with the back/cancel action
                     yield()
-                    if (CoderSetupWizardContext.hasOAuthSession()) {
-                        cli.login(CoderSetupWizardContext.oauthSession!!.tokenResponse!!.accessToken)
+                    if (oauthSession != null) {
+                        cli.login(oauthSession.tokenResponse!!.accessToken)
                     } else {
-                        cli.login(client.token!!)
+                        cli.login(apiToken!!)
                     }
                 }
                 logAndReportProgress("Successfully configured ${hostName}...")
                 // allows interleaving with the back/cancel action
                 yield()
                 context.logger.info("Connection setup done, initializing the workspace poller...")
-                onConnect(client, cli)
-                onTokenRefreshed?.invoke(client.url, CoderSetupWizardContext.oauthSession!!)
+                onConnect.accept(client, cli)
+                // Only invoke onTokenRefreshed when we actually have an OAuth session
+                oauthSession?.let { session ->
+                    onTokenRefreshed?.invoke(client.url, session)
+                }
                 CoderSetupWizardContext.reset()
                 CoderSetupWizardState.goToFirstStep()
                 context.envPageManager.showPluginEnvironmentsPage()
@@ -154,16 +167,7 @@ class ConnectStep(
             }
         }
 
-        // 2. Choose the execution strategy based on the flag
-        if (connectSynchronously) {
-            // Blocks the current thread until connectionLogic completes
-            runBlocking(CoroutineName("Synchronous Http and CLI Setup")) {
-                connectionLogic()
-            }
-        } else {
-            // Runs asynchronously using the context's scope
-            signInJob = context.cs.launch(CoroutineName("Async Http and CLI Setup"), block = connectionLogic)
-        }
+        signInJob = context.cs.launch(CoroutineName("Async Http and CLI Setup"), block = connectionLogic)
     }
 
     private suspend fun refreshOAuthToken(url: URL) {

@@ -9,9 +9,11 @@ import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.net.URL
 
 class CoderCliSetupWizardPage(
@@ -20,11 +22,7 @@ class CoderCliSetupWizardPage(
     visibilityState: StateFlow<ProviderVisibilityState>,
     initialAutoSetup: Boolean = false,
     jumpToMainPageOnError: Boolean = false,
-    connectSynchronously: Boolean = false,
-    onConnect: suspend (
-        client: CoderRestClient,
-        cli: CoderCLIManager,
-    ) -> Unit,
+    onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
     onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
     private val shouldAutoSetup = MutableStateFlow(initialAutoSetup)
@@ -38,13 +36,13 @@ class CoderCliSetupWizardPage(
         context,
         shouldAutoLogin = shouldAutoSetup,
         jumpToMainPageOnError = jumpToMainPageOnError,
-        connectSynchronously = connectSynchronously,
         visibilityState,
         refreshWizard = this::displaySteps,
         onConnect = onConnect,
         onTokenRefreshed = onTokenRefreshed
     )
     private val errorReporter = ErrorReporter.create(context, visibilityState, this.javaClass)
+    private var stateCollectJob: Job? = null
 
     /**
      * Fields for this page, displayed in order.
@@ -54,7 +52,12 @@ class CoderCliSetupWizardPage(
 
 
     override fun beforeShow() {
-        displaySteps()
+        stateCollectJob?.cancel()
+        stateCollectJob = context.cs.launch {
+            CoderSetupWizardState.step.collect {
+                displaySteps()
+            }
+        }
         errorReporter.flush()
     }
 

@@ -1,5 +1,7 @@
 package com.coder.toolbox.views.state
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * A singleton that maintains the state of the coder setup wizard across Toolbox window lifecycle events.
@@ -9,28 +11,30 @@ package com.coder.toolbox.views.state
  * to its initial state by creating a new instance.
  */
 object CoderSetupWizardState {
-    private var currentStep = WizardStep.URL_REQUEST
+    private val currentStep = MutableStateFlow(WizardStep.URL_REQUEST)
+    val step: StateFlow<WizardStep> = currentStep
 
-    fun currentStep(): WizardStep = currentStep
+    fun currentStep(): WizardStep = currentStep.value
 
     fun goToStep(step: WizardStep) {
-        currentStep = step
+        currentStep.value = step
     }
 
     fun goToNextStep() {
-        currentStep = WizardStep.entries.toTypedArray()[(currentStep.ordinal + 1) % WizardStep.entries.size]
+        currentStep.value = WizardStep.entries.toTypedArray()[(currentStep.value.ordinal + 1) % WizardStep.entries.size]
     }
 
     fun goToPreviousStep() {
-        currentStep = WizardStep.entries.toTypedArray()[(currentStep.ordinal - 1) % WizardStep.entries.size]
+        val entries = WizardStep.entries.toTypedArray()
+        currentStep.value = entries[(currentStep.value.ordinal - 1 + entries.size) % entries.size]
     }
 
     fun goToLastStep() {
-        currentStep = WizardStep.CONNECT
+        currentStep.value = WizardStep.CONNECT
     }
 
     fun goToFirstStep() {
-        currentStep = WizardStep.URL_REQUEST
+        currentStep.value = WizardStep.URL_REQUEST
     }
 }
 
