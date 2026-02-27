@@ -12,6 +12,7 @@ fun interface SuspendBiConsumer<T, U> {
      * Chains this consumer with [next], returning a new [SuspendBiConsumer]
      * that executes both in sequence.
      */
+
     fun andThen(next: SuspendBiConsumer<T, U>): SuspendBiConsumer<T, U> = SuspendBiConsumer { first, second ->
         this.accept(first, second)
         next.accept(first, second)

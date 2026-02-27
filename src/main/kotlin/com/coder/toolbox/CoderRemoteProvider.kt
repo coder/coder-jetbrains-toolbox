@@ -371,6 +371,7 @@ class CoderRemoteProvider(
                     }
                 }
                 linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
+                coderHeaderPage.isBusy.update { false }
             } else {
                 // Different URL - we need a new connection.
                 // Chain the link handling after onConnect so it runs once the connection is established.
@@ -384,7 +385,10 @@ class CoderRemoteProvider(
                         context, settingsPage, visibilityState,
                         initialAutoSetup = true,
                         jumpToMainPageOnError = true,
-                        onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl)),
+                        onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl))
+                            .andThen { _, _ ->
+                                coderHeaderPage.isBusy.update { false }
+                            },
                         onTokenRefreshed = ::onTokenRefreshed
                     )
                 )
@@ -399,9 +403,9 @@ class CoderRemoteProvider(
                 "Error encountered while handling Coder URI",
                 textError ?: ""
             )
+            coderHeaderPage.isBusy.update { false }
             context.envPageManager.showPluginEnvironmentsPage()
         } finally {
-            coderHeaderPage.isBusy.update { false }
             firstRun = false
         }
     }
