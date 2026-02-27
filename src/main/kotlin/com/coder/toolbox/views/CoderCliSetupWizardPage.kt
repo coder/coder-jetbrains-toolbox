@@ -54,7 +54,8 @@ class CoderCliSetupWizardPage(
     override fun beforeShow() {
         stateCollectJob?.cancel()
         stateCollectJob = context.cs.launch {
-            CoderSetupWizardState.step.collect {
+            CoderSetupWizardState.step.collect { step ->
+                context.logger.info("Wizard step changed to $step")
                 displaySteps()
             }
         }
@@ -119,7 +120,18 @@ class CoderCliSetupWizardPage(
                 }
                 connectStep.onVisible()
             }
+
+            WizardStep.DONE -> {
+                context.logger.info("Closing the Setup Wizard")
+                stateCollectJob?.cancel()
+                context.ui.hideUiPage(this)
+                CoderSetupWizardState.goToFirstStep()
+            }
         }
+    }
+
+    override fun afterHide() {
+        stateCollectJob?.cancel()
     }
 
     /**

@@ -152,7 +152,7 @@ class ConnectStep(
                     onTokenRefreshed?.invoke(client.url, session)
                 }
                 CoderSetupWizardContext.reset()
-                CoderSetupWizardState.goToFirstStep()
+                CoderSetupWizardState.goToDone()
                 context.envPageManager.showPluginEnvironmentsPage()
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {

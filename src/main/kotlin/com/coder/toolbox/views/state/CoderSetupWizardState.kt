@@ -36,8 +36,12 @@ object CoderSetupWizardState {
     fun goToFirstStep() {
         currentStep.value = WizardStep.URL_REQUEST
     }
+
+    fun goToDone() {
+        currentStep.value = WizardStep.DONE
+    }
 }
 
 enum class WizardStep {
-    URL_REQUEST, TOKEN_REQUEST, CONNECT;
+    URL_REQUEST, TOKEN_REQUEST, CONNECT, DONE;
 }

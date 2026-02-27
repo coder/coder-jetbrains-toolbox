@@ -270,7 +270,6 @@ class CoderRemoteProvider(
         lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
-        CoderSetupWizardState.goToFirstStep()
         context.logger.info("Coder plugin is now closed")
     }
 
@@ -587,6 +586,7 @@ class CoderRemoteProvider(
             }
 
             // Login flow.
+            CoderSetupWizardState.goToFirstStep()
             val setupWizardPage =
                 CoderCliSetupWizardPage(
                     context,
