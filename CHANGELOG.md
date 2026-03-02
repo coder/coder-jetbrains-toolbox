@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+# Changed
+
+- mTLS certificate reload is now more lenient, reload will be triggered even when refresh command returns a non 0 code
+
 ## 0.8.5 - 2026-02-03
 
 ### Added
