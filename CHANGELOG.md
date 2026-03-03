@@ -4,7 +4,7 @@
 
 ### Changed
 
-- mTLS certificate reload is now more lenient, reload will be triggered even when refresh command returns a non 0 code
+- mTLS connections no longer disconnect when the certificate refresh command exits with a non-zero code
 
 ## 0.8.5 - 2026-02-03
 
