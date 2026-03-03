@@ -347,9 +347,10 @@ open class CoderRestClient(
         } catch (e: Exception) {
             if (context.settingsStore.requiresMTlsAuth && isCertExpired(e)) {
                 context.logger.info("Certificate expired detected. Attempting refresh...")
-                refreshCertificates()
-                context.logger.info("Retrying the request...")
-                return block()
+                if (refreshCertificates()) {
+                    context.logger.info("Certificates refreshed, retrying the request...")
+                    return block()
+                }
             }
             throw e
         }
@@ -360,7 +361,7 @@ open class CoderRestClient(
                 e.message?.contains("certificate_expired", ignoreCase = true) == true
     }
 
-    private suspend fun refreshCertificates() = withContext(Dispatchers.IO) {
+    private suspend fun refreshCertificates(): Boolean = withContext(Dispatchers.IO) {
         val command = context.settingsStore.readOnly().tls.certRefreshCommand
         if (command.isNullOrBlank()) return@withContext false
 
@@ -371,9 +372,15 @@ open class CoderRestClient(
                 .readOutput(true)
                 .execute()
             context.logger.info("Certificate refresh finished with code ${result.exitValue}. Reloading TLS and evicting pool.")
-            tlsContext.reload()
-            // forces OkHttp to close the broken HTTP/2 connection.
-            httpClient.connectionPool.evictAll()
+            if (tlsContext.reload()) {
+                context.logger.info("Certificate refresh successful. Reloading TLS and evicting pool.")
+                // forces OkHttp to close the broken HTTP/2 connection.
+                httpClient.connectionPool.evictAll()
+                return@withContext true
+            } else {
+                context.logger.error("Refresh command failed with code ${result.exitValue}")
+                false
+            }
         } catch (ex: Exception) {
             context.logger.error(ex, "Failed to execute refresh command")
             false
