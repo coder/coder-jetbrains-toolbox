@@ -371,7 +371,6 @@ open class CoderRestClient(
                 .exitValueAny()
                 .readOutput(true)
                 .execute()
-            context.logger.info("Certificate refresh finished with code ${result.exitValue}. Reloading TLS and evicting pool.")
             if (tlsContext.reload()) {
                 context.logger.info("Certificate refresh successful. Reloading TLS and evicting pool.")
                 // forces OkHttp to close the broken HTTP/2 connection.
