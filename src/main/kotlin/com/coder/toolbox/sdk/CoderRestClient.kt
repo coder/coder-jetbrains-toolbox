@@ -368,16 +368,12 @@ open class CoderRestClient(
         return@withContext try {
             val result = ProcessExecutor()
                 .command(command.split(" ").toList())
-                .exitValueNormal()
+                .exitValueAny()
                 .readOutput(true)
                 .execute()
-
-            if (result.exitValue == 0) {
+            if (tlsContext.reload()) {
                 context.logger.info("Certificate refresh successful. Reloading TLS and evicting pool.")
-                tlsContext.reload()
-
-                // This is the "Magic Fix":
-                // It forces OkHttp to close the broken HTTP/2 connection.
+                // forces OkHttp to close the broken HTTP/2 connection.
                 httpClient.connectionPool.evictAll()
                 return@withContext true
             } else {

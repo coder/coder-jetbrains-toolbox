@@ -284,16 +284,29 @@ class MergedSystemTrustManger(private val otherTrustManager: X509TrustManager) :
 class ReloadableX509TrustManager(
     private val caPath: String?,
 ) : X509TrustManager {
+    private var lastHash: String? = null
+
     @Volatile
     private var delegate: X509TrustManager = loadTrustManager()
 
     private fun loadTrustManager(): X509TrustManager {
+        if (!caPath.isNullOrBlank()) {
+            lastHash = sha1(FileInputStream(expand(caPath)))
+        }
         val trustManagers = coderTrustManagers(caPath)
         return trustManagers.first { it is X509TrustManager } as X509TrustManager
     }
 
-    fun reload() {
-        delegate = loadTrustManager()
+    fun reload(): Boolean {
+        if (caPath.isNullOrBlank()) {
+            return false
+        }
+        val newHash = sha1(FileInputStream(expand(caPath)))
+        if (lastHash != newHash) {
+            delegate = loadTrustManager()
+            return true
+        }
+        return false
     }
 
     override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {
@@ -312,15 +325,31 @@ class ReloadableX509TrustManager(
 class ReloadableSSLSocketFactory(
     private val settings: ReadOnlyTLSSettings,
 ) : SSLSocketFactory() {
+    private var lastCertHash: String? = null
+    private var lastKeyHash: String? = null
+
     @Volatile
     private var delegate: SSLSocketFactory = loadSocketFactory()
 
     private fun loadSocketFactory(): SSLSocketFactory {
+        if (!settings.certPath.isNullOrBlank() && !settings.keyPath.isNullOrBlank()) {
+            lastCertHash = sha1(FileInputStream(expand(settings.certPath!!)))
+            lastKeyHash = sha1(FileInputStream(expand(settings.keyPath!!)))
+        }
         return coderSocketFactory(settings)
     }
 
-    fun reload() {
-        delegate = loadSocketFactory()
+    fun reload(): Boolean {
+        if (settings.certPath.isNullOrBlank() || settings.keyPath.isNullOrBlank()) {
+            return false
+        }
+        val newCertHash = sha1(FileInputStream(expand(settings.certPath!!)))
+        val newKeyHash = sha1(FileInputStream(expand(settings.keyPath!!)))
+        if (lastCertHash != newCertHash || lastKeyHash != newKeyHash) {
+            delegate = loadSocketFactory()
+            return true
+        }
+        return false
     }
 
     override fun getDefaultCipherSuites(): Array<String> = delegate.defaultCipherSuites
@@ -349,8 +378,9 @@ class ReloadableTlsContext(
     val sslSocketFactory = ReloadableSSLSocketFactory(settings)
     val trustManager = ReloadableX509TrustManager(settings.caPath)
 
-    fun reload() {
-        sslSocketFactory.reload()
-        trustManager.reload()
+    fun reload(): Boolean {
+        val socketFactoryReloaded = sslSocketFactory.reload()
+        val trustManagerReloaded = trustManager.reload()
+        return socketFactoryReloaded || trustManagerReloaded
     }
 }
