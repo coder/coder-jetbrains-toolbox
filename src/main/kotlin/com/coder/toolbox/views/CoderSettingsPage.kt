@@ -35,7 +35,10 @@ class CoderSettingsPage(
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
     private val settings = context.settingsStore.readOnly()
 
-    // TODO: Copy over the descriptions, holding until I can test this page.
+    private val preferOAuth2IfAvailableField = CheckboxField(
+        context.settingsStore.preferOAuth2IfAvailable,
+        context.i18n.ptrl("Prefer OAuth2 if available over authentication via API Key")
+    )
     private val binarySourceField =
         TextField(context.i18n.ptrl("Binary source"), settings.binarySource ?: "", TextType.General)
     private val binaryDirectoryField =
@@ -138,6 +141,7 @@ class CoderSettingsPage(
             httpLoggingField,
             dataDirectoryField,
             headerCommandField,
+            preferOAuth2IfAvailableField,
             tlsCertPathField,
             tlsKeyPathField,
             tlsCAPathField,
@@ -165,6 +169,7 @@ class CoderSettingsPage(
                     updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
                     updateBinaryDirectoryFallback(enableBinaryDirectoryFallbackField.checkedState.value)
                     updateHeaderCommand(headerCommandField.contentState.value)
+                    updatePreferAuthViaOAuth2(preferOAuth2IfAvailableField.checkedState.value)
                     updateCertPath(tlsCertPathField.contentState.value)
                     updateKeyPath(tlsKeyPathField.contentState.value)
                     updateCAPath(tlsCAPathField.contentState.value)
@@ -222,6 +227,10 @@ class CoderSettingsPage(
 
         headerCommandField.contentState.update {
             settings.headerCommand ?: ""
+        }
+
+        preferOAuth2IfAvailableField.checkedState.update {
+            settings.preferOAuth2IfAvailable
         }
 
         tlsCertPathField.contentState.update {

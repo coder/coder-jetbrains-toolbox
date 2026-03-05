@@ -56,7 +56,6 @@ class ConnectStep(
     )
 
     override fun onVisible() {
-        context.logger.info(">> ConnectStep visible")
         errorReporter.flush()
         errorField.textState.update {
             context.i18n.pnotr("")
@@ -83,7 +82,6 @@ class ConnectStep(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
-        context.logger.info(">> ConnectStep#onConnect called")
         val url = CoderSetupWizardContext.url
         if (url == null) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
@@ -104,12 +102,12 @@ class ConnectStep(
         // 1. Extract the logic into a reusable suspend lambda
         val connectionLogic: suspend CoroutineScope.() -> Unit = {
             try {
-                if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.hasOAuthSession()) {
+                var oauthSession: CoderOAuthSessionContext? = null
+                if (context.settingsStore.requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable && CoderSetupWizardContext.hasOAuthSession()) {
                     refreshOAuthToken(url)
+                    oauthSession = CoderSetupWizardContext.oauthSession!!.copy()
                 }
 
-                val oauthSession =
-                    if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.hasOAuthSession()) CoderSetupWizardContext.oauthSession!!.copy() else null
                 val apiToken = if (context.settingsStore.requiresTokenAuth) CoderSetupWizardContext.token else null
 
                 context.logger.info("Setting up the HTTP client...")

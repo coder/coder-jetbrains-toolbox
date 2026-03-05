@@ -85,9 +85,8 @@ class CoderSettingsStore(
             .resolve("ssh-network-metrics")
             .normalize()
             .toString()
-    override val preferAuthViaApiToken: Boolean
-        get() = store[PREFER_AUTH_VIA_API_TOKEN]?.toBooleanStrictOrNull() ?: false
-
+    override val preferOAuth2IfAvailable: Boolean
+        get() = store[PREFER_OAUTH2_IF_AVAILABLE]?.toBooleanStrictOrNull() ?: false
     override val workspaceViewUrl: String?
         get() = store[WORKSPACE_VIEW_URL]
     override val workspaceCreateUrl: String?
@@ -259,6 +258,10 @@ class CoderSettingsStore(
 
     fun updateAutoConnect(workspaceId: String, autoConnect: Boolean) {
         store["$SSH_AUTO_CONNECT_PREFIX$workspaceId"] = autoConnect.toString()
+    }
+
+    fun updatePreferAuthViaOAuth2(preferAuthViaOAuth2: Boolean) {
+        store[PREFER_OAUTH2_IF_AVAILABLE] = preferAuthViaOAuth2.toString()
     }
 
     private fun getDefaultGlobalDataDir(): Path {

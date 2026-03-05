@@ -59,11 +59,6 @@ class DeploymentUrlStep(
         context.i18n.ptrl("Verify binary signature using releases.coder.com when CLI signatures are not available from the deployment")
     )
 
-    private val preferOAuth2IfAvailable = CheckboxField(
-        true,
-        context.i18n.ptrl("Prefer OAuth2 if available over authentication via API Key")
-    )
-
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
 
     val okHttpClient = CoderHttpClientBuilder.default(context)
@@ -75,10 +70,8 @@ class DeploymentUrlStep(
                     RowGroup.RowField(urlField),
                     RowGroup.RowField(emptyLine),
                     RowGroup.RowField(signatureFallbackStrategyField),
-                    RowGroup.RowField(preferOAuth2IfAvailable),
                     RowGroup.RowField(errorField)
                 )
-
             }
             return RowGroup(
                 RowGroup.RowField(urlField),
@@ -119,8 +112,9 @@ class DeploymentUrlStep(
             CoderSetupWizardState.goToLastStep()
             return true
         }
-        if (context.settingsStore.requiresTokenAuth && preferOAuth2IfAvailable.checkedState.value) {
+        if (context.settingsStore.requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable) {
             try {
+                context.logger.info("Prefers OAuth2 authentication")
                 CoderSetupWizardContext.oauthSession = handleOAuth2(rawUrl)
                 return false
             } catch (e: Exception) {
