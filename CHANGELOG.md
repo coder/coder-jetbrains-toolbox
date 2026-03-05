@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- support for OAuth2
+
+### Changed
+
+- redesigned the Settings page, all the options are now grouped in a couple of sections for easy navigation
+
 ## 0.8.6 - 2026-03-05
 
 ### Changed

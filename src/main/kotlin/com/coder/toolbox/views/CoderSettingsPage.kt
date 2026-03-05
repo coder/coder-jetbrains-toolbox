@@ -9,6 +9,7 @@ import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField.LabelledValue
+import com.jetbrains.toolbox.api.ui.components.SectionField
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.UiField
@@ -131,27 +132,51 @@ class CoderSettingsPage(
     private lateinit var visibilityUpdateJob: Job
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
         listOf(
-            binarySourceField,
-            enableDownloadsField,
-            useAppNameField,
-            binaryDirectoryField,
-            enableBinaryDirectoryFallbackField,
-            disableSignatureVerificationField,
-            signatureFallbackStrategyField,
-            httpLoggingField,
-            dataDirectoryField,
-            headerCommandField,
-            preferOAuth2IfAvailableField,
-            tlsCertPathField,
-            tlsKeyPathField,
-            tlsCAPathField,
-            tlsAlternateHostnameField,
-            disableAutostartField,
-            enableSshWildCardConfig,
-            sshConnectionTimeoutField,
-            sshLogDirField,
-            networkInfoDirField,
-            sshExtraArgs,
+            SectionField(
+                "General",
+                true,
+                listOf(
+                    useAppNameField,
+                    disableAutostartField,
+                    httpLoggingField,
+                )
+            ),
+            SectionField(
+                "Security & Authentication",
+                false,
+                listOf(
+                    preferOAuth2IfAvailableField,
+                    headerCommandField,
+                    tlsCertPathField,
+                    tlsKeyPathField,
+                    tlsCAPathField,
+                    tlsAlternateHostnameField,
+                    disableSignatureVerificationField,
+                    signatureFallbackStrategyField,
+                )
+            ),
+            SectionField(
+                "CLI",
+                false,
+                listOf(
+                    binarySourceField,
+                    binaryDirectoryField,
+                    dataDirectoryField,
+                    enableDownloadsField,
+                    enableBinaryDirectoryFallbackField,
+                )
+            ),
+            SectionField(
+                "SSH",
+                false,
+                listOf(
+                    enableSshWildCardConfig,
+                    sshConnectionTimeoutField,
+                    sshLogDirField,
+                    networkInfoDirField,
+                    sshExtraArgs,
+                )
+            )
         )
     )
 
