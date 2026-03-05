@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.8.6 - 2026-03-05
+
+### Changed
+
+- mTLS connections no longer disconnect when the certificate refresh command exits with a non-zero code
+
 ## 0.8.5 - 2026-02-03
 
 ### Added
