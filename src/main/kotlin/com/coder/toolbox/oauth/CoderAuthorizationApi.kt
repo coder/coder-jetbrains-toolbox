@@ -18,8 +18,8 @@ interface CoderAuthorizationApi {
         @Body request: ClientRegistrationRequest
     ): Response<ClientRegistrationResponse>
 
-    @FormUrlEncoded
     @POST
+    @FormUrlEncoded
     suspend fun refreshToken(
         @Url url: String,
         @Field("grant_type") grantType: String = "refresh_token",
@@ -28,8 +28,8 @@ interface CoderAuthorizationApi {
         @Field("refresh_token") refreshToken: String
     ): Response<OAuthTokenResponse>
 
-    @FormUrlEncoded
     @POST
+    @FormUrlEncoded
     suspend fun refreshToken(
         @Url url: String,
         @Header("Authorization") authorization: String,
