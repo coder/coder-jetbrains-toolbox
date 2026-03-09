@@ -11,7 +11,6 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 private const val DISCOVERY_PATH = ".well-known/oauth-authorization-server"
-private const val REGISTER_CLIENT_PATH = "oauth2/register"
 
 class OAuth2Service(private val context: CoderToolboxContext) {
     private val service = createAuthorizationService()
@@ -25,9 +24,9 @@ class OAuth2Service(private val context: CoderToolboxContext) {
         return null
     }
 
-    suspend fun registerClient(baseUrl: String, request: ClientRegistrationRequest): ClientRegistrationResponse? {
+    suspend fun registerClient(url: String, request: ClientRegistrationRequest): ClientRegistrationResponse? {
         // TODO - until https://github.com/coder/coder/issues/20370 is delivered
-        val response = service.registerClient("$baseUrl/$REGISTER_CLIENT_PATH", request)
+        val response = service.registerClient(url, request)
 
         if (response.isSuccessful) {
             return requireNotNull(response.body()) { "Successful response returned null body or client registration metadata" }
