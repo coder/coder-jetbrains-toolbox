@@ -401,13 +401,13 @@ open class CoderRestClient(
             TokenEndpointAuthMethod.CLIENT_SECRET_BASIC -> {
                 requestBuilder.header(
                     "Authorization",
-                    Credentials.basic(oauthContext.clientId, oauthContext.clientSecret ?: "")
+                    Credentials.basic(oauthContext.clientId, oauthContext.clientSecret)
                 )
             }
 
             TokenEndpointAuthMethod.CLIENT_SECRET_POST -> {
                 formBodyBuilder.add("client_id", oauthContext.clientId)
-                formBodyBuilder.add("client_secret", oauthContext.clientSecret ?: "")
+                formBodyBuilder.add("client_secret", oauthContext.clientSecret)
             }
 
             else -> {
