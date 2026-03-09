@@ -412,19 +412,18 @@ class CoderRemoteProvider(
 
     private suspend fun handleOAuthUri(uri: URI) {
         val params = uri.toQueryParameters()
-        val code = params["code"]
-        val state = params["state"]
+        val code = params["code"] ?: return context.logAndShowError(
+            "Failed to handle OAuth code",
+            "Server responded did not respond back with an access token"
+        )
 
-        if (code != null && state != null && state == CoderSetupWizardContext.oauthSession?.state) {
-            if (CoderSetupWizardContext.oauthSession == null) {
-                context.logAndShowError(
-                    "Failed to handle OAuth code",
-                    "We received an OAuth code but our OAuth session is null"
-                )
-                return
-            }
-            exchangeOAuthCodeForToken(code)
-        }
+        params["state"]?.takeIf { it == CoderSetupWizardContext.oauthSession?.state }
+            ?: return context.logAndShowError(
+                "Failed to handle OAuth code",
+                "Server responded back with an invalid state that does not match the initial authorization state sent to the server"
+            )
+
+        exchangeOAuthCodeForToken(code)
     }
 
     private suspend fun exchangeOAuthCodeForToken(code: String) {
