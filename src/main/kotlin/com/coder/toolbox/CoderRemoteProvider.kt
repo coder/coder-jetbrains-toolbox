@@ -423,36 +423,38 @@ class CoderRemoteProvider(
                 "Server responded back with an invalid state that does not match the initial authorization state sent to the server"
             )
 
-        exchangeOAuthCodeForToken(code)
+        exchangeOAuthCodeForToken(code, CoderSetupWizardContext.oauthSession!!)
     }
 
-    private suspend fun exchangeOAuthCodeForToken(code: String) {
+    private suspend fun exchangeOAuthCodeForToken(code: String, oauthSessionContext: CoderOAuthSessionContext) {
         try {
             context.logger.info("Handling OAuth callback...")
-            val session = CoderSetupWizardContext.oauthSession ?: return
 
             // we need to make a POST request to the token endpoint
             val formBodyBuilder = okhttp3.FormBody.Builder()
                 .add("code", code)
                 .add("grant_type", "authorization_code")
-                .add("code_verifier", session.tokenCodeVerifier)
+                .add("code_verifier", oauthSessionContext.tokenCodeVerifier)
                 .add("redirect_uri", "jetbrains://gateway/com.coder.toolbox/auth")
 
             val requestBuilder = okhttp3.Request.Builder()
-                .url(session.tokenEndpoint)
+                .url(oauthSessionContext.tokenEndpoint)
 
-            when (session.tokenAuthMethod) {
+            when (oauthSessionContext.tokenAuthMethod) {
                 TokenEndpointAuthMethod.CLIENT_SECRET_BASIC -> {
-                    requestBuilder.header("Authorization", Credentials.basic(session.clientId, session.clientSecret))
+                    requestBuilder.header(
+                        "Authorization",
+                        Credentials.basic(oauthSessionContext.clientId, oauthSessionContext.clientSecret)
+                    )
                 }
 
                 TokenEndpointAuthMethod.CLIENT_SECRET_POST -> {
-                    formBodyBuilder.add("client_id", session.clientId)
-                    formBodyBuilder.add("client_secret", session.clientSecret)
+                    formBodyBuilder.add("client_id", oauthSessionContext.clientId)
+                    formBodyBuilder.add("client_secret", oauthSessionContext.clientSecret)
                 }
 
                 else -> {
-                    formBodyBuilder.add("client_id", session.clientId)
+                    formBodyBuilder.add("client_id", oauthSessionContext.clientId)
                 }
             }
 
@@ -465,21 +467,28 @@ class CoderRemoteProvider(
                 .execute()
 
             if (!response.isSuccessful) {
-                context.logAndShowError("OAuth Error", "Failed to exchange code for token")
+                context.logAndShowError(
+                    "OAuth Error",
+                    "Failed to exchange code for token. Response code: ${response.code}"
+                )
                 return
             }
 
-            val responseBody = response.body?.string() ?: return
+            val responseBody = response.body?.string() ?: return context.logAndShowError(
+                "OAuth Error",
+                "Failed to exchange code for token. Response body is empty."
+            )
             val adapter = Moshi
                 .Builder()
                 .build()
                 .adapter(OAuthTokenResponse::class.java)
-            val tokenResponse = adapter.fromJson(responseBody) ?: return
+            val tokenResponse = adapter.fromJson(responseBody) ?: return context.logAndShowError(
+                "OAuth Error",
+                "Failed to exchange code for token. Unable to parse response."
+            )
 
-            session.tokenResponse = tokenResponse
-
+            CoderSetupWizardContext.oauthSession?.tokenResponse = tokenResponse
             CoderSetupWizardState.goToStep(WizardStep.CONNECT)
-
         } catch (e: Exception) {
             context.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
         }
