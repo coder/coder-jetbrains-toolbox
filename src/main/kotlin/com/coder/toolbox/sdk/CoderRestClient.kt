@@ -1,8 +1,7 @@
 package com.coder.toolbox.sdk
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.oauth.OAuthTokenResponse
-import com.coder.toolbox.oauth.TokenEndpointAuthMethod
+import com.coder.toolbox.oauth.OAuth2Service
 import com.coder.toolbox.sdk.convertors.ArchConverter
 import com.coder.toolbox.sdk.convertors.InstantConverter
 import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
@@ -30,10 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okhttp3.Credentials
-import okhttp3.FormBody
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.zeroturnaround.exec.ProcessExecutor
 import retrofit2.Response
 import retrofit2.Retrofit
@@ -392,38 +388,7 @@ open class CoderRestClient(
     }
 
     private suspend fun refreshToken() {
-        val requestBuilder = Request.Builder().url(oauthContext!!.tokenEndpoint)
-        val formBodyBuilder = FormBody.Builder()
-            .add("grant_type", "refresh_token")
-            .add("refresh_token", oauthContext.tokenResponse?.refreshToken!!)
-
-        when (oauthContext.tokenAuthMethod) {
-            TokenEndpointAuthMethod.CLIENT_SECRET_BASIC -> {
-                requestBuilder.header(
-                    "Authorization",
-                    Credentials.basic(oauthContext.clientId, oauthContext.clientSecret)
-                )
-            }
-
-            TokenEndpointAuthMethod.CLIENT_SECRET_POST -> {
-                formBodyBuilder.add("client_id", oauthContext.clientId)
-                formBodyBuilder.add("client_secret", oauthContext.clientSecret)
-            }
-
-            else -> {
-                formBodyBuilder.add("client_id", oauthContext.clientId)
-            }
-        }
-
-        val request = requestBuilder.post(formBodyBuilder.build()).build()
-        val response = httpClient.newCall(request).execute()
-
-        if (!response.isSuccessful) {
-            throw APIResponseException("refresh token", url, response.code, null)
-        }
-
-        val responseBody = response.body?.string()
-        val newAuthResponse = moshi.adapter(OAuthTokenResponse::class.java).fromJson(responseBody!!)
+        val newAuthResponse = OAuth2Service(context).refreshToken(oauthContext!!)
         this.oauthContext.tokenResponse = newAuthResponse
         onTokenRefreshed?.invoke(url, oauthContext)
     }

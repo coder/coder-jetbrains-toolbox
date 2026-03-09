@@ -2,14 +2,11 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.browser.browse
-import com.coder.toolbox.oauth.AuthorizationServer
 import com.coder.toolbox.oauth.ClientRegistrationRequest
-import com.coder.toolbox.oauth.CoderAuthorizationApi
+import com.coder.toolbox.oauth.OAuth2Service
 import com.coder.toolbox.oauth.PKCEGenerator
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.oauth.getPreferredOrAvailable
-import com.coder.toolbox.sdk.CoderHttpClientBuilder
-import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
@@ -24,12 +21,9 @@ import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
-import com.squareup.moshi.Moshi
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.MalformedURLException
 import java.net.URL
 import java.util.UUID
@@ -60,8 +54,6 @@ class DeploymentUrlStep(
     )
 
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
-
-    val okHttpClient = CoderHttpClientBuilder.default(context)
 
     override val panel: RowGroup
         get() {
@@ -127,11 +119,27 @@ class DeploymentUrlStep(
     }
 
     private suspend fun handleOAuth2(urlString: String): CoderOAuthSessionContext? {
-        val service = createAuthorizationService(urlString)
-        val authServer = fetchDiscoveryMetadata(service) ?: return null
+        val oauthService = OAuth2Service(context)
+        val authServer = oauthService.discoverMetadata(urlString) ?: return null
 
         context.logger.debug("registering coder-jetbrains-toolbox as client app")
-        val clientResponse = registerClient(service, authServer) ?: return null
+        val clientResponse = oauthService.registerClient(
+            authServer.registrationEndpoint,
+            ClientRegistrationRequest(
+                clientName = "coder-jetbrains-toolbox",
+                redirectUris = listOf(REDIRECT_URI),
+                grantTypes = listOf("authorization_code", "refresh_token"),
+                responseTypes = authServer.supportedResponseTypes,
+                scope = OAUTH2_SCOPE,
+                tokenEndpointAuthMethod = if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_BASIC)) {
+                    "client_secret_basic"
+                } else if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_POST)) {
+                    "client_secret_post"
+                } else {
+                    "none"
+                }
+            )
+        ) ?: return null
 
         val codeVerifier = PKCEGenerator.generateCodeVerifier()
         val codeChallenge = PKCEGenerator.generateCodeChallenge(codeVerifier)
@@ -160,59 +168,6 @@ class DeploymentUrlStep(
             tokenEndpoint = authServer.tokenEndpoint,
             tokenAuthMethod = authServer.authMethodForTokenEndpoint.getPreferredOrAvailable()
         )
-    }
-
-    private fun createAuthorizationService(urlString: String): CoderAuthorizationApi {
-        return Retrofit.Builder()
-            .baseUrl(urlString)
-            .client(okHttpClient)
-            .addConverterFactory(
-                LoggingConverterFactory.wrap(
-                    context,
-                    MoshiConverterFactory.create(Moshi.Builder().build())
-                )
-            )
-            .build()
-            .create(CoderAuthorizationApi::class.java)
-    }
-
-    private suspend fun fetchDiscoveryMetadata(service: CoderAuthorizationApi): AuthorizationServer? {
-        val response = service.discoveryMetadata()
-        if (response.isSuccessful) {
-            return response.body()
-        }
-        context.logger.info("OAuth discovery failed: ${response.code()} ${response.message()} || ${response.errorBody()}")
-        return null
-    }
-
-    private suspend fun registerClient(
-        service: CoderAuthorizationApi,
-        authServer: AuthorizationServer
-    ): com.coder.toolbox.oauth.ClientRegistrationResponse? {
-        // TODO - until https://github.com/coder/coder/issues/20370 is delivered
-        val clientResponse = service.registerClient(
-            ClientRegistrationRequest(
-                clientName = "coder-jetbrains-toolbox",
-                redirectUris = listOf(REDIRECT_URI),
-                grantTypes = listOf("authorization_code", "refresh_token"),
-                responseTypes = authServer.supportedResponseTypes,
-                scope = OAUTH2_SCOPE,
-                tokenEndpointAuthMethod = if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_BASIC)) {
-                    "client_secret_basic"
-                } else if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_POST)) {
-                    "client_secret_post"
-                } else {
-                    "none"
-                }
-            )
-        )
-
-        if (clientResponse.isSuccessful) {
-            return requireNotNull(clientResponse.body()) { "Successful response returned null body or client registration metadata" }
-        } else {
-            context.logger.error(">> ${clientResponse.code()} ${clientResponse.message()} || ${clientResponse.errorBody()}")
-            return null
-        }
     }
 
     /**

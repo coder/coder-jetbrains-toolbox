@@ -2,38 +2,38 @@ package com.coder.toolbox.oauth
 
 import retrofit2.Response
 import retrofit2.http.Body
-import retrofit2.http.Field
+import retrofit2.http.FieldMap
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
-import retrofit2.http.Header
+import retrofit2.http.HeaderMap
 import retrofit2.http.POST
 import retrofit2.http.Url
 
 interface CoderAuthorizationApi {
-    @GET(".well-known/oauth-authorization-server")
-    suspend fun discoveryMetadata(): Response<AuthorizationServer>
+    @GET
+    suspend fun discoverMetadata(
+        @Url url: String
+    ): Response<AuthorizationServer>
 
-    @POST("oauth2/register")
+    @POST
     suspend fun registerClient(
+        @Url url: String,
         @Body request: ClientRegistrationRequest
     ): Response<ClientRegistrationResponse>
 
     @POST
     @FormUrlEncoded
-    suspend fun refreshToken(
+    suspend fun exchangeCode(
         @Url url: String,
-        @Field("grant_type") grantType: String = "refresh_token",
-        @Field("client_id") clientId: String,
-        @Field("client_secret") clientSecret: String,
-        @Field("refresh_token") refreshToken: String
+        @HeaderMap headers: Map<String, String> = emptyMap(),
+        @FieldMap fields: Map<String, String>
     ): Response<OAuthTokenResponse>
 
     @POST
     @FormUrlEncoded
     suspend fun refreshToken(
         @Url url: String,
-        @Header("Authorization") authorization: String,
-        @Field("grant_type") grantType: String = "refresh_token",
-        @Field("refresh_token") refreshToken: String
+        @HeaderMap headers: Map<String, String> = emptyMap(),
+        @FieldMap fields: Map<String, String>
     ): Response<OAuthTokenResponse>
 }

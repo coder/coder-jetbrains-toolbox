@@ -3,10 +3,9 @@ package com.coder.toolbox
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.feed.IdeFeedManager
+import com.coder.toolbox.oauth.OAuth2Service
 import com.coder.toolbox.oauth.OAuthTokenResponse
-import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.plugin.PluginManager
-import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
@@ -39,7 +38,6 @@ import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProvider
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiPage
-import com.squareup.moshi.Moshi
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -51,7 +49,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
-import okhttp3.Credentials
 import java.net.URI
 import java.net.URL
 import kotlin.coroutines.cancellation.CancellationException
@@ -430,65 +427,11 @@ class CoderRemoteProvider(
         try {
             context.logger.info("Handling OAuth callback...")
 
-            // we need to make a POST request to the token endpoint
-            val formBodyBuilder = okhttp3.FormBody.Builder()
-                .add("code", code)
-                .add("grant_type", "authorization_code")
-                .add("code_verifier", oauthSessionContext.tokenCodeVerifier)
-                .add("redirect_uri", "jetbrains://gateway/com.coder.toolbox/auth")
+            val tokenResponse = OAuth2Service(context).exchangeCode(oauthSessionContext, code)
+            oauthSessionContext.tokenResponse = tokenResponse
 
-            val requestBuilder = okhttp3.Request.Builder()
-                .url(oauthSessionContext.tokenEndpoint)
-
-            when (oauthSessionContext.tokenAuthMethod) {
-                TokenEndpointAuthMethod.CLIENT_SECRET_BASIC -> {
-                    requestBuilder.header(
-                        "Authorization",
-                        Credentials.basic(oauthSessionContext.clientId, oauthSessionContext.clientSecret)
-                    )
-                }
-
-                TokenEndpointAuthMethod.CLIENT_SECRET_POST -> {
-                    formBodyBuilder.add("client_id", oauthSessionContext.clientId)
-                    formBodyBuilder.add("client_secret", oauthSessionContext.clientSecret)
-                }
-
-                else -> {
-                    formBodyBuilder.add("client_id", oauthSessionContext.clientId)
-                }
-            }
-
-            val request = requestBuilder
-                .post(formBodyBuilder.build())
-                .build()
-
-            val response = CoderHttpClientBuilder.default(context)
-                .newCall(request)
-                .execute()
-
-            if (!response.isSuccessful) {
-                context.logAndShowError(
-                    "OAuth Error",
-                    "Failed to exchange code for token. Response code: ${response.code}"
-                )
-                return
-            }
-
-            val responseBody = response.body?.string() ?: return context.logAndShowError(
-                "OAuth Error",
-                "Failed to exchange code for token. Response body is empty."
-            )
-            val adapter = Moshi
-                .Builder()
-                .build()
-                .adapter(OAuthTokenResponse::class.java)
-            val tokenResponse = adapter.fromJson(responseBody) ?: return context.logAndShowError(
-                "OAuth Error",
-                "Failed to exchange code for token. Unable to parse response."
-            )
-
-            CoderSetupWizardContext.oauthSession?.tokenResponse = tokenResponse
             CoderSetupWizardState.goToStep(WizardStep.CONNECT)
+
         } catch (e: Exception) {
             context.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
         }
