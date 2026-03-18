@@ -87,6 +87,12 @@ class CoderSettingsStore(
             .toString()
     override val preferOAuth2IfAvailable: Boolean
         get() = store[PREFER_OAUTH2_IF_AVAILABLE]?.toBooleanStrictOrNull() ?: false
+    override val pluginIds: List<String>
+        get() = store[PLUGIN_IDS]
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
     override val workspaceViewUrl: String?
         get() = store[WORKSPACE_VIEW_URL]
     override val workspaceCreateUrl: String?
@@ -262,6 +268,10 @@ class CoderSettingsStore(
 
     fun updatePreferAuthViaOAuth2(preferAuthViaOAuth2: Boolean) {
         store[PREFER_OAUTH2_IF_AVAILABLE] = preferAuthViaOAuth2.toString()
+    }
+
+    fun updatePluginIds(ids: List<String>) {
+        store[PLUGIN_IDS] = ids.joinToString(",")
     }
 
     private fun getDefaultGlobalDataDir(): Path {

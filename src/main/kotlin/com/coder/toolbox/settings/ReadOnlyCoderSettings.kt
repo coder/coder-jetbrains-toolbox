@@ -177,6 +177,12 @@ interface ReadOnlyCoderSettings {
     val preferOAuth2IfAvailable: Boolean
 
     /**
+     * A list of JetBrains plugin IDs to install on the remote IDE before it launches.
+     * Stored as a comma-separated string in the settings store.
+     */
+    val pluginIds: List<String>
+
+    /**
      * Where the specified deployment should put its data.
      */
     fun dataDir(url: URL): Path

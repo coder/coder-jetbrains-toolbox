@@ -20,8 +20,14 @@ import com.jetbrains.toolbox.api.remoteDev.BeforeConnectionHook
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
+import com.jetbrains.toolbox.api.remoteDev.states.CustomRemoteEnvironmentStateV2
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
+import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateIcons
 import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
+import com.jetbrains.toolbox.api.remoteDev.states.StandardRemoteEnvironmentState
+import com.jetbrains.toolbox.api.remoteDev.tools.ToolDetails
+import com.jetbrains.toolbox.api.remoteDev.tools.ToolLaunchResult
+import com.jetbrains.toolbox.api.remoteDev.tools.ToolLifetimeListener
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.squareup.moshi.Moshi
@@ -34,13 +40,23 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import org.zeroturnaround.exec.ProcessExecutor
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 private val POLL_INTERVAL = 5.seconds
+
+private val INSTALL_PLUGINS_SCRIPT: String by lazy {
+    CoderRemoteEnvironment::class.java.getResourceAsStream("/install-plugins.sh")
+        ?.bufferedReader()
+        ?.readText()
+        ?: error("Could not load install-plugins.sh resource")
+}
 
 /**
  * Represents an agent and workspace combination.
@@ -70,6 +86,13 @@ class CoderRemoteEnvironment(
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
     private val proxyCommandHandle = SshCommandProcessHandle(context)
     private var pollJob: Job? = null
+
+    /**
+     * When true, the environment displays "Installing plugins..." with a spinner
+     * and the poller's [update] calls are suppressed so they don't overwrite the status.
+     */
+    @Volatile
+    private var installingPlugins = false
 
     init {
         if (context.settingsStore.shouldAutoConnect(id)) {
@@ -269,6 +292,13 @@ class CoderRemoteEnvironment(
         this.workspace = workspace
         this.agent = agent
 
+        // While plugins are being installed, keep the workspace/agent data fresh
+        // but don't touch the UI state — the "Installing plugins..." spinner must stay visible.
+        if (installingPlugins) {
+            context.logger.debug("Poller update suppressed for $id while plugins are being installed")
+            return
+        }
+
         // workspace&agent status can be different from "environment status"
         // which is forced to queued state when a workspace is scheduled to start
         updateStatus(WorkspaceAndAgentStatus.from(workspace, agent))
@@ -286,6 +316,30 @@ class CoderRemoteEnvironment(
             environmentStatus.toRemoteEnvironmentState(context)
         }
         context.logger.info("Overall status for workspace $id is $environmentStatus. Workspace status: ${workspace.latestBuild.status}, agent status: ${agent.status}, agent lifecycle state: ${agent.lifecycleState}, login before ready: ${agent.loginBeforeReady}")
+    }
+
+    private fun showInstallingPluginsState() {
+        installingPlugins = true
+        state.update {
+            CustomRemoteEnvironmentStateV2(
+                label = context.i18n.pnotr("Installing plugins..."),
+                color = context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Activating),
+                isReachable = true,
+                iconId = EnvironmentStateIcons.Connecting.id,
+                isPriorityShow = true
+            )
+        }
+        context.logger.info("Showing 'Installing plugins...' status for $id")
+    }
+
+    private fun clearInstallingPluginsState() {
+        if (!installingPlugins) return
+        installingPlugins = false
+        // Re-apply the real workspace status so the poller can resume normally.
+        updateStatus(WorkspaceAndAgentStatus.from(workspace, agent))
+        context.connectionMonitoringService.checkConnectionStatus(workspace, agent)
+        refreshAvailableActions()
+        context.logger.info("Cleared 'Installing plugins...' status for $id")
     }
 
     /**
@@ -376,5 +430,66 @@ class CoderRemoteEnvironment(
     fun updateClientAndCli(client: CoderRestClient, cli: CoderCLIManager) {
         this.client = client
         this.cli = cli
+    }
+
+    override fun getToolLifetimeListener(): ToolLifetimeListener = object : ToolLifetimeListener {
+        override suspend fun onToolLaunchAttempt(toolDetails: ToolDetails) {
+            context.logger.info("Tool Lifetime Launch attempt: $toolDetails from workspace $id")
+
+            val installationPath = toolDetails.installationPath
+            if (installationPath.isNullOrBlank()) {
+                context.logger.warn("No installation path available for $toolDetails, skipping plugin installation")
+                return
+            }
+
+            val pluginIds = context.settingsStore.pluginIds
+            if (pluginIds.isEmpty()) {
+                context.logger.info("No plugin IDs configured, skipping plugin installation for $id")
+                return
+            }
+
+            showInstallingPluginsState()
+            try {
+                withContext(Dispatchers.IO) {
+                    val hostname = cli.getHostname(client.url, workspace, agent)
+                    val command = listOf("ssh", "-T", hostname, "bash", "-s", "--", installationPath) + pluginIds
+
+                    context.logger.info("Installing plugins $pluginIds on $id via SSH ($hostname)")
+
+                    val output = ByteArrayOutputStream()
+                    val result = ProcessExecutor()
+                        .command(command)
+                        .redirectInput(INSTALL_PLUGINS_SCRIPT.byteInputStream())
+                        .redirectOutput(output)
+                        .redirectError(output)
+                        .exitValueAny()
+                        .execute()
+
+                    val outputText = output.toString(Charsets.UTF_8)
+                    if (result.exitValue == 0) {
+                        context.logger.info("Plugin installation succeeded for $id: $outputText")
+                    } else {
+                        context.logger.error("Plugin installation failed for $id (exit code ${result.exitValue}): $outputText")
+                    }
+                }
+            } catch (e: Exception) {
+                context.logger.error(e, "Failed to run plugin installation script on $id")
+            } finally {
+                clearInstallingPluginsState()
+            }
+        }
+
+        override suspend fun onToolLaunchResult(
+            toolDetails: ToolDetails,
+            result: ToolLaunchResult
+        ) {
+            context.logger.info("Tool Lifetime Launch result: $toolDetails, $result from workspace $id")
+            clearInstallingPluginsState()
+        }
+
+        override suspend fun onToolShutdown(toolDetails: ToolDetails) {
+            context.logger.info("Tool Lifetime Shutdown: $toolDetails from workspace $id")
+            clearInstallingPluginsState()
+        }
     }
 }
