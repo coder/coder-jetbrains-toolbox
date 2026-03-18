@@ -58,6 +58,7 @@ import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as dropDownF
 
 private val POLL_INTERVAL = 5.seconds
 private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
+private const val FAILED_TO_HANDLE_OAUTH2_TITLE = "Failed to handle OAuth2 request"
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CoderRemoteProvider(
@@ -409,16 +410,29 @@ class CoderRemoteProvider(
 
     private suspend fun handleOAuthUri(uri: URI) {
         val params = uri.toQueryParameters()
-        val code = params["code"] ?: return context.logAndShowError(
-            "Failed to handle OAuth code",
-            "Server responded did not respond back with an access token"
-        )
+
+        // RFC 6749 §4.1.2.1 (also covers RFC 7636 §4.4.1 PKCE errors): the authorization
+        // server redirects back with `error` when authorization fails (e.g. access_denied,
+        // invalid_request, unsupported_response_type, server_error, ...).
+        val error = params["error"]
+        if (error != null) {
+            val description = params["error_description"]?.let { ": $it" } ?: ""
+            return context.logAndShowError(
+                FAILED_TO_HANDLE_OAUTH2_TITLE,
+                "OAuth2 authorization error: $error$description"
+            )
+        }
 
         params["state"]?.takeIf { it == CoderSetupWizardContext.oauthSession?.state }
             ?: return context.logAndShowError(
-                "Failed to handle OAuth code",
+                FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "Server responded back with an invalid state that does not match the initial authorization state sent to the server"
             )
+
+        val code = params["code"] ?: return context.logAndShowError(
+            FAILED_TO_HANDLE_OAUTH2_TITLE,
+            "OAuth2 server did not respond back with an access token"
+        )
 
         exchangeOAuthCodeForToken(code, CoderSetupWizardContext.oauthSession!!)
     }

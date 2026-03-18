@@ -110,11 +110,19 @@ class OAuth2Service(private val context: CoderToolboxContext) {
         response: Response<OAuthTokenResponse>,
         action: String
     ): OAuthTokenResponse {
-        if (!response.isSuccessful) {
-            throw Exception("Failed to $action. Response code: ${response.code()} ${response.message()}")
+        if (response.isSuccessful) {
+            return response.body() ?: throw Exception("Failed to $action. Response body is empty.")
         }
 
-        return response.body() ?: throw Exception("Failed to $action. Response body is empty.")
+        val errorBody = response.errorBody()?.string()
+        val tokenError = errorBody?.let { OAuthTokenErrorResponse.fromJson(it) }
+        val errorMessage = if (tokenError != null) {
+            "Failed to $action: ${tokenError.toMessage()}"
+        } else {
+            "Failed to $action. Response code: ${response.code()} ${response.message()}"
+        }
+        context.logger.error(errorMessage)
+        throw Exception(errorMessage)
     }
 
     private fun createAuthorizationService(): CoderAuthorizationApi {
