@@ -24,16 +24,23 @@ class OAuth2Service(private val context: CoderToolboxContext) {
         return null
     }
 
-    suspend fun registerClient(url: String, request: ClientRegistrationRequest): ClientRegistrationResponse? {
+    suspend fun registerClient(url: String, request: ClientRegistrationRequest): ClientRegistrationResponse {
         // TODO - until https://github.com/coder/coder/issues/20370 is delivered
         val response = service.registerClient(url, request)
 
         if (response.isSuccessful) {
             return requireNotNull(response.body()) { "Successful response returned null body or client registration metadata" }
-        } else {
-            context.logger.info("Failed to register OAuth2 client: ${response.code()} ${response.message()} || ${response.errorBody()}")
-            return null
         }
+
+        val errorBody = response.errorBody()?.string()
+        val registrationError = errorBody?.let { ClientRegistrationErrorResponse.fromJson(it) }
+        val errorMessage = if (registrationError != null) {
+            "OAuth2 client registration failed: ${registrationError.toMessage()}"
+        } else {
+            "OAuth2 client registration failed with status ${response.code()}: ${response.message()}"
+        }
+        context.logger.error(errorMessage)
+        throw ClientRegistrationException(errorMessage)
     }
 
     suspend fun exchangeCode(

@@ -110,7 +110,8 @@ class DeploymentUrlStep(
                 CoderSetupWizardContext.oauthSession = handleOAuth2(rawUrl)
                 return false
             } catch (e: Exception) {
-                errorReporter.report("Failed to check OAuth support: ${e.message}", e)
+                errorReporter.report("Failed to authenticate with OAuth2: ${e.message}", e)
+                return false
             }
         }
         // if all else fails try the good old API token auth
@@ -139,7 +140,7 @@ class DeploymentUrlStep(
                     "none"
                 }
             )
-        ) ?: return null
+        )
 
         val codeVerifier = PKCEGenerator.generateCodeVerifier()
         val codeChallenge = PKCEGenerator.generateCodeChallenge(codeVerifier)

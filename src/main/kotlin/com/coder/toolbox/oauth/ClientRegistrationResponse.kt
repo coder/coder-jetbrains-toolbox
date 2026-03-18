@@ -2,6 +2,7 @@ package com.coder.toolbox.oauth
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
 
 /**
  * DCR response
@@ -21,3 +22,26 @@ data class ClientRegistrationResponse(
     @field:Json(name = "registration_client_uri") val registrationClientUri: String,
     @field:Json(name = "registration_access_token") val registrationAccessToken: String
 )
+
+/**
+ * RFC 7591 Section 3.2.2 — Client Registration Error Response.
+ */
+@JsonClass(generateAdapter = true)
+data class ClientRegistrationErrorResponse(
+    @field:Json(name = "error") val error: String,
+    @field:Json(name = "error_description") val errorDescription: String? = null
+) {
+    fun toMessage(): String = if (errorDescription.isNullOrBlank()) error else "$error: $errorDescription"
+
+    companion object {
+        private val adapter = Moshi.Builder().build().adapter(ClientRegistrationErrorResponse::class.java)
+
+        fun fromJson(json: String): ClientRegistrationErrorResponse? = try {
+            adapter.fromJson(json)
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+class ClientRegistrationException(message: String) : Exception(message)
