@@ -30,7 +30,7 @@ import java.util.UUID
 
 private const val REDIRECT_URI = "jetbrains://gateway/com.coder.toolbox/auth"
 private const val OAUTH2_SCOPE: String =
-    "coder:workspaces.operate coder:workspaces.delete coder:workspaces.access user:read"
+    "coder:workspaces.operate coder:workspaces.delete coder:workspaces.access user:read_personal"
 
 /**
  * A page with a field for providing the Coder deployment URL.
