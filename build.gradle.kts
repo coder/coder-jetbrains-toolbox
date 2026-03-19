@@ -6,7 +6,6 @@ import com.jetbrains.plugin.structure.toolbox.ToolboxMeta
 import com.jetbrains.plugin.structure.toolbox.ToolboxPluginDescriptor
 import org.jetbrains.intellij.pluginRepository.PluginRepositoryFactory
 import org.jetbrains.intellij.pluginRepository.model.ProductFamily
-import org.jetbrains.kotlin.com.intellij.openapi.util.SystemInfoRt
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -204,12 +203,14 @@ tasks.register("cleanAll", Delete::class.java) {
 
 private fun getPluginInstallDir(): Path {
     val userHome = System.getProperty("user.home").let { Path.of(it) }
+    val osName = System.getProperty("os.name").lowercase()
     val pluginsDir = when {
-        SystemInfoRt.isWindows -> System.getenv("LOCALAPPDATA")?.let { Path.of(it) } ?: (userHome / "AppData" / "Local")
-        // currently this is the location that TBA uses on Linux
-        SystemInfoRt.isLinux -> System.getenv("XDG_DATA_HOME")?.let { Path.of(it) } ?: (userHome / ".local" / "share")
-        SystemInfoRt.isMac -> userHome / "Library" / "Caches"
-        else -> error("Unknown os")
+        osName.contains("win") -> System.getenv("LOCALAPPDATA")?.let { Path.of(it) } ?: (userHome / "AppData" / "Local")
+        osName.contains("nix") || osName.contains("nux") || osName.contains("aix") -> System.getenv("XDG_DATA_HOME")
+            ?.let { Path.of(it) } ?: (userHome / ".local" / "share")
+
+        osName.contains("mac") -> userHome / "Library" / "Caches"
+        else -> error("Unknown os: $osName")
     } / "JetBrains" / "Toolbox" / "plugins"
 
     return pluginsDir / extension.id

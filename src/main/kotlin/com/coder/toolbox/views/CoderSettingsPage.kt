@@ -129,6 +129,12 @@ class CoderSettingsPage(
         TextType.General
     )
 
+    private val pluginIdsField = TextField(
+        context.i18n.ptrl("Plugin IDs (comma-separated)"),
+        settings.pluginIds.joinToString(", "),
+        TextType.General
+    )
+
     private lateinit var visibilityUpdateJob: Job
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
         listOf(
@@ -176,6 +182,13 @@ class CoderSettingsPage(
                     networkInfoDirField,
                     sshExtraArgs,
                 )
+            ),
+            SectionField(
+                "IDE Plugins",
+                false,
+                listOf(
+                    pluginIdsField,
+                )
             )
         )
     )
@@ -220,6 +233,12 @@ class CoderSettingsPage(
                     updateSshLogDir(sshLogDirField.contentState.value)
                     updateNetworkInfoDir(networkInfoDirField.contentState.value)
                     updateSshConfigOptions(sshExtraArgs.contentState.value)
+                    updatePluginIds(
+                        pluginIdsField.contentState.value
+                            .split(",")
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                    )
                 }
             }
         )
@@ -296,6 +315,10 @@ class CoderSettingsPage(
 
         networkInfoDirField.contentState.update {
             settings.networkInfoDir
+        }
+
+        pluginIdsField.contentState.update {
+            settings.pluginIds.joinToString(", ")
         }
 
         visibilityUpdateJob = context.cs.launch(CoroutineName("Signature Verification Fallback Setting")) {

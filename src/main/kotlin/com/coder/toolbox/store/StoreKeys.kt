@@ -58,3 +58,5 @@ internal const val WORKSPACE_CREATE_URL = "workspaceCreateUrl"
 internal const val SSH_AUTO_CONNECT_PREFIX = "ssh_auto_connect_"
 
 internal const val PREFER_OAUTH2_IF_AVAILABLE = "preferOAuth2IfAvailable"
+
+internal const val PLUGIN_IDS = "pluginIds"
