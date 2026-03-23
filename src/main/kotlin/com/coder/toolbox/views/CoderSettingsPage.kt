@@ -39,7 +39,7 @@ class CoderSettingsPage(
     private val binarySourceField =
         TextField(context.i18n.ptrl("Binary source"), settings.binarySource ?: "", TextType.General)
     private val binaryDirectoryField =
-        TextField(context.i18n.ptrl("Binary directory"), settings.binaryDirectory ?: "", TextType.General)
+        TextField(context.i18n.ptrl("Binary destination"), settings.binaryDestination ?: "", TextType.General)
     private val dataDirectoryField =
         TextField(context.i18n.ptrl("Data directory"), settings.dataDirectory ?: "", TextType.General)
     private val enableDownloadsField =
@@ -201,7 +201,7 @@ class CoderSettingsPage(
             settings.binarySource ?: ""
         }
         binaryDirectoryField.contentState.update {
-            settings.binaryDirectory ?: ""
+            settings.binaryDestination ?: ""
         }
         dataDirectoryField.contentState.update {
             settings.dataDirectory ?: ""

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- support for using a locally provided CLI binary when downloads are disabled
+
 ## 0.8.6 - 2026-03-05
 
 ### Changed

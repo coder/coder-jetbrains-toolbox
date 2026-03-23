@@ -41,7 +41,7 @@ class CoderSettingsStore(
     override val defaultURL: String get() = store[DEFAULT_URL] ?: "https://dev.coder.com"
     override val useAppNameAsTitle: Boolean get() = store[APP_NAME_AS_TITLE]?.toBooleanStrictOrNull() ?: false
     override val binarySource: String? get() = store[BINARY_SOURCE]
-    override val binaryDirectory: String? get() = store[BINARY_DIRECTORY]
+    override val binaryDestination: String? get() = store[BINARY_DESTINATION] ?: store[BINARY_DIRECTORY]
     override val disableSignatureVerification: Boolean
         get() = store[DISABLE_SIGNATURE_VALIDATION]?.toBooleanStrictOrNull() ?: false
     override val fallbackOnCoderForSignatures: SignatureFallbackStrategy
@@ -49,7 +49,6 @@ class CoderSettingsStore(
     override val httpClientLogLevel: HttpLoggingVerbosity
         get() = HttpLoggingVerbosity.fromValue(store[HTTP_CLIENT_LOG_LEVEL])
     override val defaultCliBinaryNameByOsAndArch: String get() = getCoderCLIForOS(getOS(), getArch())
-    override val binaryName: String get() = store[BINARY_NAME] ?: getCoderCLIForOS(getOS(), getArch())
     override val defaultSignatureNameByOsAndArch: String get() = getCoderSignatureForOS(getOS(), getArch())
     override val dataDirectory: String? get() = store[DATA_DIRECTORY]
     override val globalDataDirectory: String get() = getDefaultGlobalDataDir().normalize().toString()
@@ -125,20 +124,33 @@ class CoderSettingsStore(
 
     /**
      * To where the specified deployment should download the binary.
+     *
+     * Resolution logic:
+     * 1. If [binaryDestination] is null/empty or [forceDownloadToData] is true,
+     *    the binary is placed in the deployment's data directory with the
+     *    default CLI binary name for the current OS and architecture.
+     * 2. If [binaryDestination] is set and [enableDownloads] is false, the value
+     *    is treated as an absolute path to a pre-existing CLI binary (~ and $HOME
+     *    are expanded).
+     * 3. Otherwise [binaryDestination] is treated as a base directory; the binary
+     *    is placed under a host-specific subdirectory with the default CLI binary
+     *    name.
      */
     override fun binPath(
         url: URL,
         forceDownloadToData: Boolean,
     ): Path {
-        binaryDirectory.let {
-            val dir =
-                if (forceDownloadToData || it.isNullOrBlank()) {
-                    dataDir(url)
-                } else {
-                    withHost(Path.of(expand(it)), url)
-                }
-            return dir.resolve(binaryName).toAbsolutePath()
+        val dest = binaryDestination
+        if (dest.isNullOrBlank() || forceDownloadToData) {
+            return dataDir(url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
         }
+
+        val expanded = Path.of(expand(dest))
+        if (!enableDownloads) {
+            return expanded.toAbsolutePath()
+        }
+
+        return withHost(expanded, url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
     }
 
     /**

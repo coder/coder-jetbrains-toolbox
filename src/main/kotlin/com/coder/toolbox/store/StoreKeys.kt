@@ -10,7 +10,10 @@ internal const val APP_NAME_AS_TITLE = "useAppNameAsTitle"
 
 internal const val BINARY_SOURCE = "binarySource"
 
-internal const val BINARY_DIRECTORY = "binaryDirectory"
+@Deprecated("Use binaryDestination instead", replaceWith = ReplaceWith("StoreKeys.BINARY_DESTINATION"))
+internal const val BINARY_DIRECTORY = "binaryDestination"
+
+internal const val BINARY_DESTINATION = "binaryDestination"
 
 internal const val DISABLE_SIGNATURE_VALIDATION = "disableSignatureValidation"
 
