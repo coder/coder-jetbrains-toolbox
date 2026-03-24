@@ -1,6 +1,5 @@
 package com.coder.toolbox.settings
 
-import com.coder.toolbox.store.BINARY_NAME
 import com.coder.toolbox.store.CODER_SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.DISABLE_AUTOSTART
@@ -114,11 +113,7 @@ internal class CoderSettingsTest {
 
     @Test
     fun testBinPath() {
-        val settings = CoderSettingsStore(
-            pluginTestSettingsStore(
-                BINARY_NAME to "foo-bar.baz"
-            ), Environment(), logger
-        )
+        val settings = CoderSettingsStore(pluginTestSettingsStore(), Environment(), logger)
         // The binary path should fall back to the data directory but that is
         // already tested in the data directory tests.
         val url = URL("http://localhost")
@@ -133,7 +128,11 @@ internal class CoderSettingsTest {
         expected = "/tmp/coder-toolbox-test/data-dir/localhost"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.readOnly().binPath(url, true).parent)
 
-        assertEquals("foo-bar.baz", settings.readOnly().binPath(url).fileName.toString())
+        // Binary name is always determined by OS and architecture.
+        assertEquals(
+            settings.readOnly().defaultCliBinaryNameByOsAndArch,
+            settings.readOnly().binPath(url).fileName.toString()
+        )
     }
 
     @Test

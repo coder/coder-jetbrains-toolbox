@@ -7,8 +7,8 @@ import com.coder.toolbox.cli.ex.SSHConfigFormatException
 import com.coder.toolbox.sdk.DataGen.Companion.workspace
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.settings.Environment
+import com.coder.toolbox.store.BINARY_DESTINATION
 import com.coder.toolbox.store.BINARY_DIRECTORY
-import com.coder.toolbox.store.BINARY_NAME
 import com.coder.toolbox.store.BINARY_SOURCE
 import com.coder.toolbox.store.CODER_SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.CoderSecretsStore
@@ -184,7 +184,7 @@ internal class CoderCLIManagerTest {
         val settings = CoderSettingsStore(
             pluginTestSettingsStore(
                 DATA_DIRECTORY to tmpdir.resolve("cli-data-dir").toString(),
-                BINARY_DIRECTORY to tmpdir.resolve("cli-bin-dir").toString(),
+                BINARY_DESTINATION to tmpdir.resolve("cli-bin-dir").toString(),
             ),
             Environment(),
             context.logger
@@ -201,6 +201,91 @@ internal class CoderCLIManagerTest {
         assertEquals(settings.binSource(url), ccm2.remoteBinaryURL)
         assertEquals(settings.dataDir(url), ccm2.coderConfigPath.parent)
         assertEquals(settings.binPath(url, true), ccm2.localBinaryPath)
+    }
+
+    @Test
+    fun `testBinaryDestination with downloads enabled places binary under host subdirectory`() {
+        val (srv, url) = mockServer()
+        val binDir = tmpdir.resolve("bin-dest-downloads-enabled")
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binDir.toString(),
+                FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
+            ),
+            Environment(),
+            context.logger
+        )
+
+        val ccm = CoderCLIManager(context.copy(settingsStore = settings), url)
+
+        // With downloads enabled (default), binaryDestination is a base directory
+        // and the binary is placed under <binaryDestination>/<host>/<defaultCliBinaryName>
+        val expectedPath = binDir.resolve("localhost-${url.port}").resolve(settings.defaultCliBinaryNameByOsAndArch)
+        assertEquals(expectedPath.toAbsolutePath(), ccm.localBinaryPath)
+
+        // Verify it actually downloads successfully to that location.
+        assertTrue(runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
+        assertTrue(ccm.localBinaryPath.toFile().exists())
+
+        srv.stop(0)
+    }
+
+    @Test
+    fun `testBinaryDestination with downloads disabled points directly to binary`() {
+        val binaryFile = tmpdir.resolve("local-cli").resolve("my-coder-binary")
+        binaryFile.parent.toFile().mkdirs()
+        binaryFile.toFile().writeText(mkbinVersion("1.0.0"))
+        if (getOS() != OS.WINDOWS) {
+            binaryFile.toFile().setExecutable(true)
+        }
+
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryFile.toString(),
+                ENABLE_DOWNLOADS to "false",
+            ),
+            Environment(),
+            context.logger
+        )
+
+        val ccm = CoderCLIManager(context.copy(settingsStore = settings), URL("https://test.coder.com"))
+
+        // With downloads disabled, binaryDestination is the absolute path to the binary itself.
+        assertEquals(binaryFile.toAbsolutePath(), ccm.localBinaryPath)
+        assertEquals(SemVer(1, 0, 0), ccm.version())
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `testBinaryDirectory fallback to BINARY_DESTINATION`() {
+        val binDir = tmpdir.resolve("bin-dir-fallback")
+        val url = URL("http://localhost")
+
+        // Using the deprecated BINARY_DIRECTORY key should still work
+        // because binaryDestination falls back to it.
+        val settingsWithOldKey = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DIRECTORY to binDir.toString(),
+            ),
+            Environment(),
+            context.logger
+        )
+        val expectedOldKey = binDir.resolve("localhost").resolve(settingsWithOldKey.defaultCliBinaryNameByOsAndArch)
+        assertEquals(expectedOldKey.toAbsolutePath(), settingsWithOldKey.binPath(url))
+
+        // BINARY_DESTINATION takes priority over BINARY_DIRECTORY.
+        val overrideDir = tmpdir.resolve("bin-dest-override")
+        val settingsWithBothKeys = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to overrideDir.toString(),
+                BINARY_DIRECTORY to binDir.toString(),
+            ),
+            Environment(),
+            context.logger
+        )
+        val expectedNewKey =
+            overrideDir.resolve("localhost").resolve(settingsWithBothKeys.defaultCliBinaryNameByOsAndArch)
+        assertEquals(expectedNewKey.toAbsolutePath(), settingsWithBothKeys.binPath(url))
     }
 
     @Test
@@ -279,7 +364,6 @@ internal class CoderCLIManagerTest {
             context.copy(
                 settingsStore = CoderSettingsStore(
                     pluginTestSettingsStore(
-                        BINARY_NAME to "coder.bat",
                         DATA_DIRECTORY to tmpdir.resolve("mock-cli").toString(),
                         FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
                     ),
@@ -736,8 +820,7 @@ internal class CoderCLIManagerTest {
             context.copy(
                 settingsStore = CoderSettingsStore(
                     pluginTestSettingsStore(
-                        BINARY_NAME to "coder.bat",
-                        BINARY_DIRECTORY to tmpdir.resolve("bad-version").toString(),
+                        BINARY_DESTINATION to tmpdir.resolve("bad-version").toString(),
                     ),
                     Environment(),
                     context.logger,
@@ -790,8 +873,7 @@ internal class CoderCLIManagerTest {
             context.copy(
                 settingsStore = CoderSettingsStore(
                     pluginTestSettingsStore(
-                        BINARY_NAME to "coder.bat",
-                        BINARY_DIRECTORY to tmpdir.resolve("matches-version").toString(),
+                        BINARY_DESTINATION to tmpdir.resolve("matches-version").toString(),
                     ),
                     Environment(),
                     context.logger,
@@ -884,14 +966,26 @@ internal class CoderCLIManagerTest {
             )
 
         val (srv, url) = mockServer()
+        val binaryName = context.settingsStore.defaultCliBinaryNameByOsAndArch
+        val host = "localhost-${url.port}"
 
         tests.forEach {
+            // When downloads are disabled, binPath treats binaryDestination
+            // as a direct file path. We must provide the full path including
+            // host subdirectory and binary name so that binPath(url).parent
+            // does not resolve to the shared cli-manager tmpdir.
+            val binDestination = if (it.enableDownloads) {
+                tmpdir.resolve("ensure-bin-dir").toString()
+            } else {
+                tmpdir.resolve("ensure-bin-dir").resolve(host).resolve(binaryName).toString()
+            }
+
             val settingsStore = CoderSettingsStore(
                 pluginTestSettingsStore(
                     ENABLE_DOWNLOADS to it.enableDownloads.toString(),
                     ENABLE_BINARY_DIR_FALLBACK to it.enableFallback.toString(),
                     DATA_DIRECTORY to tmpdir.resolve("ensure-data-dir").toString(),
-                    BINARY_DIRECTORY to tmpdir.resolve("ensure-bin-dir").toString(),
+                    BINARY_DESTINATION to binDestination,
                     FALLBACK_ON_CODER_FOR_SIGNATURES to "allow"
                 ),
                 Environment(),
@@ -1007,7 +1101,6 @@ internal class CoderCLIManagerTest {
                 context.copy(
                     settingsStore = CoderSettingsStore(
                         pluginTestSettingsStore(
-                            BINARY_NAME to "coder.bat",
                             DATA_DIRECTORY to tmpdir.resolve("features").toString(),
                             FALLBACK_ON_CODER_FOR_SIGNATURES to "allow"
                         ),
