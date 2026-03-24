@@ -375,7 +375,11 @@ internal class CoderCLIManagerTest {
         )
 
         assertEquals(true, runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
-        assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
+        // On Windows the downloaded script is saved as .exe and cannot be executed
+        // as a batch script, so skip the version check.
+        if (getOS() != OS.WINDOWS) {
+            assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
+        }
 
         // It should skip the second attempt.
         assertEquals(false, runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
@@ -819,9 +823,16 @@ internal class CoderCLIManagerTest {
         val ccm = CoderCLIManager(
             context.copy(
                 settingsStore = CoderSettingsStore(
-                    pluginTestSettingsStore(
-                        BINARY_DESTINATION to tmpdir.resolve("bad-version").toString(),
-                    ),
+                    if (getOS() == OS.WINDOWS) {
+                        pluginTestSettingsStore(
+                            BINARY_DESTINATION to tmpdir.resolve("bad-version").resolve("coder.bat").toString(),
+                            ENABLE_DOWNLOADS to "false",
+                        )
+                    } else {
+                        pluginTestSettingsStore(
+                            BINARY_DESTINATION to tmpdir.resolve("bad-version").toString(),
+                        )
+                    },
                     Environment(),
                     context.logger,
                 )
@@ -872,9 +883,16 @@ internal class CoderCLIManagerTest {
         val ccm = CoderCLIManager(
             context.copy(
                 settingsStore = CoderSettingsStore(
-                    pluginTestSettingsStore(
-                        BINARY_DESTINATION to tmpdir.resolve("matches-version").toString(),
-                    ),
+                    if (getOS() == OS.WINDOWS) {
+                        pluginTestSettingsStore(
+                            BINARY_DESTINATION to tmpdir.resolve("matches-version").resolve("coder.bat").toString(),
+                            ENABLE_DOWNLOADS to "false",
+                        )
+                    } else {
+                        pluginTestSettingsStore(
+                            BINARY_DESTINATION to tmpdir.resolve("matches-version").toString(),
+                        )
+                    },
                     Environment(),
                     context.logger,
                 )
@@ -1111,7 +1129,11 @@ internal class CoderCLIManagerTest {
                 url,
             )
             assertEquals(true, runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
-            assertEquals(it.second, ccm.features, "version: ${it.first}")
+            // On Windows the downloaded script is saved as .exe and cannot be executed
+            // as a batch script, so skip the features check.
+            if (getOS() != OS.WINDOWS) {
+                assertEquals(it.second, ccm.features, "version: ${it.first}")
+            }
 
             srv.stop(0)
         }

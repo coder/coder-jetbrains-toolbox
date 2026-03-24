@@ -5,8 +5,10 @@ import com.coder.toolbox.util.pluginTestSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import java.net.URL
+import java.nio.file.Path
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -80,7 +82,7 @@ class CoderSettingsStoreTest {
         val result = settings.binPath(url)
 
         assertTrue(result.isAbsolute)
-        assertTrue(result.toString().endsWith("/test.coder.com/coder-linux-amd64"))
+        assertTrue(result.endsWith(Path.of("test.coder.com", "coder-linux-amd64")))
     }
 
     @Test
@@ -91,7 +93,7 @@ class CoderSettingsStoreTest {
         val result = settings.binPath(url)
 
         assertTrue(result.isAbsolute)
-        assertTrue(result.toString().endsWith("/test.coder.com/coder-linux-amd64"))
+        assertTrue(result.endsWith(Path.of("test.coder.com", "coder-linux-amd64")))
     }
 
     @Test
@@ -102,13 +104,13 @@ class CoderSettingsStoreTest {
         val result = settings.binPath(url, forceDownloadToData = true)
 
         assertTrue(result.isAbsolute)
-        assertTrue(result.toString().endsWith("/test.coder.com/coder-linux-amd64"))
-        assertTrue(!result.toString().contains("/custom/path"))
+        assertTrue(result.endsWith(Path.of("test.coder.com", "coder-linux-amd64")))
+        // The custom path should NOT be part of the result when forceDownloadToData is true.
+        assertFalse(result.startsWith(Path.of("/custom/path").toAbsolutePath()))
     }
 
     @Test
     fun `binPath returns absolute binaryDestination path when downloads are disabled`() {
-        setOsAndArch("Linux", "x86_64")
         val settings = storeWith(
             BINARY_DESTINATION to "/usr/local/bin/coder",
             ENABLE_DOWNLOADS to "false"
@@ -116,37 +118,37 @@ class CoderSettingsStoreTest {
         val url = URL("https://test.coder.com")
         val result = settings.binPath(url)
 
-        assertEquals("/usr/local/bin/coder", result.toString())
+        assertEquals(Path.of("/usr/local/bin/coder").toAbsolutePath(), result)
     }
 
     @Test
     fun `binPath expands tilde in binaryDestination when downloads are disabled`() {
-        setOsAndArch("Linux", "x86_64")
+        // Don't override OS — tilde expansion depends on the real File.separator.
         val settings = storeWith(
             BINARY_DESTINATION to "~/bin/coder",
             ENABLE_DOWNLOADS to "false"
         )
         val url = URL("https://test.coder.com")
         val result = settings.binPath(url)
-        val home = System.getProperty("user.home")
+        val home = Path.of(System.getProperty("user.home"))
 
         assertTrue(result.isAbsolute)
-        assertEquals("$home/bin/coder", result.toString())
+        assertEquals(home.resolve("bin").resolve("coder").toAbsolutePath(), result)
     }
 
     @Test
     fun `binPath expands HOME in binaryDestination when downloads are disabled`() {
-        setOsAndArch("Linux", "x86_64")
+        // Don't override OS — $HOME expansion depends on the real File.separator.
         val settings = storeWith(
             BINARY_DESTINATION to "\$HOME/bin/coder",
             ENABLE_DOWNLOADS to "false"
         )
         val url = URL("https://test.coder.com")
         val result = settings.binPath(url)
-        val home = System.getProperty("user.home")
+        val home = Path.of(System.getProperty("user.home"))
 
         assertTrue(result.isAbsolute)
-        assertEquals("$home/bin/coder", result.toString())
+        assertEquals(home.resolve("bin").resolve("coder").toAbsolutePath(), result)
     }
 
     @Test
@@ -156,7 +158,10 @@ class CoderSettingsStoreTest {
         val url = URL("https://test.coder.com")
         val result = settings.binPath(url)
 
-        assertEquals("/opt/coder-cli/test.coder.com/coder-linux-amd64", result.toString())
+        assertEquals(
+            Path.of("/opt/coder-cli", "test.coder.com", "coder-linux-amd64").toAbsolutePath(),
+            result
+        )
     }
 
     @Test
@@ -166,7 +171,10 @@ class CoderSettingsStoreTest {
         val url = URL("https://test.coder.com:8443")
         val result = settings.binPath(url)
 
-        assertEquals("/opt/coder-cli/test.coder.com-8443/coder-linux-amd64", result.toString())
+        assertEquals(
+            Path.of("/opt/coder-cli", "test.coder.com-8443", "coder-linux-amd64").toAbsolutePath(),
+            result
+        )
     }
 
     @Test
@@ -176,7 +184,7 @@ class CoderSettingsStoreTest {
         val url = URL("https://test.coder.com")
         val result = settings.binPath(url)
 
-        assertTrue(result.toString().endsWith("coder-windows-amd64.exe"))
+        assertEquals("coder-windows-amd64.exe", result.fileName.toString())
     }
 
     @Test
@@ -186,7 +194,7 @@ class CoderSettingsStoreTest {
         val url = URL("https://test.coder.com")
         val result = settings.binPath(url)
 
-        assertTrue(result.toString().endsWith("coder-darwin-arm64"))
+        assertEquals("coder-darwin-arm64", result.fileName.toString())
     }
 
     private fun assertBinaryAndSignature(
