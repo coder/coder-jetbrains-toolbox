@@ -204,7 +204,7 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun `testBinaryDestination with downloads enabled places binary under host subdirectory`() {
+    fun `test binaryDestination with downloads enabled places binary under host subdirectory`() {
         val (srv, url) = mockServer()
         val binDir = tmpdir.resolve("bin-dest-downloads-enabled")
         val settings = CoderSettingsStore(
@@ -231,7 +231,7 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun `testBinaryDestination with downloads disabled points directly to binary`() {
+    fun `test binaryDestination with downloads disabled points directly to binary`() {
         val binaryFile = tmpdir.resolve("local-cli").resolve("my-coder-binary")
         binaryFile.parent.toFile().mkdirs()
         binaryFile.toFile().writeText(mkbinVersion("1.0.0"))
@@ -252,12 +252,16 @@ internal class CoderCLIManagerTest {
 
         // With downloads disabled, binaryDestination is the absolute path to the binary itself.
         assertEquals(binaryFile.toAbsolutePath(), ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        // On Windows the downloaded script is saved as .exe and cannot be executed
+        // as a batch script, so skip the version check.
+        if (getOS() != OS.WINDOWS) {
+            assertEquals(SemVer(1, 0, 0), ccm.version())
+        }
     }
 
     @Test
     @Suppress("DEPRECATION")
-    fun `testBinaryDirectory fallback to BINARY_DESTINATION`() {
+    fun `test binaryDirectory fallback to BINARY_DESTINATION`() {
         val binDir = tmpdir.resolve("bin-dir-fallback")
         val url = URL("http://localhost")
 
