@@ -50,14 +50,22 @@ internal data class Version(
 /**
  * Do as much as possible to get a valid, up-to-date CLI.
  *
- * 1. Read the binary directory for the provided URL.
- * 2. Abort if we already have an up-to-date version.
- * 3. Download the binary using an ETag.
- * 4. Abort if we get a 304 (covers cases where the binary is older and does not
- *    have a version command).
- * 5. Download on top of the existing binary.
- * 6. Since the binary directory can be read-only, if downloading fails, start
- *    from step 2 with the data directory.
+ * 1. Create a CLI manager for the deployment URL.
+ * 2. If the CLI version matches the build version, return it immediately.
+ * 3. If downloads are enabled, attempt to download the CLI.
+ *    a. On success, return the CLI.
+ *    b. On [java.nio.file.AccessDeniedException]: if the binary path parent
+ *       differs from the data directory and binary directory fallback is
+ *       enabled, try downloading to the data directory instead. If the
+ *       fallback data directory already has a matching version, return it
+ *       without downloading. Otherwise, rethrow.
+ *    c. Any other exception propagates to the caller.
+ * 4. If downloads are disabled, check the data directory for a matching CLI.
+ *    a. If the data directory CLI version matches, return it.
+ *    b. If neither the configured binary path nor the data directory has a
+ *       usable CLI and downloads are disabled, throw [IllegalStateException].
+ *    c. Prefer the configured binary path unless only the data directory has
+ *       a working binary.
  */
 suspend fun ensureCLI(
     context: CoderToolboxContext,
@@ -97,6 +105,17 @@ suspend fun ensureCLI(
             if (binPath.parent == dataDir || !settings.enableBinaryDirectoryFallback) {
                 throw e
             }
+            // fall back to the data directory.
+            val fallbackCLI = CoderCLIManager(context, deploymentURL, true)
+            val fallbackMatches = fallbackCLI.matchesVersion(buildVersion)
+            if (fallbackMatches == true) {
+                reportProgress("Local CLI version from data directory matches server version: $buildVersion")
+                return fallbackCLI
+            }
+
+            reportProgress("Downloading Coder CLI to the data directory...")
+            fallbackCLI.download(buildVersion, showTextProgress)
+            return fallbackCLI
         }
     }
 
@@ -108,14 +127,11 @@ suspend fun ensureCLI(
         return dataCLI
     }
 
-    if (settings.enableDownloads) {
-        reportProgress("Downloading Coder CLI to the data directory...")
-        dataCLI.download(buildVersion, showTextProgress)
-        return dataCLI
-    }
-
     // Prefer the binary directory unless the data directory has a
     // working binary and the binary directory does not.
+    if (cliMatches == null && dataCLIMatches == null && !settings.enableDownloads) {
+        throw IllegalStateException("Can't resolve Coder CLI and downloads are disabled")
+    }
     return if (cliMatches == null && dataCLIMatches != null) dataCLI else cli
 }
 

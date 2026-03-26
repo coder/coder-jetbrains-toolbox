@@ -17,6 +17,7 @@ import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import java.net.URL
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -123,16 +124,17 @@ class CoderSettingsStore(
     }
 
     /**
-     * To where the specified deployment should download the binary.
+     * To where the specified deployment should place the CLI binary.
      *
      * Resolution logic:
-     * 1. If [binaryDestination] is null/empty or [forceDownloadToData] is true,
-     *    the binary is placed in the deployment's data directory with the
-     *    default CLI binary name for the current OS and architecture.
-     * 2. If [binaryDestination] is set and [enableDownloads] is false, the value
-     *    is treated as an absolute path to a pre-existing CLI binary (~ and $HOME
-     *    are expanded).
-     * 3. Otherwise [binaryDestination] is treated as a base directory; the binary
+     * 1. If [binaryDestination] is null/empty, the binary is placed in the
+     *    deployment's data directory with the default CLI binary name for the
+     *    current OS and architecture.
+     * 2. If [forceDownloadToData] is true, the binary is placed in a
+     *    host-specific subdirectory under the data directory.
+     * 3. If [binaryDestination] points to an existing executable file, the path
+     *    is used as-is (~ and $HOME are expanded).
+     * 4. Otherwise [binaryDestination] is treated as a base directory; the binary
      *    is placed under a host-specific subdirectory with the default CLI binary
      *    name.
      */
@@ -140,17 +142,20 @@ class CoderSettingsStore(
         url: URL,
         forceDownloadToData: Boolean,
     ): Path {
-        val dest = binaryDestination
-        if (dest.isNullOrBlank() || forceDownloadToData) {
+        if (binaryDestination.isNullOrBlank()) {
             return dataDir(url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
         }
 
-        val expanded = Path.of(expand(dest))
-        if (!enableDownloads) {
-            return expanded.toAbsolutePath()
-        }
+        val dest = Path.of(expand(binaryDestination!!))
+        val isExecutable = Files.isRegularFile(dest, LinkOption.NOFOLLOW_LINKS) && Files.isExecutable(dest)
 
-        return withHost(expanded, url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
+        if (forceDownloadToData) {
+            return withHost(dataDir(url), url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
+        }
+        if (isExecutable) {
+            return dest.toAbsolutePath()
+        }
+        return withHost(dest, url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
     }
 
     /**

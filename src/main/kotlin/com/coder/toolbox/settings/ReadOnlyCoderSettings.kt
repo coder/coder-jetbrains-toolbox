@@ -35,8 +35,11 @@ interface ReadOnlyCoderSettings {
     val binarySource: String?
 
     /**
-     * An absolute path to a local directory where the CLI will be downloaded. If [enableDownloads] is true
-     * then this setting can point to the CLI file locally. Defaults to the data directory.
+     * An absolute path to either a directory or an existing executable CLI binary.
+     * When the path points to an existing executable file, it is used as the CLI
+     * binary path directly. Otherwise, it is treated as a base directory under
+     * which the CLI is placed in a host-specific subdirectory. Defaults to the
+     * data directory when not set.
      */
     val binaryDestination: String?
 
