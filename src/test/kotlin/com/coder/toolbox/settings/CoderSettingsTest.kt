@@ -116,16 +116,16 @@ internal class CoderSettingsTest {
         val settings = CoderSettingsStore(pluginTestSettingsStore(), Environment(), logger)
         // The binary path should fall back to the data directory but that is
         // already tested in the data directory tests.
-        val url = URL("http://localhost")
+        val url = URL("http://test.coder.com")
 
         // Override with settings.
         settings.updateBinaryDirectory("/tmp/coder-toolbox-test/bin-dir")
-        var expected = "/tmp/coder-toolbox-test/bin-dir/localhost"
+        var expected = "/tmp/coder-toolbox-test/bin-dir/test.coder.com"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.readOnly().binPath(url).parent)
 
         // Second argument bypasses override.
         settings.updateDataDirectory("/tmp/coder-toolbox-test/data-dir")
-        expected = "/tmp/coder-toolbox-test/data-dir/localhost"
+        expected = "/tmp/coder-toolbox-test/data-dir/test.coder.com"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.readOnly().binPath(url, true).parent)
 
         // Binary name is always determined by OS and architecture.

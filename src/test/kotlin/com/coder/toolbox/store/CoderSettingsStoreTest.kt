@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import java.net.URL
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -110,45 +111,54 @@ class CoderSettingsStoreTest {
     }
 
     @Test
-    fun `binPath returns absolute binaryDestination path when downloads are disabled`() {
-        val settings = storeWith(
-            BINARY_DESTINATION to "/usr/local/bin/coder",
-            ENABLE_DOWNLOADS to "false"
-        )
-        val url = URL("https://test.coder.com")
-        val result = settings.binPath(url)
+    fun `binPath returns absolute binaryDestination path when it points to an existing executable`() {
+        val tmpBin = Files.createTempFile("coder-test", null)
+        tmpBin.toFile().setExecutable(true)
+        try {
+            val settings = storeWith(BINARY_DESTINATION to tmpBin.toString())
+            val url = URL("https://test.coder.com")
+            val result = settings.binPath(url)
 
-        assertEquals(Path.of("/usr/local/bin/coder").toAbsolutePath(), result)
+            assertEquals(tmpBin.toAbsolutePath(), result)
+        } finally {
+            Files.deleteIfExists(tmpBin)
+        }
     }
 
     @Test
-    fun `binPath expands tilde in binaryDestination when downloads are disabled`() {
+    fun `binPath expands tilde in binaryDestination when it points to an existing executable`() {
         // Don't override OS — tilde expansion depends on the real File.separator.
-        val settings = storeWith(
-            BINARY_DESTINATION to "~/bin/coder",
-            ENABLE_DOWNLOADS to "false"
-        )
-        val url = URL("https://test.coder.com")
-        val result = settings.binPath(url)
         val home = Path.of(System.getProperty("user.home"))
+        val tmpBin = Files.createTempFile(home, "coder-test", null)
+        tmpBin.toFile().setExecutable(true)
+        try {
+            val settings = storeWith(BINARY_DESTINATION to "~/${tmpBin.fileName}")
+            val url = URL("https://test.coder.com")
+            val result = settings.binPath(url)
 
-        assertTrue(result.isAbsolute)
-        assertEquals(home.resolve("bin").resolve("coder").toAbsolutePath(), result)
+            assertTrue(result.isAbsolute)
+            assertEquals(tmpBin.toAbsolutePath(), result)
+        } finally {
+            Files.deleteIfExists(tmpBin)
+        }
     }
 
     @Test
-    fun `binPath expands HOME in binaryDestination when downloads are disabled`() {
+    fun `binPath expands HOME in binaryDestination when it points to an existing executable`() {
         // Don't override OS — $HOME expansion depends on the real File.separator.
-        val settings = storeWith(
-            BINARY_DESTINATION to "\$HOME/bin/coder",
-            ENABLE_DOWNLOADS to "false"
-        )
-        val url = URL("https://test.coder.com")
-        val result = settings.binPath(url)
         val home = Path.of(System.getProperty("user.home"))
+        val tmpBin = Files.createTempFile(home, "coder-test", null)
+        tmpBin.toFile().setExecutable(true)
+        try {
+            val settings = storeWith(BINARY_DESTINATION to "\$HOME/${tmpBin.fileName}")
+            val url = URL("https://test.coder.com")
+            val result = settings.binPath(url)
 
-        assertTrue(result.isAbsolute)
-        assertEquals(home.resolve("bin").resolve("coder").toAbsolutePath(), result)
+            assertTrue(result.isAbsolute)
+            assertEquals(tmpBin.toAbsolutePath(), result)
+        } finally {
+            Files.deleteIfExists(tmpBin)
+        }
     }
 
     @Test

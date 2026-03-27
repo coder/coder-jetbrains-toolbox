@@ -149,7 +149,7 @@ class CoderSettingsStore(
         val isExecutable = Files.isRegularFile(dest, LinkOption.NOFOLLOW_LINKS) && Files.isExecutable(dest)
 
         if (forceDownloadToData) {
-            return withHost(dataDir(url), url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
+            return dataDir(url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
         }
         if (isExecutable) {
             return dest.toAbsolutePath()
