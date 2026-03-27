@@ -127,16 +127,15 @@ class CoderSettingsStore(
      * To where the specified deployment should place the CLI binary.
      *
      * Resolution logic:
-     * 1. If [binaryDestination] is null/empty, the binary is placed in the
-     *    deployment's data directory with the default CLI binary name for the
-     *    current OS and architecture.
-     * 2. If [forceDownloadToData] is true, the binary is placed in a
-     *    host-specific subdirectory under the data directory.
-     * 3. If [binaryDestination] points to an existing executable file, the path
-     *    is used as-is (~ and $HOME are expanded).
-     * 4. Otherwise [binaryDestination] is treated as a base directory; the binary
-     *    is placed under a host-specific subdirectory with the default CLI binary
-     *    name.
+     * 1. If [binaryDestination] is null/blank, return the deployment's data
+     *    directory with the default CLI binary name. [forceDownloadToData]
+     *    is ignored because both paths resolve to the same location.
+     * 2. If [forceDownloadToData] is true, return a host-specific subdirectory
+     *    under the deployment's data directory with the default CLI binary name.
+     * 3. If the expanded (~ and $HOME) [binaryDestination] is an existing executable file,
+     *    return it as-is.
+     * 4. Otherwise, treat [binaryDestination] as a base directory and return a
+     *    host-specific subdirectory with the default CLI binary name.
      */
     override fun binPath(
         url: URL,

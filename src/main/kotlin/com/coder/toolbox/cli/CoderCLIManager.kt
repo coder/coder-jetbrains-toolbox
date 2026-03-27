@@ -54,18 +54,18 @@ internal data class Version(
  * 2. If the CLI version matches the build version, return it immediately.
  * 3. If downloads are enabled, attempt to download the CLI.
  *    a. On success, return the CLI.
- *    b. On [java.nio.file.AccessDeniedException]: if the binary path parent
- *       differs from the data directory and binary directory fallback is
- *       enabled, try downloading to the data directory instead. If the
- *       fallback data directory already has a matching version, return it
- *       without downloading. Otherwise, rethrow.
+ *    b. On [java.nio.file.AccessDeniedException]: rethrow if the binary
+ *       path parent equals the data directory or if binary directory
+ *       fallback is disabled. Otherwise, if the fallback data directory
+ *       CLI already matches the build version return it; if not, download
+ *       to the data directory and return the fallback CLI.
  *    c. Any other exception propagates to the caller.
- * 4. If downloads are disabled, check the data directory for a matching CLI.
+ * 4. If downloads are disabled:
  *    a. If the data directory CLI version matches, return it.
- *    b. If neither the configured binary path nor the data directory has a
- *       usable CLI and downloads are disabled, throw [IllegalStateException].
- *    c. Prefer the configured binary path unless only the data directory has
- *       a working binary.
+ *    b. If neither the configured binary nor the data directory CLI can
+ *       report a version, throw [IllegalStateException].
+ *    c. Prefer the configured binary; fall back to the data directory CLI
+ *       only when the configured binary is missing or unexecutable.
  */
 suspend fun ensureCLI(
     context: CoderToolboxContext,
