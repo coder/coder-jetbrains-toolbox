@@ -8,6 +8,7 @@ import kotlin.test.assertFailsWith
 
 internal class HeadersTest {
     @Test
+    @IgnoreOnWindows
     fun testGetHeadersOK() {
         val tests =
             mapOf(
@@ -35,6 +36,7 @@ internal class HeadersTest {
     }
 
     @Test
+    @IgnoreOnWindows
     fun testGetHeadersFail() {
         val tests =
             mapOf(
@@ -62,10 +64,69 @@ internal class HeadersTest {
     }
 
     @Test
+    @IgnoreOnUnix
+    fun testGetHeadersOKOnWindows() {
+        val tests =
+            mapOf(
+                null to emptyMap(),
+                "" to emptyMap(),
+                // No spaces around && to avoid trailing-space artifacts from cmd echo.
+                "echo foo=bar&&echo baz=qux" to mapOf("foo" to "bar", "baz" to "qux"),
+                "echo foo=bar" to mapOf("foo" to "bar"),
+                "echo foo=bar=" to mapOf("foo" to "bar="),
+                "echo foo=bar=baz" to mapOf("foo" to "bar=baz"),
+                "echo foo=" to mapOf("foo" to ""),
+                // type nul outputs 0 bytes → treated as empty output → empty map.
+                "type nul" to mapOf(),
+                "exit /b 0" to mapOf(),
+                // >&2 redirects stdout to stderr; stdout stays empty.
+                "echo ignore me>&2" to mapOf(),
+                "echo foo=bar&&echo ignore me>&2" to mapOf("foo" to "bar"),
+            )
+        tests.forEach {
+            assertEquals(
+                it.value,
+                getHeaders(URL("http://localhost"), it.key),
+            )
+        }
+    }
+
+    @Test
+    @IgnoreOnUnix
+    fun testGetHeadersFailOnWindows() {
+        val tests =
+            mapOf(
+                "echo =foo" to "Header name is missing in \"=foo\"",
+                "echo foo" to "Header \"foo\" does not have two parts",
+                // cmd.exe strips one space after the command name, so three spaces → two spaces in output.
+                "echo   =foo" to "Header name is missing in \"  =foo\"",
+                "echo foo  =bar" to "Header name cannot contain spaces, got \"foo  \"",
+                "echo foo  foo=bar" to "Header name cannot contain spaces, got \"foo  foo\"",
+                "echo   foo=bar  " to "Header name cannot contain spaces, got \"  foo\"",
+                "exit /b 1" to "Unexpected exit value: 1",
+                // "foobar" appears in the InvalidExitValueException message as part of the command string.
+                "echo foobar>&2&&exit /b 1" to "foobar",
+                // echo. outputs a bare CRLF; a blank line anywhere in the output is an error.
+                "echo foo=bar&&echo." to "Blank lines are not allowed",
+                "echo.&&echo foo=bar" to "Blank lines are not allowed",
+                "echo." to "Blank lines are not allowed",
+                "echo f=b&&echo.&&echo b=q" to "Blank lines are not allowed",
+            )
+        tests.forEach {
+            val ex =
+                assertFailsWith(
+                    exceptionClass = Exception::class,
+                    block = { getHeaders(URL("http://localhost"), it.key) },
+                )
+            assertContains(ex.message.toString(), it.value)
+        }
+    }
+
+    @Test
     fun testSetsEnvironment() {
         val headers =
             if (getOS() == OS.WINDOWS) {
-                getHeaders(URL("http://localhost12345"), "printf url=%CODER_URL%")
+                getHeaders(URL("http://localhost12345"), "echo url=%CODER_URL%")
             } else {
                 getHeaders(URL("http://localhost12345"), "printf url=\$CODER_URL")
             }

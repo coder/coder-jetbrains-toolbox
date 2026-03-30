@@ -827,9 +827,15 @@ internal class CoderCLIManagerTest {
             context.copy(
                 settingsStore = CoderSettingsStore(
                     if (getOS() == OS.WINDOWS) {
+                        // Pre-create the .bat file so binPath detects it as an existing
+                        // executable and returns it directly rather than treating it as
+                        // a base directory (which would produce a .exe path that Windows
+                        // cannot run as a batch script).
+                        val batPath = tmpdir.resolve("bad-version").resolve("coder.bat")
+                        batPath.parent.toFile().mkdirs()
+                        batPath.toFile().createNewFile()
                         pluginTestSettingsStore(
-                            BINARY_DESTINATION to tmpdir.resolve("bad-version").resolve("coder.bat").toString(),
-                            ENABLE_DOWNLOADS to "false",
+                            BINARY_DESTINATION to batPath.toString(),
                         )
                     } else {
                         pluginTestSettingsStore(
@@ -887,9 +893,15 @@ internal class CoderCLIManagerTest {
             context.copy(
                 settingsStore = CoderSettingsStore(
                     if (getOS() == OS.WINDOWS) {
+                        // Pre-create the .bat file so binPath detects it as an existing
+                        // executable and returns it directly rather than treating it as
+                        // a base directory (which would produce a .exe path that Windows
+                        // cannot run as a batch script).
+                        val batPath = tmpdir.resolve("matches-version").resolve("coder.bat")
+                        batPath.parent.toFile().mkdirs()
+                        batPath.toFile().createNewFile()
                         pluginTestSettingsStore(
-                            BINARY_DESTINATION to tmpdir.resolve("matches-version").resolve("coder.bat").toString(),
-                            ENABLE_DOWNLOADS to "false",
+                            BINARY_DESTINATION to batPath.toString(),
                         )
                     } else {
                         pluginTestSettingsStore(
