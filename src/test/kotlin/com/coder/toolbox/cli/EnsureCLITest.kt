@@ -39,6 +39,7 @@ import java.net.Proxy
 import java.net.ProxySelector
 import java.net.URL
 import java.nio.file.AccessDeniedException
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -576,6 +577,31 @@ internal class EnsureCLITest {
         assertFailsWith(IllegalStateException::class) {
             runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
         }
+    }
+
+    @Test
+    @IgnoreOnWindows
+    fun `given binaryDestination is a symlink to an existing executable, uses the symlink target directly`() {
+        val url = URL("http://test.coder.invalid")
+
+        // Simulate e.g. /usr/local/bin/coder being a symlink created by a package manager.
+        val realBinary = testDir("symlink-dest/real/my-coder")
+        createBinary(realBinary, "1.0.0")
+        val symlinkDest = testDir("symlink-dest/link/my-coder")
+        symlinkDest.parent.toFile().mkdirs()
+        Files.createSymbolicLink(symlinkDest, realBinary.toAbsolutePath())
+
+        val s = settings(
+            BINARY_DESTINATION to symlinkDest.toString(),
+            DATA_DIRECTORY to testDir("symlink-dest/data").toString(),
+            ENABLE_DOWNLOADS to "false",
+        )
+
+        assertEquals(symlinkDest.toAbsolutePath(), s.binPath(url))
+
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+        assertEquals(symlinkDest.toAbsolutePath(), ccm.localBinaryPath)
+        assertEquals(SemVer(1, 0, 0), ccm.version())
     }
 
     @Test

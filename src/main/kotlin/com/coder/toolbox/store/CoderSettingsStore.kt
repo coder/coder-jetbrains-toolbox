@@ -17,7 +17,6 @@ import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import java.net.URL
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -146,7 +145,7 @@ class CoderSettingsStore(
         }
 
         val dest = Path.of(expand(binaryDestination!!))
-        val isExecutable = Files.isRegularFile(dest, LinkOption.NOFOLLOW_LINKS) && Files.isExecutable(dest)
+        val isExecutable = Files.isRegularFile(dest) && Files.isExecutable(dest)
 
         if (forceDownloadToData) {
             return dataDir(url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
