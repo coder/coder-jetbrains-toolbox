@@ -38,7 +38,7 @@ class CoderSettingsPage(
     // TODO: Copy over the descriptions, holding until I can test this page.
     private val binarySourceField =
         TextField(context.i18n.ptrl("Binary source"), settings.binarySource ?: "", TextType.General)
-    private val binaryDirectoryField =
+    private val binaryDestinationField =
         TextField(context.i18n.ptrl("Binary destination"), settings.binaryDestination ?: "", TextType.General)
     private val dataDirectoryField =
         TextField(context.i18n.ptrl("Data directory"), settings.dataDirectory ?: "", TextType.General)
@@ -131,7 +131,7 @@ class CoderSettingsPage(
             binarySourceField,
             enableDownloadsField,
             useAppNameField,
-            binaryDirectoryField,
+            binaryDestinationField,
             enableBinaryDirectoryFallbackField,
             disableSignatureVerificationField,
             signatureFallbackStrategyField,
@@ -156,7 +156,7 @@ class CoderSettingsPage(
             Action(context, "Save", closesPage = true) {
                 with(context.settingsStore) {
                     updateBinarySource(binarySourceField.contentState.value)
-                    updateBinaryDirectory(binaryDirectoryField.contentState.value)
+                    updateBinaryDestination(binaryDestinationField.contentState.value)
                     updateDataDirectory(dataDirectoryField.contentState.value)
                     updateEnableDownloads(enableDownloadsField.checkedState.value)
                     updateUseAppNameAsTitle(useAppNameField.checkedState.value)
@@ -200,7 +200,7 @@ class CoderSettingsPage(
         binarySourceField.contentState.update {
             settings.binarySource ?: ""
         }
-        binaryDirectoryField.contentState.update {
+        binaryDestinationField.contentState.update {
             settings.binaryDestination ?: ""
         }
         dataDirectoryField.contentState.update {

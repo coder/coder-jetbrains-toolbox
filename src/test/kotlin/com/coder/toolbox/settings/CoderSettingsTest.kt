@@ -33,7 +33,7 @@ internal class CoderSettingsTest {
         val url = URL("http://localhost")
         val home = Path.of(System.getProperty("user.home"))
 
-        settings.updateBinaryDirectory(Path.of("~/coder-toolbox-test/expand-bin-dir").toString())
+        settings.updateBinaryDestination(Path.of("~/coder-toolbox-test/expand-bin-dir").toString())
         var expected = home.resolve("coder-toolbox-test/expand-bin-dir/localhost")
         assertEquals(expected.toAbsolutePath(), settings.readOnly().binPath(url).parent)
 
@@ -119,7 +119,7 @@ internal class CoderSettingsTest {
         val url = URL("http://test.coder.com")
 
         // Override with settings.
-        settings.updateBinaryDirectory("/tmp/coder-toolbox-test/bin-dir")
+        settings.updateBinaryDestination("/tmp/coder-toolbox-test/bin-dir")
         var expected = "/tmp/coder-toolbox-test/bin-dir/test.coder.com"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.readOnly().binPath(url).parent)
 

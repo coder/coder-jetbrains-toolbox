@@ -194,8 +194,8 @@ class CoderSettingsStore(
         store[BINARY_SOURCE] = source
     }
 
-    fun updateBinaryDirectory(dir: String) {
-        store[BINARY_DIRECTORY] = dir
+    fun updateBinaryDestination(dest: String) {
+        store[BINARY_DESTINATION] = dest
     }
 
     fun updateDataDirectory(dir: String) {
