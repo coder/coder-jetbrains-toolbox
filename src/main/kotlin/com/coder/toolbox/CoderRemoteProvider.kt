@@ -416,7 +416,7 @@ class CoderRemoteProvider(
         // invalid_request, unsupported_response_type, server_error, ...).
         val error = params["error"]
         if (error != null) {
-            val description = params["error_description"]?.let { ": $it" } ?: ""
+            val description = params["error_description"]?.let { " - $it" } ?: ""
             return context.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "OAuth2 authorization error: $error$description"

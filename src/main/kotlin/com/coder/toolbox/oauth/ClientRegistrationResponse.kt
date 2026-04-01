@@ -31,7 +31,7 @@ data class ClientRegistrationErrorResponse(
     @field:Json(name = "error") val error: String,
     @field:Json(name = "error_description") val errorDescription: String? = null
 ) {
-    fun toMessage(): String = if (errorDescription.isNullOrBlank()) error else "$error: $errorDescription"
+    fun toMessage(): String = if (errorDescription.isNullOrBlank()) error else "$error - $errorDescription"
 
     companion object {
         private val adapter = Moshi.Builder().build().adapter(ClientRegistrationErrorResponse::class.java)

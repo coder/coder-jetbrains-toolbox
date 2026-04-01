@@ -30,7 +30,7 @@ data class OAuthTokenErrorResponse(
 ) {
     fun toMessage(): String = buildString {
         append(error)
-        if (!errorDescription.isNullOrBlank()) append(": $errorDescription")
+        if (!errorDescription.isNullOrBlank()) append(" - $errorDescription")
         if (!errorUri.isNullOrBlank()) append(" (see $errorUri)")
     }
 
