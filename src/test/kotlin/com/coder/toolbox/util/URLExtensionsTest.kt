@@ -53,6 +53,18 @@ internal class URLExtensionsTest {
                 "?foo=bar&baz=" to mapOf("foo" to "bar", "baz" to ""),
                 "?foo=bar&baz=qux" to mapOf("foo" to "bar", "baz" to "qux"),
                 "?foo=bar=bar2&baz=qux" to mapOf("foo" to "bar=bar2", "baz" to "qux"),
+                // + decoded to space (application/x-www-form-urlencoded convention)
+                "?foo=hello+world" to mapOf("foo" to "hello world"),
+                // percent-encoded characters
+                "?foo=hello%20world" to mapOf("foo" to "hello world"),
+                "?foo=bar%3Dbaz" to mapOf("foo" to "bar=baz"),
+                "?foo=caf%C3%A9" to mapOf("foo" to "café"),
+                // OAuth cancel callback: error_description uses + for spaces
+                "?error=access_denied&error_description=The+resource+owner+or+authorization+server+denied+the+request.&state=abc" to mapOf(
+                    "error" to "access_denied",
+                    "error_description" to "The resource owner or authorization server denied the request.",
+                    "state" to "abc",
+                ),
             )
         tests.forEach {
             assertEquals(

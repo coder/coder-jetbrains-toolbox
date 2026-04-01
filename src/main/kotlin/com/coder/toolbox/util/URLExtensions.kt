@@ -5,6 +5,7 @@ import com.coder.toolbox.util.WebUrlValidationResult.Valid
 import java.net.IDN
 import java.net.URI
 import java.net.URL
+import java.net.URLDecoder
 
 fun String.toURL(): URL = URI.create(this).toURL()
 
@@ -67,7 +68,7 @@ fun URI.toQueryParameters(): Map<String, String> = (this.query ?: "")
     }.associate {
         val parts = it.split("=", limit = 2)
         if (parts.size == 2) {
-            parts[0] to parts[1]
+            parts[0] to URLDecoder.decode(parts[1], Charsets.UTF_8)
         } else {
             parts[0] to ""
         }
