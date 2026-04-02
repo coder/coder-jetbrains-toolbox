@@ -46,11 +46,8 @@ private class ErrorReporterImpl(
     }
 
     private fun showError(ex: Throwable) {
-        val textError = if (ex is APIResponseException) {
-            if (!ex.reason.isNullOrBlank()) {
-                ex.reason
-            } else ex.message
-        } else ex.message ?: ex.toString()
+        val textError = ex.prettify()
+
         context.cs.launch {
             context.ui.showSnackbar(
                 UUID.randomUUID().toString(),
@@ -61,6 +58,17 @@ private class ErrorReporterImpl(
         }
     }
 
+    private fun Throwable.prettify(): String? = when (this) {
+        is APIResponseException -> if (!this.reason.isNullOrBlank()) {
+            this.reason
+        } else this.message
+
+        is AccessDeniedException,
+        is java.nio.file.AccessDeniedException -> "Access denied to ${this.message}"
+
+        is java.nio.file.FileSystemException -> "A file system operation failed when trying to access ${this.message}"
+        else -> this.toString()
+    }
 
     override fun flush() {
         if (errorBuffer.isNotEmpty() && visibilityState.value.applicationVisible) {

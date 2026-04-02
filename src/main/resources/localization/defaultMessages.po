@@ -82,9 +82,6 @@ msgstr ""
 msgid "Verify binary signature using releases.coder.com when CLI signatures are not available from the deployment"
 msgstr ""
 
-msgid "Enable binary directory fallback"
-msgstr ""
-
 msgid "Header command"
 msgstr ""
 

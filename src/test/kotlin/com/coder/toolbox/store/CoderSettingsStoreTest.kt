@@ -5,7 +5,6 @@ import com.coder.toolbox.util.pluginTestSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import java.net.URL
 import java.nio.file.Files
@@ -95,19 +94,6 @@ class CoderSettingsStoreTest {
 
         assertTrue(result.isAbsolute)
         assertTrue(result.endsWith(Path.of("test.coder.com", "coder-linux-amd64")))
-    }
-
-    @Test
-    fun `binPath uses dataDir when forceDownloadToData is true even with binaryDestination set`() {
-        setOsAndArch("Linux", "x86_64")
-        val settings = storeWith(BINARY_DESTINATION to "/custom/path")
-        val url = URL("https://test.coder.com")
-        val result = settings.binPath(url, forceDownloadToData = true)
-
-        assertTrue(result.isAbsolute)
-        assertTrue(result.endsWith(Path.of("test.coder.com", "coder-linux-amd64")))
-        // The custom path should NOT be part of the result when forceDownloadToData is true.
-        assertFalse(result.startsWith(Path.of("/custom/path").toAbsolutePath()))
     }
 
     @Test

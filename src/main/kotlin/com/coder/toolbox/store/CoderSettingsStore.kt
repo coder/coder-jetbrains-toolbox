@@ -54,8 +54,6 @@ class CoderSettingsStore(
     override val globalDataDirectory: String get() = getDefaultGlobalDataDir().normalize().toString()
     override val globalConfigDir: String get() = getDefaultGlobalConfigDir().normalize().toString()
     override val enableDownloads: Boolean get() = store[ENABLE_DOWNLOADS]?.toBooleanStrictOrNull() ?: true
-    override val enableBinaryDirectoryFallback: Boolean
-        get() = store[ENABLE_BINARY_DIR_FALLBACK]?.toBooleanStrictOrNull() ?: false
     override val headerCommand: String? get() = store[HEADER_COMMAND]
     override val tls: ReadOnlyTLSSettings
         get() = TLSSettings(
@@ -127,30 +125,19 @@ class CoderSettingsStore(
      *
      * Resolution logic:
      * 1. If [binaryDestination] is null/blank, return the deployment's data
-     *    directory with the default CLI binary name. [forceDownloadToData]
-     *    is ignored because both paths resolve to the same location.
-     * 2. If [forceDownloadToData] is true, return a host-specific subdirectory
-     *    under the deployment's data directory with the default CLI binary name.
-     * 3. If the expanded (~ and $HOME) [binaryDestination] is an existing executable file,
+     *    directory with the default CLI binary name.
+     * 2. If the expanded (~ and $HOME) [binaryDestination] is an existing executable file,
      *    return it as-is.
-     * 4. Otherwise, treat [binaryDestination] as a base directory and return a
+     * 2. Otherwise, treat [binaryDestination] as a base directory and return a
      *    host-specific subdirectory with the default CLI binary name.
      */
-    override fun binPath(
-        url: URL,
-        forceDownloadToData: Boolean,
-    ): Path {
-        if (binaryDestination.isNullOrBlank()) {
-            return dataDir(url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
-        }
+    override fun binPath(url: URL): Path {
+        val raw = binaryDestination?.takeIf { it.isNotBlank() } ?: return dataDir(url).resolve(
+            defaultCliBinaryNameByOsAndArch
+        ).toAbsolutePath()
 
-        val dest = Path.of(expand(binaryDestination!!))
-        val isExecutable = Files.isRegularFile(dest) && Files.isExecutable(dest)
-
-        if (forceDownloadToData) {
-            return dataDir(url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
-        }
-        if (isExecutable) {
+        val dest = Path.of(expand(raw))
+        if (Files.isRegularFile(dest) && Files.isExecutable(dest)) {
             return dest.toAbsolutePath()
         }
         return withHost(dest, url).resolve(defaultCliBinaryNameByOsAndArch).toAbsolutePath()
@@ -220,10 +207,6 @@ class CoderSettingsStore(
     fun updateHttpClientLogLevel(level: HttpLoggingVerbosity?) {
         if (level == null) return
         store[HTTP_CLIENT_LOG_LEVEL] = level.toString()
-    }
-
-    fun updateBinaryDirectoryFallback(shouldEnableBinDirFallback: Boolean) {
-        store[ENABLE_BINARY_DIR_FALLBACK] = shouldEnableBinDirFallback.toString()
     }
 
     fun updateHeaderCommand(cmd: String) {

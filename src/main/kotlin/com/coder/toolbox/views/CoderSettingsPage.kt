@@ -68,10 +68,6 @@ class CoderSettingsPage(
         )
     )
 
-    private val enableBinaryDirectoryFallbackField = CheckboxField(
-        settings.enableBinaryDirectoryFallback,
-        context.i18n.ptrl("Enable binary directory fallback")
-    )
     private val headerCommandField = TextField(
         context.i18n.ptrl("Header command"),
         settings.headerCommand ?: "",
@@ -132,7 +128,6 @@ class CoderSettingsPage(
             enableDownloadsField,
             useAppNameField,
             binaryDestinationField,
-            enableBinaryDirectoryFallbackField,
             disableSignatureVerificationField,
             signatureFallbackStrategyField,
             httpLoggingField,
@@ -163,7 +158,6 @@ class CoderSettingsPage(
                     updateDisableSignatureVerification(disableSignatureVerificationField.checkedState.value)
                     updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
                     updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
-                    updateBinaryDirectoryFallback(enableBinaryDirectoryFallbackField.checkedState.value)
                     updateHeaderCommand(headerCommandField.contentState.value)
                     updateCertPath(tlsCertPathField.contentState.value)
                     updateKeyPath(tlsKeyPathField.contentState.value)
@@ -214,10 +208,6 @@ class CoderSettingsPage(
         }
         signatureFallbackStrategyField.checkedState.update {
             settings.fallbackOnCoderForSignatures.isAllowed()
-        }
-
-        enableBinaryDirectoryFallbackField.checkedState.update {
-            settings.enableBinaryDirectoryFallback
         }
 
         headerCommandField.contentState.update {
