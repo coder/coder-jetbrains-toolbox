@@ -35,10 +35,13 @@ interface ReadOnlyCoderSettings {
     val binarySource: String?
 
     /**
-     * Directories are created here that store the CLI for each domain to which
-     * the plugin connects.   Defaults to the data directory.
+     * An absolute path to either a directory or an existing executable CLI binary.
+     * When the path points to an existing executable file, it is used as the CLI
+     * binary path directly. Otherwise, it is treated as a base directory under
+     * which the CLI is placed in a host-specific subdirectory. Defaults to the
+     * data directory when not set.
      */
-    val binaryDirectory: String?
+    val binaryDestination: String?
 
     /**
      * Controls whether we verify the cli signature
@@ -61,18 +64,13 @@ interface ReadOnlyCoderSettings {
     val defaultCliBinaryNameByOsAndArch: String
 
     /**
-     * Configurable CLI binary name with extension, dependent on OS and arch
-     */
-    val binaryName: String
-
-    /**
      * Default CLI signature name based on OS and architecture
      */
     val defaultSignatureNameByOsAndArch: String
 
     /**
      * Where to save plugin data like the Coder binary (if not configured with
-     * binaryDirectory) and the deployment URL and session token.
+     * binaryDestination) and the deployment URL and session token.
      */
     val dataDirectory: String?
 

@@ -10,15 +10,16 @@ internal const val APP_NAME_AS_TITLE = "useAppNameAsTitle"
 
 internal const val BINARY_SOURCE = "binarySource"
 
+@Deprecated("Use BINARY_DESTINATION instead", replaceWith = ReplaceWith("BINARY_DESTINATION"))
 internal const val BINARY_DIRECTORY = "binaryDirectory"
+
+internal const val BINARY_DESTINATION = "binaryDestination"
 
 internal const val DISABLE_SIGNATURE_VALIDATION = "disableSignatureValidation"
 
 internal const val FALLBACK_ON_CODER_FOR_SIGNATURES = "signatureFallbackStrategy"
 
 internal const val HTTP_CLIENT_LOG_LEVEL = "httpClientLogLevel"
-
-internal const val BINARY_NAME = "binaryName"
 
 internal const val DATA_DIRECTORY = "dataDirectory"
 

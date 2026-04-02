@@ -70,7 +70,7 @@ msgstr ""
 msgid "Binary source"
 msgstr ""
 
-msgid "Binary directory"
+msgid "Binary destination"
 msgstr ""
 
 msgid "Data directory"

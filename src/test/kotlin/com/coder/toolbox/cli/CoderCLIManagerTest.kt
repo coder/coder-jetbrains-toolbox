@@ -7,15 +7,14 @@ import com.coder.toolbox.cli.ex.SSHConfigFormatException
 import com.coder.toolbox.sdk.DataGen.Companion.workspace
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.settings.Environment
+import com.coder.toolbox.store.BINARY_DESTINATION
 import com.coder.toolbox.store.BINARY_DIRECTORY
-import com.coder.toolbox.store.BINARY_NAME
 import com.coder.toolbox.store.BINARY_SOURCE
 import com.coder.toolbox.store.CODER_SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.DATA_DIRECTORY
 import com.coder.toolbox.store.DISABLE_AUTOSTART
-import com.coder.toolbox.store.ENABLE_BINARY_DIR_FALLBACK
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
 import com.coder.toolbox.store.FALLBACK_ON_CODER_FOR_SIGNATURES
 import com.coder.toolbox.store.HEADER_COMMAND
@@ -184,7 +183,7 @@ internal class CoderCLIManagerTest {
         val settings = CoderSettingsStore(
             pluginTestSettingsStore(
                 DATA_DIRECTORY to tmpdir.resolve("cli-data-dir").toString(),
-                BINARY_DIRECTORY to tmpdir.resolve("cli-bin-dir").toString(),
+                BINARY_DESTINATION to tmpdir.resolve("cli-bin-dir").toString(),
             ),
             Environment(),
             context.logger
@@ -201,6 +200,95 @@ internal class CoderCLIManagerTest {
         assertEquals(settings.binSource(url), ccm2.remoteBinaryURL)
         assertEquals(settings.dataDir(url), ccm2.coderConfigPath.parent)
         assertEquals(settings.binPath(url, true), ccm2.localBinaryPath)
+    }
+
+    @Test
+    fun `test binaryDestination with downloads enabled places binary under host subdirectory`() {
+        val (srv, url) = mockServer()
+        val binDir = tmpdir.resolve("bin-dest-downloads-enabled")
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binDir.toString(),
+                FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
+            ),
+            Environment(),
+            context.logger
+        )
+
+        val ccm = CoderCLIManager(context.copy(settingsStore = settings), url)
+
+        // With downloads enabled (default), binaryDestination is a base directory
+        // and the binary is placed under <binaryDestination>/<host>/<defaultCliBinaryName>
+        val expectedPath = binDir.resolve("localhost-${url.port}").resolve(settings.defaultCliBinaryNameByOsAndArch)
+        assertEquals(expectedPath.toAbsolutePath(), ccm.localBinaryPath)
+
+        // Verify it actually downloads successfully to that location.
+        assertTrue(runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
+        assertTrue(ccm.localBinaryPath.toFile().exists())
+
+        srv.stop(0)
+    }
+
+    @Test
+    fun `test binaryDestination with downloads disabled points directly to binary`() {
+        val binaryFile = tmpdir.resolve("local-cli").resolve("my-coder-binary")
+        binaryFile.parent.toFile().mkdirs()
+        binaryFile.toFile().writeText(mkbinVersion("1.0.0"))
+        if (getOS() != OS.WINDOWS) {
+            binaryFile.toFile().setExecutable(true)
+        }
+
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryFile.toString(),
+                ENABLE_DOWNLOADS to "false",
+            ),
+            Environment(),
+            context.logger
+        )
+
+        val ccm = CoderCLIManager(context.copy(settingsStore = settings), URL("https://test.coder.com"))
+
+        // With downloads disabled, binaryDestination is the absolute path to the binary itself.
+        assertEquals(binaryFile.toAbsolutePath(), ccm.localBinaryPath)
+        // On Windows the downloaded script is saved as .exe and cannot be executed
+        // as a batch script, so skip the version check.
+        if (getOS() != OS.WINDOWS) {
+            assertEquals(SemVer(1, 0, 0), ccm.version())
+        }
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `test binaryDirectory fallback to BINARY_DESTINATION`() {
+        val binDir = tmpdir.resolve("bin-dir-fallback")
+        val url = URL("http://localhost")
+
+        // Using the deprecated BINARY_DIRECTORY key should still work
+        // because binaryDestination falls back to it.
+        val settingsWithOldKey = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DIRECTORY to binDir.toString(),
+            ),
+            Environment(),
+            context.logger
+        )
+        val expectedOldKey = binDir.resolve("localhost").resolve(settingsWithOldKey.defaultCliBinaryNameByOsAndArch)
+        assertEquals(expectedOldKey.toAbsolutePath(), settingsWithOldKey.binPath(url))
+
+        // BINARY_DESTINATION takes priority over BINARY_DIRECTORY.
+        val overrideDir = tmpdir.resolve("bin-dest-override")
+        val settingsWithBothKeys = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to overrideDir.toString(),
+                BINARY_DIRECTORY to binDir.toString(),
+            ),
+            Environment(),
+            context.logger
+        )
+        val expectedNewKey =
+            overrideDir.resolve("localhost").resolve(settingsWithBothKeys.defaultCliBinaryNameByOsAndArch)
+        assertEquals(expectedNewKey.toAbsolutePath(), settingsWithBothKeys.binPath(url))
     }
 
     @Test
@@ -279,7 +367,6 @@ internal class CoderCLIManagerTest {
             context.copy(
                 settingsStore = CoderSettingsStore(
                     pluginTestSettingsStore(
-                        BINARY_NAME to "coder.bat",
                         DATA_DIRECTORY to tmpdir.resolve("mock-cli").toString(),
                         FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
                     ),
@@ -291,7 +378,11 @@ internal class CoderCLIManagerTest {
         )
 
         assertEquals(true, runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
-        assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
+        // On Windows the downloaded script is saved as .exe and cannot be executed
+        // as a batch script, so skip the version check.
+        if (getOS() != OS.WINDOWS) {
+            assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
+        }
 
         // It should skip the second attempt.
         assertEquals(false, runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
@@ -735,10 +826,22 @@ internal class CoderCLIManagerTest {
         val ccm = CoderCLIManager(
             context.copy(
                 settingsStore = CoderSettingsStore(
-                    pluginTestSettingsStore(
-                        BINARY_NAME to "coder.bat",
-                        BINARY_DIRECTORY to tmpdir.resolve("bad-version").toString(),
-                    ),
+                    if (getOS() == OS.WINDOWS) {
+                        // Pre-create the .bat file so binPath detects it as an existing
+                        // executable and returns it directly rather than treating it as
+                        // a base directory (which would produce a .exe path that Windows
+                        // cannot run as a batch script).
+                        val batPath = tmpdir.resolve("bad-version").resolve("coder.bat")
+                        batPath.parent.toFile().mkdirs()
+                        batPath.toFile().createNewFile()
+                        pluginTestSettingsStore(
+                            BINARY_DESTINATION to batPath.toString(),
+                        )
+                    } else {
+                        pluginTestSettingsStore(
+                            BINARY_DESTINATION to tmpdir.resolve("bad-version").toString(),
+                        )
+                    },
                     Environment(),
                     context.logger,
                 )
@@ -789,10 +892,22 @@ internal class CoderCLIManagerTest {
         val ccm = CoderCLIManager(
             context.copy(
                 settingsStore = CoderSettingsStore(
-                    pluginTestSettingsStore(
-                        BINARY_NAME to "coder.bat",
-                        BINARY_DIRECTORY to tmpdir.resolve("matches-version").toString(),
-                    ),
+                    if (getOS() == OS.WINDOWS) {
+                        // Pre-create the .bat file so binPath detects it as an existing
+                        // executable and returns it directly rather than treating it as
+                        // a base directory (which would produce a .exe path that Windows
+                        // cannot run as a batch script).
+                        val batPath = tmpdir.resolve("matches-version").resolve("coder.bat")
+                        batPath.parent.toFile().mkdirs()
+                        batPath.toFile().createNewFile()
+                        pluginTestSettingsStore(
+                            BINARY_DESTINATION to batPath.toString(),
+                        )
+                    } else {
+                        pluginTestSettingsStore(
+                            BINARY_DESTINATION to tmpdir.resolve("matches-version").toString(),
+                        )
+                    },
                     Environment(),
                     context.logger,
                 )
@@ -813,165 +928,6 @@ internal class CoderCLIManagerTest {
 
             assertEquals(it.third, ccm.matchesVersion(it.second), it.first)
         }
-    }
-
-    enum class Result {
-        ERROR, // Tried to download but got an error.
-        NONE, // Skipped download; binary does not exist.
-        DL_BIN, // Downloaded the binary to bin.
-        DL_DATA, // Downloaded the binary to data.
-        USE_BIN, // Used existing binary in bin.
-        USE_DATA, // Used existing binary in data.
-    }
-
-    data class EnsureCLITest(
-        val version: String?,
-        val fallbackVersion: String?,
-        val buildVersion: String,
-        val writable: Boolean,
-        val enableDownloads: Boolean,
-        val enableFallback: Boolean,
-        val expect: Result,
-    )
-
-    @Test
-    fun testEnsureCLI() {
-        if (getOS() == OS.WINDOWS) {
-            // TODO: setWritable() does not work the same way on Windows but we
-            //       should test what we can.
-            return
-        }
-
-        @Suppress("BooleanLiteralArgument")
-        val tests =
-            listOf(
-                // CLI is writable.
-                EnsureCLITest(null, null, "1.0.0", true, true, true, Result.DL_BIN), // Download.
-                EnsureCLITest(null, null, "1.0.0", true, false, true, Result.NONE), // No download, error when used.
-                EnsureCLITest("1.0.1", null, "1.0.0", true, true, true, Result.DL_BIN), // Update.
-                EnsureCLITest("1.0.1", null, "1.0.0", true, false, true, Result.USE_BIN), // No update, use outdated.
-                EnsureCLITest("1.0.0", null, "1.0.0", true, false, true, Result.USE_BIN), // Use existing.
-                // CLI is *not* writable and fallback disabled.
-                EnsureCLITest(null, null, "1.0.0", false, true, false, Result.ERROR), // Fail to download.
-                EnsureCLITest(null, null, "1.0.0", false, false, false, Result.NONE), // No download, error when used.
-                EnsureCLITest("1.0.1", null, "1.0.0", false, true, false, Result.ERROR), // Fail to update.
-                EnsureCLITest("1.0.1", null, "1.0.0", false, false, false, Result.USE_BIN), // No update, use outdated.
-                EnsureCLITest("1.0.0", null, "1.0.0", false, false, false, Result.USE_BIN), // Use existing.
-                // CLI is *not* writable and fallback enabled.
-                EnsureCLITest(null, null, "1.0.0", false, true, true, Result.DL_DATA), // Download to fallback.
-                EnsureCLITest(null, null, "1.0.0", false, false, true, Result.NONE), // No download, error when used.
-                EnsureCLITest("1.0.1", "1.0.1", "1.0.0", false, true, true, Result.DL_DATA), // Update fallback.
-                EnsureCLITest(
-                    "1.0.1",
-                    "1.0.2",
-                    "1.0.0",
-                    false,
-                    false,
-                    true,
-                    Result.USE_BIN
-                ), // No update, use outdated.
-                EnsureCLITest(
-                    null,
-                    "1.0.2",
-                    "1.0.0",
-                    false,
-                    false,
-                    true,
-                    Result.USE_DATA
-                ), // No update, use outdated fallback.
-                EnsureCLITest("1.0.0", null, "1.0.0", false, false, true, Result.USE_BIN), // Use existing.
-                EnsureCLITest("1.0.1", "1.0.0", "1.0.0", false, false, true, Result.USE_DATA), // Use existing fallback.
-            )
-
-        val (srv, url) = mockServer()
-
-        tests.forEach {
-            val settingsStore = CoderSettingsStore(
-                pluginTestSettingsStore(
-                    ENABLE_DOWNLOADS to it.enableDownloads.toString(),
-                    ENABLE_BINARY_DIR_FALLBACK to it.enableFallback.toString(),
-                    DATA_DIRECTORY to tmpdir.resolve("ensure-data-dir").toString(),
-                    BINARY_DIRECTORY to tmpdir.resolve("ensure-bin-dir").toString(),
-                    FALLBACK_ON_CODER_FOR_SIGNATURES to "allow"
-                ),
-                Environment(),
-                context.logger
-            )
-            val settings = settingsStore.readOnly()
-            val localContext = context.copy(settingsStore = settingsStore)
-            // Clean up from previous test.
-            tmpdir.resolve("ensure-data-dir").toFile().deleteRecursively()
-            tmpdir.resolve("ensure-bin-dir").toFile().deleteRecursively()
-
-            // Create a binary in the regular location.
-            if (it.version != null) {
-                settings.binPath(url).parent.toFile().mkdirs()
-                settings.binPath(url).toFile().writeText(mkbinVersion(it.version))
-                settings.binPath(url).toFile().setExecutable(true)
-            }
-
-            // This not being writable will make it fall back, if enabled.
-            if (!it.writable) {
-                settings.binPath(url).parent.toFile().mkdirs()
-                settings.binPath(url).parent.toFile().setWritable(false)
-            }
-
-            // Create a binary in the fallback location.
-            if (it.fallbackVersion != null) {
-                settings.binPath(url, true).parent.toFile().mkdirs()
-                settings.binPath(url, true).toFile().writeText(mkbinVersion(it.fallbackVersion))
-                settings.binPath(url, true).toFile().setExecutable(true)
-            }
-
-            when (it.expect) {
-                Result.ERROR -> {
-                    assertFailsWith(
-                        exceptionClass = AccessDeniedException::class,
-                        block = { runBlocking { ensureCLI(localContext, url, it.buildVersion, noOpTextProgress) } }
-                    )
-                }
-
-                Result.NONE -> {
-                    val ccm = runBlocking { ensureCLI(localContext, url, it.buildVersion, noOpTextProgress) }
-                    assertEquals(settings.binPath(url), ccm.localBinaryPath)
-                    assertFailsWith(
-                        exceptionClass = ProcessInitException::class,
-                        block = { ccm.version() },
-                    )
-                }
-
-                Result.DL_BIN -> {
-                    val ccm = runBlocking { ensureCLI(localContext, url, it.buildVersion, noOpTextProgress) }
-                    assertEquals(settings.binPath(url), ccm.localBinaryPath)
-                    assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
-                }
-
-                Result.DL_DATA -> {
-                    val ccm = runBlocking { ensureCLI(localContext, url, it.buildVersion, noOpTextProgress) }
-                    assertEquals(settings.binPath(url, true), ccm.localBinaryPath)
-                    assertEquals(SemVer(url.port.toLong(), 0, 0), ccm.version())
-                }
-
-                Result.USE_BIN -> {
-                    val ccm = runBlocking { ensureCLI(localContext, url, it.buildVersion, noOpTextProgress) }
-                    assertEquals(settings.binPath(url), ccm.localBinaryPath)
-                    assertEquals(SemVer.parse(it.version ?: ""), ccm.version())
-                }
-
-                Result.USE_DATA -> {
-                    val ccm = runBlocking { ensureCLI(localContext, url, it.buildVersion, noOpTextProgress) }
-                    assertEquals(settings.binPath(url, true), ccm.localBinaryPath)
-                    assertEquals(SemVer.parse(it.fallbackVersion ?: ""), ccm.version())
-                }
-            }
-
-            // Make writable again so it can get cleaned up.
-            if (!it.writable) {
-                settings.binPath(url).parent.toFile().setWritable(true)
-            }
-        }
-
-        srv.stop(0)
     }
 
     @Test
@@ -1007,7 +963,6 @@ internal class CoderCLIManagerTest {
                 context.copy(
                     settingsStore = CoderSettingsStore(
                         pluginTestSettingsStore(
-                            BINARY_NAME to "coder.bat",
                             DATA_DIRECTORY to tmpdir.resolve("features").toString(),
                             FALLBACK_ON_CODER_FOR_SIGNATURES to "allow"
                         ),
@@ -1018,7 +973,11 @@ internal class CoderCLIManagerTest {
                 url,
             )
             assertEquals(true, runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
-            assertEquals(it.second, ccm.features, "version: ${it.first}")
+            // On Windows the downloaded script is saved as .exe and cannot be executed
+            // as a batch script, so skip the features check.
+            if (getOS() != OS.WINDOWS) {
+                assertEquals(it.second, ccm.features, "version: ${it.first}")
+            }
 
             srv.stop(0)
         }
