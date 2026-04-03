@@ -38,17 +38,17 @@ private val SUPPORTED_BIN_MIME_TYPES = listOf(
     "application/x-ms-dos-executable",
     "application/vnd.microsoft.portable-executable"
 )
+
 /**
  * Handles the download steps of Coder CLI
  */
 class CoderDownloadService(
     private val context: CoderToolboxContext,
     private val downloadApi: CoderDownloadApi,
-    private val deploymentUrl: URL,
-    forceDownloadToData: Boolean,
+    private val deploymentUrl: URL
 ) {
     private val remoteBinaryURL: URL = context.settingsStore.binSource(deploymentUrl)
-    private val cliFinalDst: Path = context.settingsStore.binPath(deploymentUrl, forceDownloadToData)
+    private val cliFinalDst: Path = context.settingsStore.binPath(deploymentUrl)
     private val cliTempDst: Path = cliFinalDst.resolveSibling("${cliFinalDst.name}.tmp")
 
     suspend fun downloadCli(buildVersion: String, showTextProgress: (String) -> Unit): DownloadResult {

@@ -190,16 +190,10 @@ internal class CoderCLIManagerTest {
         )
         val url = URL("http://localhost")
 
-        val ccm1 = CoderCLIManager(context.copy(settingsStore = settings), url)
-        assertEquals(settings.binSource(url), ccm1.remoteBinaryURL)
-        assertEquals(settings.dataDir(url), ccm1.coderConfigPath.parent)
-        assertEquals(settings.binPath(url), ccm1.localBinaryPath)
-
-        // Can force using data directory.
-        val ccm2 = CoderCLIManager(context.copy(settingsStore = settings), url, true)
-        assertEquals(settings.binSource(url), ccm2.remoteBinaryURL)
-        assertEquals(settings.dataDir(url), ccm2.coderConfigPath.parent)
-        assertEquals(settings.binPath(url, true), ccm2.localBinaryPath)
+        val ccm = CoderCLIManager(context.copy(settingsStore = settings), url)
+        assertEquals(settings.binSource(url), ccm.remoteBinaryURL)
+        assertEquals(settings.dataDir(url), ccm.coderConfigPath.parent)
+        assertEquals(settings.binPath(url), ccm.localBinaryPath)
     }
 
     @Test

@@ -91,12 +91,6 @@ interface ReadOnlyCoderSettings {
     val enableDownloads: Boolean
 
     /**
-     * Whether to allow the plugin to fall back to the data directory when the
-     * CLI directory is not writable.
-     */
-    val enableBinaryDirectoryFallback: Boolean
-
-    /**
      * An external command that outputs additional HTTP headers added to all
      * requests. The command must output each header as `key=value` on its own
      * line. The following environment variables will be available to the
@@ -179,9 +173,9 @@ interface ReadOnlyCoderSettings {
     fun binSource(url: URL): URL
 
     /**
-     * To where the specified deployment should download the binary.
+     * Returns a path to where the specified deployment should place the CLI binary.
      */
-    fun binPath(url: URL, forceDownloadToData: Boolean = false): Path
+    fun binPath(url: URL): Path
 
     /**
      * Return the URL and token from the config, if they exist.

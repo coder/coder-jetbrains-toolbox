@@ -25,8 +25,6 @@ internal const val DATA_DIRECTORY = "dataDirectory"
 
 internal const val ENABLE_DOWNLOADS = "enableDownloads"
 
-internal const val ENABLE_BINARY_DIR_FALLBACK = "enableBinaryDirectoryFallback"
-
 internal const val HEADER_COMMAND = "headerCommand"
 
 internal const val TLS_CERT_PATH = "tlsCertPath"

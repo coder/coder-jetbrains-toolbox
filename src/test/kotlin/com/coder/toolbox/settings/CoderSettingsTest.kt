@@ -3,7 +3,6 @@ package com.coder.toolbox.settings
 import com.coder.toolbox.store.CODER_SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.DISABLE_AUTOSTART
-import com.coder.toolbox.store.ENABLE_BINARY_DIR_FALLBACK
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
 import com.coder.toolbox.store.HEADER_COMMAND
 import com.coder.toolbox.store.SSH_CONFIG_OPTIONS
@@ -122,11 +121,6 @@ internal class CoderSettingsTest {
         settings.updateBinaryDestination("/tmp/coder-toolbox-test/bin-dir")
         var expected = "/tmp/coder-toolbox-test/bin-dir/test.coder.com"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.readOnly().binPath(url).parent)
-
-        // Second argument bypasses override.
-        settings.updateDataDirectory("/tmp/coder-toolbox-test/data-dir")
-        expected = "/tmp/coder-toolbox-test/data-dir/test.coder.com"
-        assertEquals(Path.of(expected).toAbsolutePath(), settings.readOnly().binPath(url, true).parent)
 
         // Binary name is always determined by OS and architecture.
         assertEquals(
@@ -280,7 +274,6 @@ internal class CoderSettingsTest {
         // Test defaults for the remaining settings.
         val settings = CoderSettingsStore(pluginTestSettingsStore(), Environment(), logger)
         assertEquals(true, settings.readOnly().enableDownloads)
-        assertEquals(false, settings.readOnly().enableBinaryDirectoryFallback)
         assertEquals(null, settings.readOnly().headerCommand)
         assertEquals(null, settings.readOnly().tls.certPath)
         assertEquals(null, settings.readOnly().tls.keyPath)
@@ -296,7 +289,6 @@ internal class CoderSettingsTest {
             CoderSettingsStore(
                 pluginTestSettingsStore(
                     ENABLE_DOWNLOADS to false.toString(),
-                    ENABLE_BINARY_DIR_FALLBACK to true.toString(),
                     HEADER_COMMAND to "test header",
                     TLS_CERT_PATH to "tls cert path",
                     TLS_KEY_PATH to "tls key path",
@@ -310,7 +302,6 @@ internal class CoderSettingsTest {
             )
 
         assertEquals(false, settings.readOnly().enableDownloads)
-        assertEquals(true, settings.readOnly().enableBinaryDirectoryFallback)
         assertEquals("test header", settings.readOnly().headerCommand)
         assertEquals("tls cert path", settings.readOnly().tls.certPath)
         assertEquals("tls key path", settings.readOnly().tls.keyPath)

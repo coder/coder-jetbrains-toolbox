@@ -1,7 +1,7 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.util.prettify
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -46,21 +46,17 @@ private class ErrorReporterImpl(
     }
 
     private fun showError(ex: Throwable) {
-        val textError = if (ex is APIResponseException) {
-            if (!ex.reason.isNullOrBlank()) {
-                ex.reason
-            } else ex.message
-        } else ex.message ?: ex.toString()
+        val textError = ex.prettify()
+
         context.cs.launch {
             context.ui.showSnackbar(
                 UUID.randomUUID().toString(),
                 context.i18n.ptrl("Error encountered while setting up Coder"),
-                context.i18n.pnotr(textError ?: ""),
+                context.i18n.pnotr(textError),
                 context.i18n.ptrl("Dismiss")
             )
         }
     }
-
 
     override fun flush() {
         if (errorBuffer.isNotEmpty() && visibilityState.value.applicationVisible) {

@@ -8,7 +8,6 @@ import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.DATA_DIRECTORY
 import com.coder.toolbox.store.DISABLE_SIGNATURE_VALIDATION
-import com.coder.toolbox.store.ENABLE_BINARY_DIR_FALLBACK
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
 import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.IgnoreOnWindows
@@ -38,7 +37,6 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.ProxySelector
 import java.net.URL
-import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.BeforeTest
@@ -89,7 +87,6 @@ internal class EnsureCLITest {
         coEvery { ui.showYesNoPopup(any(), any(), any(), any()) } returns true
     }
 
-
     @Test
     @IgnoreOnWindows
     fun `given binaryDestination is a directory and downloads are enabled, returns the CLI when version already matches`() {
@@ -99,8 +96,6 @@ internal class EnsureCLITest {
             DATA_DIRECTORY to testDir("dir-dest-dl-on-match/data").toString(),
             DISABLE_SIGNATURE_VALIDATION to "true",
         )
-        // Compute expected path before creating files so isExecutable on the
-        // directory does not interfere with the resolution.
         val expected = s.binPath(url)
         createBinary(expected, "1.0.0")
 
@@ -132,7 +127,7 @@ internal class EnsureCLITest {
     }
 
     @Test
-    fun `given binaryDestination is a directory and downloads are enabled, propagates non-AccessDenied errors during download to the caller`() {
+    fun `given binaryDestination is a directory and downloads are enabled, propagates errors during download to the caller`() {
         val (srv, url) = mockServer(errorCode = HttpURLConnection.HTTP_INTERNAL_ERROR)
         try {
             val s = settings(
@@ -144,129 +139,6 @@ internal class EnsureCLITest {
                 runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
             }
         } finally {
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are enabled, falls back to the data directory CLI when access is denied and data directory version matches`() {
-        val (srv, url) = mockServer(version = "1.9.0")
-        val s = settings(
-            BINARY_DESTINATION to testDir("dir-dest-dl-on-fallback-match/bin").toString(),
-            DATA_DIRECTORY to testDir("dir-dest-dl-on-fallback-match/data").toString(),
-            ENABLE_BINARY_DIR_FALLBACK to "true",
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        val binParent = s.binPath(url).parent
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "2.0.0")
-        try {
-            binParent.toFile().mkdirs()
-            binParent.toFile().setWritable(false)
-            val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-            assertEquals(fallbackPath, ccm.localBinaryPath)
-            assertEquals(SemVer(2, 0, 0), ccm.version())
-        } finally {
-            binParent.toFile().setWritable(true)
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are enabled, downloads CLI to the data directory when access is denied and data directory CLI is missing`() {
-        val (srv, url) = mockServer(version = "1.0.0")
-        val s = settings(
-            BINARY_DESTINATION to testDir("dir-dest-dl-on-fallback-missing/bin").toString(),
-            DATA_DIRECTORY to testDir("dir-dest-dl-on-fallback-missing/data").toString(),
-            ENABLE_BINARY_DIR_FALLBACK to "true",
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        val binParent = s.binPath(url).parent
-        val fallbackPath = s.binPath(url, true)
-        try {
-            binParent.toFile().mkdirs()
-            binParent.toFile().setWritable(false)
-            val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
-            assertEquals(fallbackPath, ccm.localBinaryPath)
-            assertTrue(ccm.localBinaryPath.toFile().exists())
-            assertEquals(SemVer(1, 0, 0), ccm.version())
-        } finally {
-            binParent.toFile().setWritable(true)
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are enabled, rethrows AccessDeniedException when fallback is enabled but binary path is already inside the data directory`() {
-        val (srv, url) = mockServer()
-        // Set BINARY_DESTINATION to the same base as DATA_DIRECTORY so that
-        // binPath(url).parent == dataDir(url).
-        val sharedBase = testDir("dir-dest-dl-on-fallback-same-dir/shared")
-        val s = settings(
-            BINARY_DESTINATION to sharedBase.toString(),
-            DATA_DIRECTORY to sharedBase.toString(),
-            ENABLE_BINARY_DIR_FALLBACK to "true",
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        val binParent = s.binPath(url).parent
-        try {
-            binParent.toFile().mkdirs()
-            binParent.toFile().setWritable(false)
-            assertFailsWith(AccessDeniedException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
-            }
-        } finally {
-            binParent.toFile().setWritable(true)
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are enabled, rethrows AccessDeniedException when binary directory fallback is disabled`() {
-        val (srv, url) = mockServer()
-        val s = settings(
-            BINARY_DESTINATION to testDir("dir-dest-dl-on-no-fallback/bin").toString(),
-            DATA_DIRECTORY to testDir("dir-dest-dl-on-no-fallback/data").toString(),
-            ENABLE_BINARY_DIR_FALLBACK to "false",
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        val binParent = s.binPath(url).parent
-        try {
-            binParent.toFile().mkdirs()
-            binParent.toFile().setWritable(false)
-            assertFailsWith(AccessDeniedException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
-            }
-        } finally {
-            binParent.toFile().setWritable(true)
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are enabled, rethrows AccessDeniedException when fallback is disabled and binary path is inside the data directory`() {
-        val (srv, url) = mockServer()
-        val sharedBase = testDir("dir-dest-dl-on-no-fallback-same-dir/shared")
-        val s = settings(
-            BINARY_DESTINATION to sharedBase.toString(),
-            DATA_DIRECTORY to sharedBase.toString(),
-            ENABLE_BINARY_DIR_FALLBACK to "false",
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        val binParent = s.binPath(url).parent
-        try {
-            binParent.toFile().mkdirs()
-            binParent.toFile().setWritable(false)
-            assertFailsWith(AccessDeniedException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
-            }
-        } finally {
-            binParent.toFile().setWritable(true)
             srv.stop(0)
         }
     }
@@ -314,7 +186,7 @@ internal class EnsureCLITest {
 
     @Test
     @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are enabled, propagates non-AccessDenied errors during download to the caller`() {
+    fun `given binaryDestination is an existing executable and downloads are enabled, propagates errors during download to the caller`() {
         val (srv, url) = mockServer(errorCode = HttpURLConnection.HTTP_INTERNAL_ERROR)
         try {
             val binaryFile = testDir("exec-dest-dl-on-error/bin/my-coder")
@@ -334,134 +206,7 @@ internal class EnsureCLITest {
 
     @Test
     @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are enabled, falls back to the data directory CLI when access is denied and data directory version matches`() {
-        val (srv, url) = mockServer(version = "1.9.9")
-        val binaryFile = testDir("exec-dest-dl-on-fallback-match/bin/my-coder")
-        createBinary(binaryFile, "1.0.0")
-        val s = settings(
-            BINARY_DESTINATION to binaryFile.toString(),
-            DATA_DIRECTORY to testDir("exec-dest-dl-on-fallback-match/data").toString(),
-            ENABLE_BINARY_DIR_FALLBACK to "true",
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "2.0.0")
-        try {
-            binaryFile.parent.toFile().setWritable(false)
-            val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-            assertEquals(fallbackPath, ccm.localBinaryPath)
-            assertEquals(SemVer(2, 0, 0), ccm.version())
-        } finally {
-            binaryFile.parent.toFile().setWritable(true)
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are enabled, downloads CLI to the data directory when access is denied and data directory CLI is missing`() {
-        val (srv, url) = mockServer(version = "2.0.0")
-        val binaryFile = testDir("exec-dest-dl-on-fallback-missing/bin/my-coder")
-        createBinary(binaryFile, "1.0.0")
-        val s = settings(
-            BINARY_DESTINATION to binaryFile.toString(),
-            DATA_DIRECTORY to testDir("exec-dest-dl-on-fallback-missing/data").toString(),
-            ENABLE_BINARY_DIR_FALLBACK to "true",
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        val fallbackPath = s.binPath(url, true)
-        try {
-            binaryFile.parent.toFile().setWritable(false)
-            val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-            assertEquals(fallbackPath, ccm.localBinaryPath)
-            assertTrue(ccm.localBinaryPath.toFile().exists())
-            assertEquals(SemVer(2, 0, 0), ccm.version())
-        } finally {
-            binaryFile.parent.toFile().setWritable(true)
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are enabled, rethrows AccessDeniedException when fallback is enabled but binary path is already inside the data directory`() {
-        val (srv, url) = mockServer()
-        // Place the executable inside the data dir so binPath.parent == dataDir.
-        val dataBase = testDir("exec-dest-dl-on-fallback-same-dir/data")
-        val dataDirForUrl = dataBase.resolve(hostDir(url))
-        val binaryFile = dataDirForUrl.resolve("my-coder")
-        createBinary(binaryFile, "1.0.0")
-        val s = settings(
-            BINARY_DESTINATION to binaryFile.toString(),
-            DATA_DIRECTORY to dataBase.toString(),
-            ENABLE_BINARY_DIR_FALLBACK to "true",
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        // Verify the precondition: binPath.parent == dataDir
-        assertEquals(s.dataDir(url), s.binPath(url).parent)
-        try {
-            binaryFile.parent.toFile().setWritable(false)
-            assertFailsWith(AccessDeniedException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-            }
-        } finally {
-            binaryFile.parent.toFile().setWritable(true)
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are enabled, rethrows AccessDeniedException when binary directory fallback is disabled`() {
-        val (srv, url) = mockServer()
-        val binaryFile = testDir("exec-dest-dl-on-no-fallback/bin/my-coder")
-        createBinary(binaryFile, "1.0.0")
-        val s = settings(
-            BINARY_DESTINATION to binaryFile.toString(),
-            DATA_DIRECTORY to testDir("exec-dest-dl-on-no-fallback/data").toString(),
-            ENABLE_BINARY_DIR_FALLBACK to "false",
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        try {
-            binaryFile.parent.toFile().setWritable(false)
-            assertFailsWith(AccessDeniedException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-            }
-        } finally {
-            binaryFile.parent.toFile().setWritable(true)
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are enabled, rethrows AccessDeniedException when fallback is disabled and binary path is inside the data directory`() {
-        val (srv, url) = mockServer()
-        val dataBase = testDir("exec-dest-dl-on-no-fallback-same-dir/data")
-        val dataDirForUrl = dataBase.resolve(hostDir(url))
-        val binaryFile = dataDirForUrl.resolve("my-coder")
-        createBinary(binaryFile, "1.0.0")
-        val s = settings(
-            BINARY_DESTINATION to binaryFile.toString(),
-            DATA_DIRECTORY to dataBase.toString(),
-            ENABLE_BINARY_DIR_FALLBACK to "false",
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        assertEquals(s.dataDir(url), s.binPath(url).parent)
-        try {
-            binaryFile.parent.toFile().setWritable(false)
-            assertFailsWith(AccessDeniedException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-            }
-        } finally {
-            binaryFile.parent.toFile().setWritable(true)
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are disabled, returns the CLI at destination when version matches`() {
+    fun `given binaryDestination is an existing executable and downloads are disabled, returns the CLI when version matches`() {
         val url = URL("http://test.coder.invalid")
         val binaryFile = testDir("exec-dest-dl-off-match/bin/my-coder")
         createBinary(binaryFile, "1.0.0")
@@ -477,51 +222,13 @@ internal class EnsureCLITest {
 
     @Test
     @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are disabled, returns the data directory CLI when destination version mismatches but data directory version matches`() {
+    fun `given binaryDestination is an existing executable and downloads are disabled, returns the stale CLI when version mismatches`() {
         val url = URL("http://test.coder.invalid")
-        val binaryFile = testDir("exec-dest-dl-off-mismatch-datacli-match/bin/my-coder")
+        val binaryFile = testDir("exec-dest-dl-off-mismatch/bin/my-coder")
         createBinary(binaryFile, "1.0.0")
         val s = settings(
             BINARY_DESTINATION to binaryFile.toString(),
-            DATA_DIRECTORY to testDir("exec-dest-dl-off-mismatch-datacli-match/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "2.0.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-        assertEquals(fallbackPath, ccm.localBinaryPath)
-        assertEquals(SemVer(2, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are disabled, returns the stale destination CLI when both destination and data directory versions mismatch`() {
-        val url = URL("http://test.coder.invalid")
-        val binaryFile = testDir("exec-dest-dl-off-mismatch-datacli-wrong/bin/my-coder")
-        createBinary(binaryFile, "1.0.0")
-        val s = settings(
-            BINARY_DESTINATION to binaryFile.toString(),
-            DATA_DIRECTORY to testDir("exec-dest-dl-off-mismatch-datacli-wrong/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "1.5.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-        assertEquals(binaryFile.toAbsolutePath(), ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are disabled, returns the stale destination CLI when version mismatches and data directory CLI is missing`() {
-        val url = URL("http://test.coder.invalid")
-        val binaryFile = testDir("exec-dest-dl-off-mismatch-datacli-missing/bin/my-coder")
-        createBinary(binaryFile, "1.0.0")
-        val s = settings(
-            BINARY_DESTINATION to binaryFile.toString(),
-            DATA_DIRECTORY to testDir("exec-dest-dl-off-mismatch-datacli-missing/data").toString(),
+            DATA_DIRECTORY to testDir("exec-dest-dl-off-mismatch/data").toString(),
             ENABLE_DOWNLOADS to "false",
         )
         val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
@@ -530,43 +237,7 @@ internal class EnsureCLITest {
     }
 
     @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are disabled, returns the data directory CLI when destination is missing and data directory version matches`() {
-        val url = URL("http://test.coder.invalid")
-        val binaryFile = testDir("exec-dest-dl-off-no-cli-datacli-match/bin/my-coder")
-        val s = settings(
-            BINARY_DESTINATION to binaryFile.toString(),
-            DATA_DIRECTORY to testDir("exec-dest-dl-off-no-cli-datacli-match/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "1.0.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
-        assertEquals(fallbackPath, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is an existing executable and downloads are disabled, returns the stale data directory CLI when destination is missing and data directory version mismatches`() {
-        val url = URL("http://test.coder.invalid")
-        val binaryFile = testDir("exec-dest-dl-off-no-cli-datacli-wrong/bin/my-coder")
-        val s = settings(
-            BINARY_DESTINATION to binaryFile.toString(),
-            DATA_DIRECTORY to testDir("exec-dest-dl-off-no-cli-datacli-wrong/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "1.0.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-        assertEquals(fallbackPath, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
-    }
-
-    @Test
-    fun `given binaryDestination is an existing executable and downloads are disabled, throws when both destination and data directory CLIs are missing`() {
+    fun `given binaryDestination points to a non-existent file and downloads are disabled, throws when no CLI binary exists`() {
         val url = URL("http://test.coder.invalid")
         val binaryFile = testDir("exec-dest-dl-off-both-missing/bin/my-coder")
         val s = settings(
@@ -606,7 +277,7 @@ internal class EnsureCLITest {
 
     @Test
     @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are disabled, returns the CLI at destination when version matches`() {
+    fun `given binaryDestination is a directory and downloads are disabled, returns the CLI when version matches`() {
         val url = URL("http://test.coder.invalid")
         val s = settings(
             BINARY_DESTINATION to testDir("dir-dest-dl-off-match/bin").toString(),
@@ -623,49 +294,11 @@ internal class EnsureCLITest {
 
     @Test
     @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are disabled, returns the data directory CLI when destination version mismatches but data directory version matches`() {
+    fun `given binaryDestination is a directory and downloads are disabled, returns the stale CLI when version mismatches`() {
         val url = URL("http://test.coder.invalid")
         val s = settings(
-            BINARY_DESTINATION to testDir("dir-dest-dl-off-mismatch-datacli-match/bin").toString(),
-            DATA_DIRECTORY to testDir("dir-dest-dl-off-mismatch-datacli-match/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val expected = s.binPath(url)
-        createBinary(expected, "1.0.0")
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "2.0.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-        assertEquals(fallbackPath, ccm.localBinaryPath)
-        assertEquals(SemVer(2, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are disabled, returns the stale destination CLI when both destination and data directory versions mismatch`() {
-        val url = URL("http://test.coder.invalid")
-        val s = settings(
-            BINARY_DESTINATION to testDir("dir-dest-dl-off-mismatch-datacli-wrong/bin").toString(),
-            DATA_DIRECTORY to testDir("dir-dest-dl-off-mismatch-datacli-wrong/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val expected = s.binPath(url)
-        createBinary(expected, "1.0.0")
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "1.5.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-        assertEquals(expected, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are disabled, returns the stale destination CLI when version mismatches and data directory CLI is missing`() {
-        val url = URL("http://test.coder.invalid")
-        val s = settings(
-            BINARY_DESTINATION to testDir("dir-dest-dl-off-mismatch-datacli-missing/bin").toString(),
-            DATA_DIRECTORY to testDir("dir-dest-dl-off-mismatch-datacli-missing/data").toString(),
+            BINARY_DESTINATION to testDir("dir-dest-dl-off-mismatch/bin").toString(),
+            DATA_DIRECTORY to testDir("dir-dest-dl-off-mismatch/data").toString(),
             ENABLE_DOWNLOADS to "false",
         )
         val expected = s.binPath(url)
@@ -678,41 +311,7 @@ internal class EnsureCLITest {
 
     @Test
     @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are disabled, returns the data directory CLI when destination CLI is missing and data directory version matches`() {
-        val url = URL("http://test.coder.invalid")
-        val s = settings(
-            BINARY_DESTINATION to testDir("dir-dest-dl-off-no-cli-datacli-match/bin").toString(),
-            DATA_DIRECTORY to testDir("dir-dest-dl-off-no-cli-datacli-match/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "1.0.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
-        assertEquals(fallbackPath, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are disabled, returns the stale data directory CLI when destination CLI is missing and data directory version mismatches`() {
-        val url = URL("http://test.coder.invalid")
-        val s = settings(
-            BINARY_DESTINATION to testDir("dir-dest-dl-off-no-cli-datacli-wrong/bin").toString(),
-            DATA_DIRECTORY to testDir("dir-dest-dl-off-no-cli-datacli-wrong/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "1.0.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-        assertEquals(fallbackPath, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given binaryDestination is a directory and downloads are disabled, throws when both destination and data directory CLIs are missing`() {
+    fun `given binaryDestination is a directory and downloads are disabled, throws when no CLI binary exists`() {
         val url = URL("http://test.coder.invalid")
         val s = settings(
             BINARY_DESTINATION to testDir("dir-dest-dl-off-both-missing/bin").toString(),
@@ -742,88 +341,17 @@ internal class EnsureCLITest {
 
     @Test
     @IgnoreOnWindows
-    fun `given no binaryDestination configured and downloads are disabled, returns the CLI when the shared path is overwritten with a matching version`() {
-        val url = URL("http://test.coder.invalid")
-        val s = settings(
-            DATA_DIRECTORY to testDir("no-dest-dl-off-mismatch-datacli-match/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val expected = s.binPath(url)
-        createBinary(expected, "1.0.0")
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "2.0.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-        assertEquals(fallbackPath, ccm.localBinaryPath)
-        assertEquals(SemVer(2, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given no binaryDestination configured and downloads are disabled, returns the stale CLI when version mismatches confirming CLI and data directory paths are identical`() {
+    fun `given no binaryDestination configured and downloads are disabled, returns the stale CLI when version mismatches`() {
         val url = URL("http://test.coder.invalid")
         val s = settings(
             DATA_DIRECTORY to testDir("no-dest-dl-off-mismatch/data").toString(),
             ENABLE_DOWNLOADS to "false",
         )
         val expected = s.binPath(url)
-        // When binaryDestination is not configured, binPath(url) and
-        // binPath(url, true) resolve to the same path because the
-        // isNullOrBlank() early return in binPath fires before the
-        // forceDownloadToData check.  So cli and dataCLI share a binary.
-        assertEquals(expected, s.binPath(url, true))
         createBinary(expected, "1.0.0")
 
         val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
         assertEquals(expected, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given no binaryDestination configured and downloads are disabled, returns the stale CLI when version mismatches and no separate data directory CLI path exists`() {
-        val url = URL("http://test.coder.invalid")
-        val s = settings(
-            DATA_DIRECTORY to testDir("no-dest-dl-off-mismatch-datacli-missing/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val expected = s.binPath(url)
-        createBinary(expected, "1.0.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-        assertEquals(expected, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given no binaryDestination configured and downloads are disabled, returns the CLI when version matches at the shared data directory path`() {
-        val url = URL("http://test.coder.invalid")
-        val s = settings(
-            DATA_DIRECTORY to testDir("no-dest-dl-off-no-cli-datacli-match/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "1.0.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
-        assertEquals(fallbackPath, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given no binaryDestination configured and downloads are disabled, returns the stale CLI when version mismatches at the shared data directory path`() {
-        val url = URL("http://test.coder.invalid")
-        val s = settings(
-            DATA_DIRECTORY to testDir("no-dest-dl-off-no-cli-datacli-wrong/data").toString(),
-            ENABLE_DOWNLOADS to "false",
-        )
-        val fallbackPath = s.binPath(url, true)
-        createBinary(fallbackPath, "1.0.0")
-
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
-        assertEquals(fallbackPath, ccm.localBinaryPath)
         assertEquals(SemVer(1, 0, 0), ccm.version())
     }
 
@@ -877,7 +405,7 @@ internal class EnsureCLITest {
     }
 
     @Test
-    fun `given no binaryDestination configured and downloads are enabled, propagates non-AccessDenied errors during download to the caller`() {
+    fun `given no binaryDestination configured and downloads are enabled, propagates errors during download to the caller`() {
         val (srv, url) = mockServer(errorCode = HttpURLConnection.HTTP_INTERNAL_ERROR)
         try {
             val s = settings(
@@ -888,27 +416,6 @@ internal class EnsureCLITest {
                 runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
             }
         } finally {
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given no binaryDestination configured and downloads are enabled, rethrows AccessDeniedException since the binary path is always inside the data directory`() {
-        val (srv, url) = mockServer()
-        val s = settings(
-            DATA_DIRECTORY to testDir("no-dest-dl-on-access-denied/data").toString(),
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        val binParent = s.binPath(url).parent
-        try {
-            binParent.toFile().mkdirs()
-            binParent.toFile().setWritable(false)
-            assertFailsWith(AccessDeniedException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
-            }
-        } finally {
-            binParent.toFile().setWritable(true)
             srv.stop(0)
         }
     }
@@ -935,7 +442,7 @@ internal class EnsureCLITest {
     }
 
     @Test
-    fun `given no binaryDestination configured and downloads are enabled, propagates non-AccessDenied errors during download when CLI is missing`() {
+    fun `given no binaryDestination configured and downloads are enabled, propagates errors during download when CLI is missing`() {
         val (srv, url) = mockServer(errorCode = HttpURLConnection.HTTP_INTERNAL_ERROR)
         try {
             val s = settings(
@@ -946,27 +453,6 @@ internal class EnsureCLITest {
                 runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
             }
         } finally {
-            srv.stop(0)
-        }
-    }
-
-    @Test
-    @IgnoreOnWindows
-    fun `given no binaryDestination configured and downloads are enabled, rethrows AccessDeniedException when CLI is missing and access to the data directory is denied`() {
-        val (srv, url) = mockServer()
-        val s = settings(
-            DATA_DIRECTORY to testDir("no-dest-dl-on-no-cli-access-denied/data").toString(),
-            DISABLE_SIGNATURE_VALIDATION to "true",
-        )
-        val binParent = s.binPath(url).parent
-        try {
-            binParent.toFile().mkdirs()
-            binParent.toFile().setWritable(false)
-            assertFailsWith(AccessDeniedException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
-            }
-        } finally {
-            binParent.toFile().setWritable(true)
             srv.stop(0)
         }
     }
@@ -1031,10 +517,6 @@ internal class EnsureCLITest {
         srv.start()
         return Pair(srv, URL("http://localhost:" + srv.address.port))
     }
-
-    /** Build the host directory component used by [CoderSettingsStore.withHost]. */
-    private fun hostDir(url: URL): String =
-        if (url.port > 0) "${url.host}-${url.port}" else url.host
 
     companion object {
         private val tmpdir: Path = Path.of(System.getProperty("java.io.tmpdir"))
