@@ -128,7 +128,7 @@ class CoderSettingsStore(
      *    directory with the default CLI binary name.
      * 2. If the expanded (~ and $HOME) [binaryDestination] is an existing executable file,
      *    return it as-is.
-     * 2. Otherwise, treat [binaryDestination] as a base directory and return a
+     * 3. Otherwise, treat [binaryDestination] as a base directory and return a
      *    host-specific subdirectory with the default CLI binary name.
      */
     override fun binPath(url: URL): Path {

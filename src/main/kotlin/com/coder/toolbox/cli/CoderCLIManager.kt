@@ -54,10 +54,10 @@ internal data class Version(
  * 2. If the CLI version matches the build version, return it immediately.
  * 3. Otherwise, if downloads are enabled, attempt to download the CLI.
  *    a. On success, return the CLI.
- *    b. If there is an exception propagates to the user.
+ *    b. Any exception propagates to the user.
  * 4. If downloads are disabled:
- *    a. If neither the configured binary nor the data directory CLI can
- *       report a version, throw [IllegalStateException].
+ *    a. [IllegalStateException] is raised if the CLI does not exist (look into binary destination if it was configured,
+ *    fallback to data dir otherwise)
  *    b. Otherwise, warn the user and return the mismatched version.
  */
 suspend fun ensureCLI(

@@ -173,7 +173,7 @@ interface ReadOnlyCoderSettings {
     fun binSource(url: URL): URL
 
     /**
-     * Returns a path to where the CLI is downloaded.
+     * Returns a path to where the specified deployment should place the CLI binary.
      */
     fun binPath(url: URL): Path
 
