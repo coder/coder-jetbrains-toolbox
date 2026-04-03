@@ -1,7 +1,7 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.util.prettify
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -52,22 +52,10 @@ private class ErrorReporterImpl(
             context.ui.showSnackbar(
                 UUID.randomUUID().toString(),
                 context.i18n.ptrl("Error encountered while setting up Coder"),
-                context.i18n.pnotr(textError ?: ""),
+                context.i18n.pnotr(textError),
                 context.i18n.ptrl("Dismiss")
             )
         }
-    }
-
-    private fun Throwable.prettify(): String? = when (this) {
-        is APIResponseException -> if (!this.reason.isNullOrBlank()) {
-            this.reason
-        } else this.message
-
-        is AccessDeniedException,
-        is java.nio.file.AccessDeniedException -> "Access denied to ${this.message}"
-
-        is java.nio.file.FileSystemException -> "A file system operation failed when trying to access ${this.message}"
-        else -> this.toString()
     }
 
     override fun flush() {
