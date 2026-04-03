@@ -1,10 +1,8 @@
 package com.coder.toolbox.settings
 
-import com.coder.toolbox.store.BINARY_NAME
 import com.coder.toolbox.store.CODER_SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.DISABLE_AUTOSTART
-import com.coder.toolbox.store.ENABLE_BINARY_DIR_FALLBACK
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
 import com.coder.toolbox.store.HEADER_COMMAND
 import com.coder.toolbox.store.SSH_CONFIG_OPTIONS
@@ -34,7 +32,7 @@ internal class CoderSettingsTest {
         val url = URL("http://localhost")
         val home = Path.of(System.getProperty("user.home"))
 
-        settings.updateBinaryDirectory(Path.of("~/coder-toolbox-test/expand-bin-dir").toString())
+        settings.updateBinaryDestination(Path.of("~/coder-toolbox-test/expand-bin-dir").toString())
         var expected = home.resolve("coder-toolbox-test/expand-bin-dir/localhost")
         assertEquals(expected.toAbsolutePath(), settings.readOnly().binPath(url).parent)
 
@@ -114,26 +112,21 @@ internal class CoderSettingsTest {
 
     @Test
     fun testBinPath() {
-        val settings = CoderSettingsStore(
-            pluginTestSettingsStore(
-                BINARY_NAME to "foo-bar.baz"
-            ), Environment(), logger
-        )
+        val settings = CoderSettingsStore(pluginTestSettingsStore(), Environment(), logger)
         // The binary path should fall back to the data directory but that is
         // already tested in the data directory tests.
-        val url = URL("http://localhost")
+        val url = URL("http://test.coder.com")
 
         // Override with settings.
-        settings.updateBinaryDirectory("/tmp/coder-toolbox-test/bin-dir")
-        var expected = "/tmp/coder-toolbox-test/bin-dir/localhost"
+        settings.updateBinaryDestination("/tmp/coder-toolbox-test/bin-dir")
+        var expected = "/tmp/coder-toolbox-test/bin-dir/test.coder.com"
         assertEquals(Path.of(expected).toAbsolutePath(), settings.readOnly().binPath(url).parent)
 
-        // Second argument bypasses override.
-        settings.updateDataDirectory("/tmp/coder-toolbox-test/data-dir")
-        expected = "/tmp/coder-toolbox-test/data-dir/localhost"
-        assertEquals(Path.of(expected).toAbsolutePath(), settings.readOnly().binPath(url, true).parent)
-
-        assertEquals("foo-bar.baz", settings.readOnly().binPath(url).fileName.toString())
+        // Binary name is always determined by OS and architecture.
+        assertEquals(
+            settings.readOnly().defaultCliBinaryNameByOsAndArch,
+            settings.readOnly().binPath(url).fileName.toString()
+        )
     }
 
     @Test
@@ -281,7 +274,6 @@ internal class CoderSettingsTest {
         // Test defaults for the remaining settings.
         val settings = CoderSettingsStore(pluginTestSettingsStore(), Environment(), logger)
         assertEquals(true, settings.readOnly().enableDownloads)
-        assertEquals(false, settings.readOnly().enableBinaryDirectoryFallback)
         assertEquals(null, settings.readOnly().headerCommand)
         assertEquals(null, settings.readOnly().tls.certPath)
         assertEquals(null, settings.readOnly().tls.keyPath)
@@ -297,7 +289,6 @@ internal class CoderSettingsTest {
             CoderSettingsStore(
                 pluginTestSettingsStore(
                     ENABLE_DOWNLOADS to false.toString(),
-                    ENABLE_BINARY_DIR_FALLBACK to true.toString(),
                     HEADER_COMMAND to "test header",
                     TLS_CERT_PATH to "tls cert path",
                     TLS_KEY_PATH to "tls key path",
@@ -311,7 +302,6 @@ internal class CoderSettingsTest {
             )
 
         assertEquals(false, settings.readOnly().enableDownloads)
-        assertEquals(true, settings.readOnly().enableBinaryDirectoryFallback)
         assertEquals("test header", settings.readOnly().headerCommand)
         assertEquals("tls cert path", settings.readOnly().tls.certPath)
         assertEquals("tls key path", settings.readOnly().tls.keyPath)

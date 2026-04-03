@@ -447,16 +447,16 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 - `Binary source` specifies the source URL or relative path from which the Coder CLI should be downloaded.
   If a relative path is provided, it is resolved against the deployment domain.
 
-- `Enable downloads` allows automatic downloading of the CLI if the current version is missing or outdated.
+- `Enable downloads` allows automatic downloading of the CLI if the current version is missing or outdated. Enabled by
+  default.
 
-- `Binary directory` specifies the directory where CLI binaries are stored. If omitted, it defaults to the data
-  directory.
+- `Binary destination` specifies where the CLI binary is placed. This can be a path to an existing
+  executable (used as-is) or a base directory (the CLI is placed under a host-specific subdirectory).
+  If blank, the data directory is used. Supports `~` and `$HOME` expansion.
 
-- `Enable binary directory fallback` if enabled, falls back to the data directory when the specified binary
-  directory is not writable.
-
-- `Data directory` directory where plugin-specific data such as session tokens and binaries are stored if not
-  overridden by the binary directory setting.
+- `Data directory` directory where deployment-specific data such as session tokens and CLI binaries
+  are stored. Each deployment gets a host-specific subdirectory (e.g. `coder.example.com`). Supports `~` and `$HOME`
+  expansion.
 
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
   The environment variable CODER_URL will be available to the command process.
@@ -470,6 +470,25 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 - `workspaceCreateUrl` specifies the dashboard page full URL where users can create new workspaces.
   Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment templates page.
   This setting supports `$workspaceOwner` as placeholder with the replacing value being the username that logged in.
+
+#### How CLI resolution works
+
+When connecting to a deployment the plugin ensures a compatible CLI binary is available.
+The binary location is resolved as follows:
+
+- If **binary destination** points to an existing executable file, it is used as-is.
+- If **binary destination** is set but is not an executable file, it is treated as a base
+  directory and the CLI is placed under a host-specific subdirectory (e.g.
+  `<binary destination>/coder.example.com/<default-cli-name>`).
+- If **binary destination** is not set, the data directory is used instead.
+
+Once the binary location is resolved:
+
+1. If a CLI already exists there and its version matches the deployment, it is used immediately.
+2. Otherwise, if **downloads are enabled**, the plugin downloads the matching version to that location.
+   Any download error is reported to the user.
+3. If **downloads are disabled** and the CLI exists but its version does not match, the stale
+   CLI is used with a warning. If no CLI exists at all, an error is raised.
 
 ### TLS settings
 

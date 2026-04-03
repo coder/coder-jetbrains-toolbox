@@ -35,10 +35,13 @@ interface ReadOnlyCoderSettings {
     val binarySource: String?
 
     /**
-     * Directories are created here that store the CLI for each domain to which
-     * the plugin connects.   Defaults to the data directory.
+     * An absolute path to either a directory or an existing executable CLI binary.
+     * When the path points to an existing executable file, it is used as the CLI
+     * binary path directly. Otherwise, it is treated as a base directory under
+     * which the CLI is placed in a host-specific subdirectory. Defaults to the
+     * data directory when not set.
      */
-    val binaryDirectory: String?
+    val binaryDestination: String?
 
     /**
      * Controls whether we verify the cli signature
@@ -61,18 +64,13 @@ interface ReadOnlyCoderSettings {
     val defaultCliBinaryNameByOsAndArch: String
 
     /**
-     * Configurable CLI binary name with extension, dependent on OS and arch
-     */
-    val binaryName: String
-
-    /**
      * Default CLI signature name based on OS and architecture
      */
     val defaultSignatureNameByOsAndArch: String
 
     /**
      * Where to save plugin data like the Coder binary (if not configured with
-     * binaryDirectory) and the deployment URL and session token.
+     * binaryDestination) and the deployment URL and session token.
      */
     val dataDirectory: String?
 
@@ -91,12 +89,6 @@ interface ReadOnlyCoderSettings {
      * of date or does not exist.
      */
     val enableDownloads: Boolean
-
-    /**
-     * Whether to allow the plugin to fall back to the data directory when the
-     * CLI directory is not writable.
-     */
-    val enableBinaryDirectoryFallback: Boolean
 
     /**
      * An external command that outputs additional HTTP headers added to all
@@ -187,9 +179,9 @@ interface ReadOnlyCoderSettings {
     fun binSource(url: URL): URL
 
     /**
-     * To where the specified deployment should download the binary.
+     * Returns a path to where the specified deployment should place the CLI binary.
      */
-    fun binPath(url: URL, forceDownloadToData: Boolean = false): Path
+    fun binPath(url: URL): Path
 
     /**
      * Return the URL and token from the config, if they exist.

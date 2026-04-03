@@ -70,7 +70,7 @@ msgstr ""
 msgid "Binary source"
 msgstr ""
 
-msgid "Binary directory"
+msgid "Binary destination"
 msgstr ""
 
 msgid "Data directory"
@@ -80,9 +80,6 @@ msgid "Enable downloads"
 msgstr ""
 
 msgid "Verify binary signature using releases.coder.com when CLI signatures are not available from the deployment"
-msgstr ""
-
-msgid "Enable binary directory fallback"
 msgstr ""
 
 msgid "Header command"

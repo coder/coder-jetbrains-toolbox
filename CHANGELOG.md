@@ -4,10 +4,14 @@
 
 ### Added
 
+- `Binary destination` can now point directly to an executable, used as-is; otherwise it is treated as a base directory
+  as before
 - support for OAuth2
 
-### Changed
+### Removed
 
+- support for enabling or disabling the fallback to data dir. CLI resolution will always fall back on data dir if binary
+  destination is not configured.
 - redesigned the Settings page, all the options are now grouped in a couple of sections for easy navigation
 
 ## 0.8.6 - 2026-03-05
@@ -21,7 +25,8 @@
 ### Added
 
 - support for configuring the SSH connection timeout, defaults to 10 seconds
-- enhanced IDE resolution by supporting latest EAP, latest release, latest installed labels with clear fallback behavior in URI handlers
+- enhanced IDE resolution by supporting latest EAP, latest release, latest installed labels with clear fallback behavior
+  in URI handlers
 
 ### Fixed
 

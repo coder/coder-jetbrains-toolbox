@@ -45,16 +45,17 @@ internal data class Version(
 
 
 /**
- * Do as much as possible to get a valid, up-to-date CLI.
+ * Best effort to get an up-to-date CLI.
  *
- * 1. Read the binary directory for the provided URL.
- * 2. Abort if we already have an up-to-date version.
- * 3. Download the binary using an ETag.
- * 4. Abort if we get a 304 (covers cases where the binary is older and does not
- *    have a version command).
- * 5. Download on top of the existing binary.
- * 6. Since the binary directory can be read-only, if downloading fails, start
- *    from step 2 with the data directory.
+ * 1. Create a CLI manager for the deployment URL.
+ * 2. If the CLI version matches the build version, return it immediately.
+ * 3. Otherwise, if downloads are enabled, attempt to download the CLI.
+ *    a. On success, return the CLI.
+ *    b. Any exception propagates to the user.
+ * 4. If downloads are disabled:
+ *    a. [IllegalStateException] is raised if the CLI does not exist (look into binary destination if it was configured,
+ *    fallback to data dir otherwise)
+ *    b. Otherwise, warn the user and return the mismatched version.
  */
 suspend fun ensureCLI(
     context: CoderToolboxContext,
@@ -84,36 +85,15 @@ suspend fun ensureCLI(
     // If downloads are enabled download the new version.
     if (settings.enableDownloads) {
         reportProgress("Downloading Coder CLI...")
-        try {
-            cli.download(buildVersion, showTextProgress)
-            return cli
-        } catch (e: java.nio.file.AccessDeniedException) {
-            // Might be able to fall back to the data directory.
-            val binPath = settings.binPath(deploymentURL)
-            val dataDir = settings.dataDir(deploymentURL)
-            if (binPath.parent == dataDir || !settings.enableBinaryDirectoryFallback) {
-                throw e
-            }
-        }
+        cli.download(buildVersion, showTextProgress)
+        return cli
     }
 
-    // Try falling back to the data directory.
-    val dataCLI = CoderCLIManager(context, deploymentURL, true)
-    val dataCLIMatches = dataCLI.matchesVersion(buildVersion)
-    if (dataCLIMatches == true) {
-        reportProgress("Local CLI version from data directory matches server version: $buildVersion")
-        return dataCLI
+    if (cliMatches == null) {
+        throw IllegalStateException("Can't resolve Coder CLI and downloads are disabled")
     }
-
-    if (settings.enableDownloads) {
-        reportProgress("Downloading Coder CLI to the data directory...")
-        dataCLI.download(buildVersion, showTextProgress)
-        return dataCLI
-    }
-
-    // Prefer the binary directory unless the data directory has a
-    // working binary and the binary directory does not.
-    return if (cliMatches == null && dataCLIMatches != null) dataCLI else cli
+    reportProgress("Downloads are disabled, and a cached CLI is used which does not match the server version $buildVersion and could cause compatibility issues")
+    return cli
 }
 
 /**
@@ -132,16 +112,13 @@ data class Features(
 class CoderCLIManager(
     private val context: CoderToolboxContext,
     // The URL of the deployment this CLI is for.
-    private val deploymentURL: URL,
-    // If the binary directory is not writable, this can be used to force the
-    // manager to download to the data directory instead.
-    private val forceDownloadToData: Boolean = false,
+    private val deploymentURL: URL
 ) {
     private val downloader = createDownloadService()
     private val gpgVerifier = GPGVerifier(context)
 
     val remoteBinaryURL: URL = context.settingsStore.binSource(deploymentURL)
-    val localBinaryPath: Path = context.settingsStore.binPath(deploymentURL, forceDownloadToData)
+    val localBinaryPath: Path = context.settingsStore.binPath(deploymentURL)
     val coderConfigPath: Path = context.settingsStore.dataDir(deploymentURL).resolve("config")
 
     private fun createDownloadService(): CoderDownloadService {
@@ -154,7 +131,7 @@ class CoderCLIManager(
             .build()
 
         val service = retrofit.create(CoderDownloadApi::class.java)
-        return CoderDownloadService(context, service, deploymentURL, forceDownloadToData)
+        return CoderDownloadService(context, service, deploymentURL)
     }
 
     /**

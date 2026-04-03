@@ -42,8 +42,8 @@ class CoderSettingsPage(
     )
     private val binarySourceField =
         TextField(context.i18n.ptrl("Binary source"), settings.binarySource ?: "", TextType.General)
-    private val binaryDirectoryField =
-        TextField(context.i18n.ptrl("Binary directory"), settings.binaryDirectory ?: "", TextType.General)
+    private val binaryDestinationField =
+        TextField(context.i18n.ptrl("Binary destination"), settings.binaryDestination ?: "", TextType.General)
     private val dataDirectoryField =
         TextField(context.i18n.ptrl("Data directory"), settings.dataDirectory ?: "", TextType.General)
     private val enableDownloadsField =
@@ -72,10 +72,6 @@ class CoderSettingsPage(
         )
     )
 
-    private val enableBinaryDirectoryFallbackField = CheckboxField(
-        settings.enableBinaryDirectoryFallback,
-        context.i18n.ptrl("Enable binary directory fallback")
-    )
     private val headerCommandField = TextField(
         context.i18n.ptrl("Header command"),
         settings.headerCommand ?: "",
@@ -160,10 +156,9 @@ class CoderSettingsPage(
                 false,
                 listOf(
                     binarySourceField,
-                    binaryDirectoryField,
+                    binaryDestinationField,
                     dataDirectoryField,
-                    enableDownloadsField,
-                    enableBinaryDirectoryFallbackField,
+                    enableDownloadsField
                 )
             ),
             SectionField(
@@ -185,14 +180,13 @@ class CoderSettingsPage(
             Action(context, "Save", closesPage = true) {
                 with(context.settingsStore) {
                     updateBinarySource(binarySourceField.contentState.value)
-                    updateBinaryDirectory(binaryDirectoryField.contentState.value)
+                    updateBinaryDestination(binaryDestinationField.contentState.value)
                     updateDataDirectory(dataDirectoryField.contentState.value)
                     updateEnableDownloads(enableDownloadsField.checkedState.value)
                     updateUseAppNameAsTitle(useAppNameField.checkedState.value)
                     updateDisableSignatureVerification(disableSignatureVerificationField.checkedState.value)
                     updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
                     updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
-                    updateBinaryDirectoryFallback(enableBinaryDirectoryFallbackField.checkedState.value)
                     updateHeaderCommand(headerCommandField.contentState.value)
                     updatePreferAuthViaOAuth2(preferOAuth2IfAvailableField.checkedState.value)
                     updateCertPath(tlsCertPathField.contentState.value)
@@ -230,8 +224,8 @@ class CoderSettingsPage(
         binarySourceField.contentState.update {
             settings.binarySource ?: ""
         }
-        binaryDirectoryField.contentState.update {
-            settings.binaryDirectory ?: ""
+        binaryDestinationField.contentState.update {
+            settings.binaryDestination ?: ""
         }
         dataDirectoryField.contentState.update {
             settings.dataDirectory ?: ""
@@ -244,10 +238,6 @@ class CoderSettingsPage(
         }
         signatureFallbackStrategyField.checkedState.update {
             settings.fallbackOnCoderForSignatures.isAllowed()
-        }
-
-        enableBinaryDirectoryFallbackField.checkedState.update {
-            settings.enableBinaryDirectoryFallback
         }
 
         headerCommandField.contentState.update {
