@@ -1,7 +1,7 @@
 package com.coder.toolbox.sdk
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.oauth.OAuth2Service
+import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.sdk.convertors.ArchConverter
 import com.coder.toolbox.sdk.convertors.InstantConverter
 import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
@@ -388,7 +388,7 @@ open class CoderRestClient(
     }
 
     private suspend fun refreshToken() {
-        val newAuthResponse = OAuth2Service(context).refreshToken(oauthContext!!)
+        val newAuthResponse = OAuth2Client(context).refreshToken(oauthContext!!)
         this.oauthContext.tokenResponse = newAuthResponse
         onTokenRefreshed?.invoke(url, oauthContext)
     }

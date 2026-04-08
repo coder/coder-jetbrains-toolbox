@@ -3,7 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.feed.IdeFeedManager
-import com.coder.toolbox.oauth.OAuth2Service
+import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
@@ -441,7 +441,7 @@ class CoderRemoteProvider(
         try {
             context.logger.info("Handling OAuth callback...")
 
-            val tokenResponse = OAuth2Service(context).exchangeCode(oauthSessionContext, code)
+            val tokenResponse = OAuth2Client(context).exchangeCode(oauthSessionContext, code)
             oauthSessionContext.tokenResponse = tokenResponse
 
             CoderSetupWizardState.goToStep(WizardStep.CONNECT)

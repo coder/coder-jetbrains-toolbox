@@ -3,7 +3,7 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
-import com.coder.toolbox.oauth.OAuth2Service
+import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
@@ -166,7 +166,7 @@ class ConnectStep(
         if (!session.tokenResponse?.accessToken.isNullOrBlank()) return
 
         logAndReportProgress("Refreshing OAuth token...")
-        val tokenResponse = OAuth2Service(context).refreshToken(session)
+        val tokenResponse = OAuth2Client(context).refreshToken(session)
         context.logger.info("Successfully refreshed access token")
         session.tokenResponse = tokenResponse
     }

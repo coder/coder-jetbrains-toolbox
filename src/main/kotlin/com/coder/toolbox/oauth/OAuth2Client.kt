@@ -12,7 +12,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 
 private const val DISCOVERY_PATH = ".well-known/oauth-authorization-server"
 
-class OAuth2Service(private val context: CoderToolboxContext) {
+class OAuth2Client(private val context: CoderToolboxContext) {
     private val service = createAuthorizationService()
 
     suspend fun discoverMetadata(baseUrl: String): AuthorizationServer? {

@@ -3,7 +3,7 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.oauth.ClientRegistrationRequest
-import com.coder.toolbox.oauth.OAuth2Service
+import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.oauth.PKCEGenerator
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.oauth.getPreferredOrAvailable
@@ -120,21 +120,24 @@ class DeploymentUrlStep(
     }
 
     private suspend fun handleOAuth2(urlString: String): CoderOAuthSessionContext? {
-        val oauthService = OAuth2Service(context)
-        val authServer = oauthService.discoverMetadata(urlString) ?: return null
+        val oauth2Client = OAuth2Client(context)
+        val oauth2ServerMetadata = oauth2Client.discoverMetadata(urlString) ?: return null
 
         context.logger.debug("registering coder-jetbrains-toolbox as client app")
-        val clientResponse = oauthService.registerClient(
-            authServer.registrationEndpoint,
+        val clientResponse = oauth2Client.registerClient(
+            oauth2ServerMetadata.registrationEndpoint,
             ClientRegistrationRequest(
                 clientName = "coder-jetbrains-toolbox",
                 redirectUris = listOf(REDIRECT_URI),
                 grantTypes = listOf("authorization_code", "refresh_token"),
-                responseTypes = authServer.supportedResponseTypes,
+                responseTypes = oauth2ServerMetadata.supportedResponseTypes,
                 scope = OAUTH2_SCOPE,
-                tokenEndpointAuthMethod = if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_BASIC)) {
+                tokenEndpointAuthMethod = if (oauth2ServerMetadata.authMethodForTokenEndpoint.contains(
+                        TokenEndpointAuthMethod.CLIENT_SECRET_BASIC
+                    )
+                ) {
                     "client_secret_basic"
-                } else if (authServer.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_POST)) {
+                } else if (oauth2ServerMetadata.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_POST)) {
                     "client_secret_post"
                 } else {
                     "none"
@@ -146,7 +149,7 @@ class DeploymentUrlStep(
         val codeChallenge = PKCEGenerator.generateCodeChallenge(codeVerifier)
         val state = UUID.randomUUID().toString()
 
-        val loginUrl = authServer.authorizationEndpoint.toHttpUrl().newBuilder()
+        val loginUrl = oauth2ServerMetadata.authorizationEndpoint.toHttpUrl().newBuilder()
             .addQueryParameter("client_id", clientResponse.clientId)
             .addQueryParameter("response_type", "code")
             .addQueryParameter("code_challenge_method", "S256")
@@ -166,8 +169,8 @@ class DeploymentUrlStep(
             clientSecret = clientResponse.clientSecret,
             tokenCodeVerifier = codeVerifier,
             state = state,
-            tokenEndpoint = authServer.tokenEndpoint,
-            tokenAuthMethod = authServer.authMethodForTokenEndpoint.getPreferredOrAvailable()
+            tokenEndpoint = oauth2ServerMetadata.tokenEndpoint,
+            tokenAuthMethod = oauth2ServerMetadata.authMethodForTokenEndpoint.getPreferredOrAvailable()
         )
     }
 
