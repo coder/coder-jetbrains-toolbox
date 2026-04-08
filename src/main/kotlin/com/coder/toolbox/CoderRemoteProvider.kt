@@ -442,7 +442,7 @@ class CoderRemoteProvider(
             context.logger.info("Handling OAuth callback...")
 
             val tokenResponse = OAuth2Client(context).exchangeCode(oauthSessionContext, code)
-            oauthSessionContext.tokenResponse = tokenResponse
+            CoderSetupWizardContext.oauthSession = oauthSessionContext.copy(tokenResponse = tokenResponse)
 
             CoderSetupWizardState.goToStep(WizardStep.CONNECT)
 

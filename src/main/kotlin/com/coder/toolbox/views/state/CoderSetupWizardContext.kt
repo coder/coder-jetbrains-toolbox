@@ -63,7 +63,7 @@ data class CoderOAuthSessionContext(
     val tokenCodeVerifier: String,
     val state: String,
     val tokenEndpoint: String,
-    var tokenResponse: OAuthTokenResponse? = null,
+    val tokenResponse: OAuthTokenResponse? = null,
     val tokenAuthMethod: TokenEndpointAuthMethod
 )
 

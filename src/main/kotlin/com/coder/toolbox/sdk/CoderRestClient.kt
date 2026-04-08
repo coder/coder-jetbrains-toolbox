@@ -2,6 +2,7 @@ package com.coder.toolbox.sdk
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.oauth.OAuth2Client
+import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.sdk.convertors.ArchConverter
 import com.coder.toolbox.sdk.convertors.InstantConverter
 import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
@@ -47,7 +48,7 @@ open class CoderRestClient(
     private val context: CoderToolboxContext,
     val url: URL,
     val token: String?,
-    private val oauthContext: CoderOAuthSessionContext? = null,
+    private var oauthContext: CoderOAuthSessionContext? = null,
     private val pluginVersion: String = "development",
     private val onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) {
@@ -362,7 +363,12 @@ open class CoderRestClient(
                     }
                     return@withLock try {
                         context.logger.info("Access token expired, attempting to refresh...")
-                        refreshToken()
+                        val newTokenResponse = refreshToken()
+
+                        val oauth = oauthContext ?: return@withLock false
+                        val updatedOauth = oauth.copy(tokenResponse = newTokenResponse)
+                        oauthContext = updatedOauth
+                        onTokenRefreshed?.invoke(url, updatedOauth)
                         true
                     } catch (e: Exception) {
                         context.logger.error(e, "Failed to refresh access token")
@@ -387,11 +393,9 @@ open class CoderRestClient(
         }
     }
 
-    private suspend fun refreshToken() {
+    private suspend fun refreshToken(): OAuthTokenResponse {
         val oauth = oauthContext ?: throw IllegalStateException("Cannot refresh token without an OAuth2 context")
-        val newAuthResponse = OAuth2Client(context).refreshToken(oauth)
-        oauth.tokenResponse = newAuthResponse
-        onTokenRefreshed?.invoke(url, oauth)
+        return OAuth2Client(context).refreshToken(oauth)
     }
 
 

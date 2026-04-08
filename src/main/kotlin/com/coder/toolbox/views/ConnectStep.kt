@@ -168,7 +168,7 @@ class ConnectStep(
         logAndReportProgress("Refreshing OAuth token...")
         val tokenResponse = OAuth2Client(context).refreshToken(session)
         context.logger.info("Successfully refreshed access token")
-        session.tokenResponse = tokenResponse
+        CoderSetupWizardContext.oauthSession = session.copy(tokenResponse = tokenResponse)
     }
 
     private fun logAndReportProgress(msg: String) {
