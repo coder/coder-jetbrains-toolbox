@@ -93,7 +93,6 @@ class OAuth2Service(private val context: CoderToolboxContext) {
             else -> ClientAuth.None(oauthSessionContext.clientId)
         }
 
-        val service = createAuthorizationService()
         val response = service.refreshToken(
             url = oauthSessionContext.tokenEndpoint,
             headers = auth.headers(),
