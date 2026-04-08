@@ -388,9 +388,10 @@ open class CoderRestClient(
     }
 
     private suspend fun refreshToken() {
-        val newAuthResponse = OAuth2Client(context).refreshToken(oauthContext!!)
-        this.oauthContext.tokenResponse = newAuthResponse
-        onTokenRefreshed?.invoke(url, oauthContext)
+        val oauth = oauthContext ?: throw IllegalStateException("Cannot refresh token without an OAuth2 context")
+        val newAuthResponse = OAuth2Client(context).refreshToken(oauth)
+        oauth.tokenResponse = newAuthResponse
+        onTokenRefreshed?.invoke(url, oauth)
     }
 
 
