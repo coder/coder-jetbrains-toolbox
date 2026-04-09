@@ -83,7 +83,13 @@ class IdeFeedManager(
         context.logger.info("Loading IDEs in ${if (isOffline) "offline" else "online"} mode")
 
         val ides = if (isOffline) {
-            loadIdesOffline()
+            val offlineIdes = loadIdesOffline()
+            if (offlineIdes.isEmpty() && hasCustomFeedUrl()) {
+                context.logger.info("No local feed files found, falling back to custom IDE feed URL")
+                loadIdesOnline()
+            } else {
+                offlineIdes
+            }
         } else {
             loadIdesOnline()
         }
@@ -181,6 +187,10 @@ class IdeFeedManager(
      */
     private fun isOfflineMode(): Boolean {
         return runsInOfflineMode()
+    }
+
+    private fun hasCustomFeedUrl(): Boolean {
+        return !context.settingsStore.readOnly().ideFeedBaseUrl.isNullOrBlank()
     }
 
     /**

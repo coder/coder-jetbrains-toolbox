@@ -5,6 +5,8 @@ import com.coder.toolbox.store.CoderSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -310,5 +312,74 @@ class IdeFeedManagerOfflineTest {
             assertNotNull(result)
             assertEquals("241.1", result?.build)
             assertEquals(IdeType.RELEASE, result?.type)
+        }
+
+    @Test
+    fun `given offline mode and local files exist when loading IDEs then local files are used and feed service is not called`() =
+        runTest {
+            // Given: offline mode is active, local files exist, and a feed service is also provided
+            val feedService = mockk<JetBrainsFeedService>()
+            val offlineWithFeedService = IdeFeedManager(context, feedService) { true }
+
+            // When
+            val result = offlineWithFeedService.loadIdes()
+
+            // Then: local files are used, feed service is never called
+            assert(result.isNotEmpty())
+            coVerify(exactly = 0) { feedService.fetchReleaseFeed() }
+            coVerify(exactly = 0) { feedService.fetchEapFeed() }
+        }
+
+    @Test
+    fun `given offline mode with no local files and custom feed URL when loading IDEs then it falls back to the feed service`() =
+        runTest {
+            // Given: offline mode, no local files, custom feed URL is set
+            val tempDir = java.nio.file.Paths.get(context.settingsStore.globalDataDirectory)
+            tempDir.resolve("release.json").toFile().delete()
+            tempDir.resolve("eap.json").toFile().delete()
+
+            every { settingsStore.readOnly() } returns settingsStore
+            every { settingsStore.ideFeedBaseUrl } returns "https://ide-feed.internal.corp.com"
+
+            val feedService = mockk<JetBrainsFeedService>()
+            coEvery { feedService.fetchReleaseFeed() } returns releaseProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
+            coEvery { feedService.fetchEapFeed() } returns eapProducts.flatMap { product ->
+                product.releases.mapNotNull { release -> Ide.from(product, release) }
+            }
+
+            val offlineWithFeedUrl = IdeFeedManager(context, feedService) { true }
+
+            // When
+            val result = offlineWithFeedUrl.loadIdes()
+
+            // Then: feed service is called as fallback
+            assert(result.isNotEmpty())
+            coVerify(exactly = 1) { feedService.fetchReleaseFeed() }
+            coVerify(exactly = 1) { feedService.fetchEapFeed() }
+        }
+
+    @Test
+    fun `given offline mode with no local files and no custom feed URL when loading IDEs then it returns empty list`() =
+        runTest {
+            // Given: offline mode, no local files, no custom feed URL
+            val tempDir = java.nio.file.Paths.get(context.settingsStore.globalDataDirectory)
+            tempDir.resolve("release.json").toFile().delete()
+            tempDir.resolve("eap.json").toFile().delete()
+
+            every { settingsStore.readOnly() } returns settingsStore
+            every { settingsStore.ideFeedBaseUrl } returns null
+
+            val feedService = mockk<JetBrainsFeedService>()
+            val offlineNoFeedUrl = IdeFeedManager(context, feedService) { true }
+
+            // When
+            val result = offlineNoFeedUrl.loadIdes()
+
+            // Then: no fallback, empty result
+            assertEquals(0, result.size)
+            coVerify(exactly = 0) { feedService.fetchReleaseFeed() }
+            coVerify(exactly = 0) { feedService.fetchEapFeed() }
         }
 }

@@ -163,6 +163,14 @@ interface ReadOnlyCoderSettings {
     val networkInfoDir: String
 
     /**
+     * Optional base URL for fetching JetBrains IDE product feeds.
+     * When set, the plugin fetches IDE feeds from this URL instead of the
+     * public JetBrains data services. This is useful in air-gapped environments
+     * where a self-hosted deployment providing the data feeds is available.
+     */
+    val ideFeedBaseUrl: String?
+
+    /**
      * Where the specified deployment should put its data.
      */
     fun dataDir(url: URL): Path

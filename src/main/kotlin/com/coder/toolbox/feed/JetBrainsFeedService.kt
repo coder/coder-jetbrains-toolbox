@@ -16,9 +16,13 @@ class JetBrainsFeedService(
     private val context: CoderToolboxContext,
     private val feedApi: JetBrainsFeedApi
 ) {
+    private val baseUrl: String
+        get() = context.settingsStore.readOnly().ideFeedBaseUrl
+            ?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+            ?: DEFAULT_BASE_URL
+
     companion object {
-        private const val RELEASE_FEED_URL = "https://data.services.jetbrains.com/products?type=release"
-        private const val EAP_FEED_URL = "https://data.services.jetbrains.com/products?type=eap"
+        private const val DEFAULT_BASE_URL = "https://data.services.jetbrains.com"
     }
 
     /**
@@ -28,7 +32,7 @@ class JetBrainsFeedService(
      * @throws ResponseException if the request fails
      */
     suspend fun fetchReleaseFeed(): List<Ide> {
-        return fetchFeed(RELEASE_FEED_URL, "release")
+        return fetchFeed("$baseUrl/products?type=release", "release")
     }
 
     /**
@@ -38,7 +42,7 @@ class JetBrainsFeedService(
      * @throws ResponseException if the request fails
      */
     suspend fun fetchEapFeed(): List<Ide> {
-        return fetchFeed(EAP_FEED_URL, "eap")
+        return fetchFeed("$baseUrl/products?type=eap", "eap")
     }
 
     /**

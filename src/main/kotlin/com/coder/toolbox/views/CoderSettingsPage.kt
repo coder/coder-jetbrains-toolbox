@@ -121,6 +121,12 @@ class CoderSettingsPage(
         TextType.General
     )
 
+    private val ideFeedBaseUrlField = TextField(
+        context.i18n.ptrl("IDE feed base URL"),
+        settings.ideFeedBaseUrl ?: "",
+        TextType.General
+    )
+
     private lateinit var visibilityUpdateJob: Job
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
         listOf(
@@ -143,6 +149,7 @@ class CoderSettingsPage(
             sshLogDirField,
             networkInfoDirField,
             sshExtraArgs,
+            ideFeedBaseUrlField,
         )
     )
 
@@ -184,6 +191,7 @@ class CoderSettingsPage(
                     updateSshLogDir(sshLogDirField.contentState.value)
                     updateNetworkInfoDir(networkInfoDirField.contentState.value)
                     updateSshConfigOptions(sshExtraArgs.contentState.value)
+                    updateIdeFeedBaseUrl(ideFeedBaseUrlField.contentState.value)
                 }
             }
         )
@@ -252,6 +260,10 @@ class CoderSettingsPage(
 
         networkInfoDirField.contentState.update {
             settings.networkInfoDir
+        }
+
+        ideFeedBaseUrlField.contentState.update {
+            settings.ideFeedBaseUrl ?: ""
         }
 
         visibilityUpdateJob = context.cs.launch(CoroutineName("Signature Verification Fallback Setting")) {
