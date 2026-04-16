@@ -132,19 +132,51 @@ The plugin first checks for installed IDEs on the remote workspace, then queries
 installed) IDEs. Based on the `ide_build_number` hint, it will either pick an already installed IDE or install a new
 one.
 
-### Offline Mode
+### Air-Gapped and Offline Environments
 
-The Coder Toolbox plugin supports an offline mode, which allows it to function without an internet connection. This is
-particularly useful in environments with restricted network access.
+By default, the plugin fetches IDE product feeds from JetBrains' public data services
+(`data.services.jetbrains.com`). In air-gapped or restricted environments, there are two ways to provide IDE feed
+data to the plugin.
 
-To enable offline mode, the JetBrains Toolbox must be launched with the `--offline-mode` flag. In this mode, the plugin
-relies on local JSON files (`release.json` and `eap.json`) that you must provide in the plugin's data directory. The
-plugin does **not** cache these files automatically.
+The resolution order is:
 
-While online, the plugin fetches the latest IDE feeds from JetBrains' data services. In offline mode, it bypasses these
-network requests and uses the local files instead.
+1. **Local feed files** — if `--offline-mode` is enabled and local files (`release.json`/`eap.json`) are present,
+   they are used.
+2. **Custom IDE feed URL** — if set (via `IDE feed base URL` in Coder Settings), the plugin fetches feeds from
+   this URL instead of the public JetBrains data services. This applies both in online mode and as a fallback
+   when `--offline-mode` is active but local feed files are not provided.
+3. **Public JetBrains data services** — used only when no custom IDE feed URL is configured and local feed files
+   are not available.
 
-#### Offline Mode File Schema and Location
+> [!NOTE]
+> The `--offline-mode` flag is a global JetBrains Toolbox setting that affects all plugins. In air-gapped
+> environments you can use it together with a custom IDE feed URL — the plugin will use local files if available,
+> and fall back to your internal feed server otherwise.
+
+#### Option 1: Custom IDE Feed URL
+
+If your organization hosts a web server that mirrors the JetBrains product feed data, you can point the plugin at it
+instead of the public `data.services.jetbrains.com`.
+
+Set the `IDE feed base URL` setting (in Coder Settings) to your internal feed server URL, for example:
+
+```
+https://ide-feed.internal.corp.com
+```
+
+The plugin will then fetch feeds from `<base-url>/products?type=release` and `<base-url>/products?type=eap`. The feed
+server must serve the same JSON format as `data.services.jetbrains.com` at those endpoints (see the
+[feed file schema](#feed-file-schema-and-location) below for the expected format).
+
+#### Option 2: Local Feed Files
+
+When no internal feed server is available, the plugin can read IDE feeds from local JSON files. To enable this,
+launch JetBrains Toolbox with the `--offline-mode` flag. The plugin will look for `release.json` and `eap.json`
+in the plugin's data directory. If these files are not present and a custom IDE feed URL is configured, the plugin
+will fall back to fetching from that URL (see resolution order above). The plugin does **not** cache feed data to
+these files automatically.
+
+#### Feed File Schema and Location
 
 The feed files must be placed in the plugin's data directory, which varies by operating system:
 
@@ -470,6 +502,11 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 - `workspaceCreateUrl` specifies the dashboard page full URL where users can create new workspaces.
   Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment templates page.
   This setting supports `$workspaceOwner` as placeholder with the replacing value being the username that logged in.
+
+- `IDE feed base URL` specifies the base URL for fetching JetBrains IDE product feeds. When set, the plugin
+  fetches feeds from this URL instead of the public `data.services.jetbrains.com`. This is useful in air-gapped
+  environments where an internal web server mirrors the JetBrains product feed data.
+  See [Air-Gapped and Offline Environments](#air-gapped-and-offline-environments) for more details.
 
 #### How CLI resolution works
 

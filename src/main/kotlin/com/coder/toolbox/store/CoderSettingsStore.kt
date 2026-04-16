@@ -88,6 +88,9 @@ class CoderSettingsStore(
     override val workspaceCreateUrl: String?
         get() = store[WORKSPACE_CREATE_URL]
 
+    override val ideFeedBaseUrl: String?
+        get() = store[IDE_FEED_BASE_URL]
+
     /**
      * Where the specified deployment should put its data.
      */
@@ -251,6 +254,10 @@ class CoderSettingsStore(
 
     fun updateSshConfigOptions(options: String) {
         store[SSH_CONFIG_OPTIONS] = options
+    }
+
+    fun updateIdeFeedBaseUrl(url: String) {
+        store[IDE_FEED_BASE_URL] = url
     }
 
     fun updateAutoConnect(workspaceId: String, autoConnect: Boolean) {
