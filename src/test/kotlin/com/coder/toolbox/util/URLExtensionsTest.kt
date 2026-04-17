@@ -4,6 +4,7 @@ import java.net.URI
 import java.net.URL
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 internal class URLExtensionsTest {
     @Test
@@ -52,6 +53,18 @@ internal class URLExtensionsTest {
                 "?foo=bar&baz=" to mapOf("foo" to "bar", "baz" to ""),
                 "?foo=bar&baz=qux" to mapOf("foo" to "bar", "baz" to "qux"),
                 "?foo=bar=bar2&baz=qux" to mapOf("foo" to "bar=bar2", "baz" to "qux"),
+                // + decoded to space (application/x-www-form-urlencoded convention)
+                "?foo=hello+world" to mapOf("foo" to "hello world"),
+                // percent-encoded characters
+                "?foo=hello%20world" to mapOf("foo" to "hello world"),
+                "?foo=bar%3Dbaz" to mapOf("foo" to "bar=baz"),
+                "?foo=caf%C3%A9" to mapOf("foo" to "café"),
+                // OAuth cancel callback: error_description uses + for spaces
+                "?error=access_denied&error_description=The+resource+owner+or+authorization+server+denied+the+request.&state=abc" to mapOf(
+                    "error" to "access_denied",
+                    "error_description" to "The resource owner or authorization server denied the request.",
+                    "state" to "abc",
+                ),
             )
         tests.forEach {
             assertEquals(
@@ -151,5 +164,38 @@ internal class URLExtensionsTest {
             WebUrlValidationResult.Invalid("The URL \"https:/coder.com\" does not include a valid website name. Please enter a full web address like \"https://example.com\""),
             result
         )
+    }
+
+    @Test
+    fun `returns base URL without path or query`() {
+        val fullUrl = "https://example.com/path/to/page?param=1"
+        val result = fullUrl.toBaseURL()
+        assertEquals(URL("https://example.com"), result)
+    }
+
+    @Test
+    fun `includes port if specified`() {
+        val fullUrl = "https://example.com:8080/api/v1/resource"
+        val result = fullUrl.toBaseURL()
+        assertEquals(URL("https://example.com:8080"), result)
+    }
+
+    @Test
+    fun `handles subdomains correctly`() {
+        val fullUrl = "http://api.subdomain.example.org/v2/users"
+        val result = fullUrl.toBaseURL()
+        assertEquals(URL("http://api.subdomain.example.org"), result)
+    }
+
+    @Test
+    fun `handles simple domain without path`() {
+        val fullUrl = "https://test.com"
+        val result = fullUrl.toBaseURL()
+        assertEquals(URL("https://test.com"), result)
+    }
+
+    @Test
+    fun `throws exception for invalid URL`() {
+        assertFailsWith<IllegalArgumentException> { "ht!tp://bad_url".toBaseURL() }
     }
 }

@@ -3,14 +3,18 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.net.URL
 
 class CoderCliSetupWizardPage(
     private val context: CoderToolboxContext,
@@ -18,11 +22,8 @@ class CoderCliSetupWizardPage(
     visibilityState: StateFlow<ProviderVisibilityState>,
     initialAutoSetup: Boolean = false,
     jumpToMainPageOnError: Boolean = false,
-    connectSynchronously: Boolean = false,
-    onConnect: suspend (
-        client: CoderRestClient,
-        cli: CoderCLIManager,
-    ) -> Unit,
+    onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
+    onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
     private val shouldAutoSetup = MutableStateFlow(initialAutoSetup)
     private val settingsAction = Action(context, "Settings") {
@@ -35,12 +36,13 @@ class CoderCliSetupWizardPage(
         context,
         shouldAutoLogin = shouldAutoSetup,
         jumpToMainPageOnError = jumpToMainPageOnError,
-        connectSynchronously = connectSynchronously,
         visibilityState,
         refreshWizard = this::displaySteps,
-        onConnect
+        onConnect = onConnect,
+        onTokenRefreshed = onTokenRefreshed
     )
     private val errorReporter = ErrorReporter.create(context, visibilityState, this.javaClass)
+    private var stateCollectJob: Job? = null
 
     /**
      * Fields for this page, displayed in order.
@@ -50,12 +52,18 @@ class CoderCliSetupWizardPage(
 
 
     override fun beforeShow() {
-        displaySteps()
+        stateCollectJob?.cancel()
+        stateCollectJob = context.cs.launch {
+            CoderSetupWizardState.step.collect { step ->
+                context.logger.info("Wizard step changed to $step")
+                displaySteps()
+            }
+        }
         errorReporter.flush()
     }
 
     private fun displaySteps() {
-        when (CoderCliSetupWizardState.currentStep()) {
+        when (CoderSetupWizardState.currentStep()) {
             WizardStep.URL_REQUEST -> {
                 fields.update {
                     listOf(deploymentUrlStep.panel)
@@ -112,7 +120,18 @@ class CoderCliSetupWizardPage(
                 }
                 connectStep.onVisible()
             }
+
+            WizardStep.DONE -> {
+                context.logger.info("Closing the Setup Wizard")
+                stateCollectJob?.cancel()
+                context.ui.hideUiPage(this)
+                CoderSetupWizardState.goToFirstStep()
+            }
         }
+    }
+
+    override fun afterHide() {
+        stateCollectJob?.cancel()
     }
 
     /**

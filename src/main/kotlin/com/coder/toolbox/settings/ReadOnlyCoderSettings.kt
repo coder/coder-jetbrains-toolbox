@@ -163,6 +163,12 @@ interface ReadOnlyCoderSettings {
     val networkInfoDir: String
 
     /**
+     * Indicates whether OAuth2 should be used when available over
+     * authentication via API tokens. mTLS always takes precedence.
+     */
+    val preferOAuth2IfAvailable: Boolean
+
+    /**
      * Where the specified deployment should put its data.
      */
     fun dataDir(url: URL): Path

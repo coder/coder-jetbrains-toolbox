@@ -1,11 +1,18 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.browser.browse
+import com.coder.toolbox.oauth.ClientRegistrationRequest
+import com.coder.toolbox.oauth.OAuth2Client
+import com.coder.toolbox.oauth.PKCEGenerator
+import com.coder.toolbox.oauth.TokenEndpointAuthMethod
+import com.coder.toolbox.oauth.getPreferredOrAvailable
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
-import com.coder.toolbox.views.state.CoderCliSetupContext
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.CoderSetupWizardContext
+import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.LabelField
@@ -16,12 +23,18 @@ import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.net.MalformedURLException
 import java.net.URL
+import java.util.UUID
+
+private const val REDIRECT_URI = "jetbrains://gateway/com.coder.toolbox/auth"
+private const val OAUTH2_SCOPE: String =
+    "coder:workspaces.operate coder:workspaces.delete coder:workspaces.access user:read_personal"
 
 /**
  * A page with a field for providing the Coder deployment URL.
- *
+ *\
  * Populates with the provided URL, at which point the user can accept or
  * enter their own.
  */
@@ -51,7 +64,6 @@ class DeploymentUrlStep(
                     RowGroup.RowField(signatureFallbackStrategyField),
                     RowGroup.RowField(errorField)
                 )
-
             }
             return RowGroup(
                 RowGroup.RowField(urlField),
@@ -73,25 +85,93 @@ class DeploymentUrlStep(
         errorReporter.flush()
     }
 
-    override fun onNext(): Boolean {
+    override suspend fun onNext(): Boolean {
         context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
-        val url = urlField.textState.value
-        if (url.isBlank()) {
+        val rawUrl = urlField.contentState.value
+        if (rawUrl.isBlank()) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return false
         }
+
         try {
-            CoderCliSetupContext.url = validateRawUrl(url)
+            CoderSetupWizardContext.url = validateRawUrl(rawUrl)
         } catch (e: MalformedURLException) {
             errorReporter.report("URL is invalid", e)
             return false
         }
-        if (context.settingsStore.requiresTokenAuth) {
-            CoderCliSetupWizardState.goToNextStep()
-        } else {
-            CoderCliSetupWizardState.goToLastStep()
+
+        if (context.settingsStore.requiresMTlsAuth) {
+            CoderSetupWizardState.goToLastStep()
+            return true
         }
+        if (context.settingsStore.requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable) {
+            try {
+                context.logger.info("Prefers OAuth2 authentication")
+                CoderSetupWizardContext.oauthSession = handleOAuth2(rawUrl)
+                return false
+            } catch (e: Exception) {
+                errorReporter.report("Failed to authenticate with OAuth2: ${e.message}", e)
+                return false
+            }
+        }
+        // if all else fails try the good old API token auth
+        CoderSetupWizardState.goToNextStep()
         return true
+    }
+
+    private suspend fun handleOAuth2(urlString: String): CoderOAuthSessionContext? {
+        val oauth2Client = OAuth2Client(context)
+        val oauth2ServerMetadata = oauth2Client.discoverMetadata(urlString) ?: return null
+
+        context.logger.debug("registering coder-jetbrains-toolbox as client app")
+        val clientResponse = oauth2Client.registerClient(
+            oauth2ServerMetadata.registrationEndpoint,
+            ClientRegistrationRequest(
+                clientName = "coder-jetbrains-toolbox",
+                redirectUris = listOf(REDIRECT_URI),
+                grantTypes = listOf("authorization_code", "refresh_token"),
+                responseTypes = oauth2ServerMetadata.supportedResponseTypes,
+                scope = OAUTH2_SCOPE,
+                tokenEndpointAuthMethod = if (oauth2ServerMetadata.authMethodForTokenEndpoint.contains(
+                        TokenEndpointAuthMethod.CLIENT_SECRET_BASIC
+                    )
+                ) {
+                    "client_secret_basic"
+                } else if (oauth2ServerMetadata.authMethodForTokenEndpoint.contains(TokenEndpointAuthMethod.CLIENT_SECRET_POST)) {
+                    "client_secret_post"
+                } else {
+                    "none"
+                }
+            )
+        )
+
+        val codeVerifier = PKCEGenerator.generateCodeVerifier()
+        val codeChallenge = PKCEGenerator.generateCodeChallenge(codeVerifier)
+        val state = UUID.randomUUID().toString()
+
+        val loginUrl = oauth2ServerMetadata.authorizationEndpoint.toHttpUrl().newBuilder()
+            .addQueryParameter("client_id", clientResponse.clientId)
+            .addQueryParameter("response_type", "code")
+            .addQueryParameter("code_challenge_method", "S256")
+            .addQueryParameter("code_challenge", codeChallenge)
+            .addQueryParameter("scope", OAUTH2_SCOPE)
+            .addQueryParameter("state", state)
+            .build()
+            .toString()
+
+        context.logger.info("Launching browser for OAuth2 authentication")
+        context.desktop.browse(loginUrl) {
+            context.ui.showErrorInfoPopup(it)
+        }
+
+        return CoderOAuthSessionContext(
+            clientId = clientResponse.clientId,
+            clientSecret = clientResponse.clientSecret,
+            tokenCodeVerifier = codeVerifier,
+            state = state,
+            tokenEndpoint = oauth2ServerMetadata.tokenEndpoint,
+            tokenAuthMethod = oauth2ServerMetadata.authMethodForTokenEndpoint.getPreferredOrAvailable()
+        )
     }
 
     /**

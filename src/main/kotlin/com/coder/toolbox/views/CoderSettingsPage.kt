@@ -9,6 +9,7 @@ import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField.LabelledValue
+import com.jetbrains.toolbox.api.ui.components.SectionField
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.UiField
@@ -35,7 +36,10 @@ class CoderSettingsPage(
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
     private val settings = context.settingsStore.readOnly()
 
-    // TODO: Copy over the descriptions, holding until I can test this page.
+    private val preferOAuth2IfAvailableField = CheckboxField(
+        context.settingsStore.preferOAuth2IfAvailable,
+        context.i18n.ptrl("Prefer OAuth2 if available over authentication via API Key")
+    )
     private val binarySourceField =
         TextField(context.i18n.ptrl("Binary source"), settings.binarySource ?: "", TextType.General)
     private val binaryDestinationField =
@@ -124,25 +128,50 @@ class CoderSettingsPage(
     private lateinit var visibilityUpdateJob: Job
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
         listOf(
-            binarySourceField,
-            enableDownloadsField,
-            useAppNameField,
-            binaryDestinationField,
-            disableSignatureVerificationField,
-            signatureFallbackStrategyField,
-            httpLoggingField,
-            dataDirectoryField,
-            headerCommandField,
-            tlsCertPathField,
-            tlsKeyPathField,
-            tlsCAPathField,
-            tlsAlternateHostnameField,
-            disableAutostartField,
-            enableSshWildCardConfig,
-            sshConnectionTimeoutField,
-            sshLogDirField,
-            networkInfoDirField,
-            sshExtraArgs,
+            SectionField(
+                "General",
+                true,
+                listOf(
+                    useAppNameField,
+                    disableAutostartField,
+                    httpLoggingField,
+                )
+            ),
+            SectionField(
+                "Security & Authentication",
+                false,
+                listOf(
+                    preferOAuth2IfAvailableField,
+                    headerCommandField,
+                    tlsCertPathField,
+                    tlsKeyPathField,
+                    tlsCAPathField,
+                    tlsAlternateHostnameField,
+                    disableSignatureVerificationField,
+                    signatureFallbackStrategyField,
+                )
+            ),
+            SectionField(
+                "CLI",
+                false,
+                listOf(
+                    binarySourceField,
+                    binaryDestinationField,
+                    dataDirectoryField,
+                    enableDownloadsField
+                )
+            ),
+            SectionField(
+                "SSH",
+                false,
+                listOf(
+                    enableSshWildCardConfig,
+                    sshConnectionTimeoutField,
+                    sshLogDirField,
+                    networkInfoDirField,
+                    sshExtraArgs,
+                )
+            )
         )
     )
 
@@ -159,6 +188,7 @@ class CoderSettingsPage(
                     updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
                     updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
                     updateHeaderCommand(headerCommandField.contentState.value)
+                    updatePreferAuthViaOAuth2(preferOAuth2IfAvailableField.checkedState.value)
                     updateCertPath(tlsCertPathField.contentState.value)
                     updateKeyPath(tlsKeyPathField.contentState.value)
                     updateCAPath(tlsCAPathField.contentState.value)
@@ -212,6 +242,10 @@ class CoderSettingsPage(
 
         headerCommandField.contentState.update {
             settings.headerCommand ?: ""
+        }
+
+        preferOAuth2IfAvailableField.checkedState.update {
+            settings.preferOAuth2IfAvailable
         }
 
         tlsCertPathField.contentState.update {

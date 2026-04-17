@@ -1,10 +1,7 @@
 package com.coder.toolbox.feed
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
-import com.coder.toolbox.sdk.interceptors.Interceptors
-import com.coder.toolbox.util.ReloadableTlsContext
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
@@ -43,15 +40,7 @@ class IdeFeedManager(
     private val feedService: JetBrainsFeedService by lazy {
         if (feedService != null) return@lazy feedService
 
-        val interceptors = buildList {
-            add((Interceptors.userAgent(PluginManager.pluginInfo.version)))
-            add(Interceptors.logging(context))
-        }
-        val okHttpClient = CoderHttpClientBuilder.build(
-            context,
-            interceptors,
-            ReloadableTlsContext(context.settingsStore.readOnly().tls)
-        )
+        val okHttpClient = CoderHttpClientBuilder.default(context)
 
         val retrofit = Retrofit.Builder()
             .baseUrl("https://data.services.jetbrains.com/")

@@ -3,10 +3,12 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
+import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
-import com.coder.toolbox.views.state.CoderCliSetupContext
-import com.coder.toolbox.views.state.CoderCliSetupWizardState
+import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.CoderSetupWizardContext
+import com.coder.toolbox.views.state.CoderSetupWizardState
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
@@ -18,8 +20,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import java.net.URL
 
 private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
 
@@ -30,10 +32,10 @@ class ConnectStep(
     private val context: CoderToolboxContext,
     private val shouldAutoLogin: StateFlow<Boolean>,
     private val jumpToMainPageOnError: Boolean,
-    private val connectSynchronously: Boolean,
     visibilityState: StateFlow<ProviderVisibilityState>,
     private val refreshWizard: () -> Unit,
-    private val onConnect: suspend (client: CoderRestClient, cli: CoderCLIManager) -> Unit,
+    private val onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
+    private val onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : WizardStep {
     private var signInJob: Job? = null
 
@@ -52,14 +54,20 @@ class ConnectStep(
             context.i18n.pnotr("")
         }
 
-        if (context.settingsStore.requiresTokenAuth && CoderCliSetupContext.isNotReadyForAuth()) {
+        if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.isNotReadyForAuth()) {
             errorField.textState.update {
                 context.i18n.pnotr("URL and token were not properly configured. Please go back and provide a proper URL and token!")
             }
             return
         }
 
-        statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderCliSetupContext.url?.host ?: "unknown host"}...") }
+        // Don't launch another connection attempt if one is already in progress.
+        if (signInJob?.isActive == true) {
+            context.logger.info(">> ConnectStep: connection already in progress, skipping duplicate")
+            return
+        }
+
+        statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderSetupWizardContext.url?.host ?: "unknown host"}...") }
         connect()
     }
 
@@ -67,13 +75,13 @@ class ConnectStep(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
-        val url = CoderCliSetupContext.url
+        val url = CoderSetupWizardContext.url
         if (url == null) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return
         }
 
-        if (context.settingsStore.requiresTokenAuth && !CoderCliSetupContext.hasToken()) {
+        if (context.settingsStore.requiresTokenAuth && !CoderSetupWizardContext.hasToken() && !CoderSetupWizardContext.hasOAuthSession()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
@@ -87,12 +95,22 @@ class ConnectStep(
         // 1. Extract the logic into a reusable suspend lambda
         val connectionLogic: suspend CoroutineScope.() -> Unit = {
             try {
+                var oauthSession: CoderOAuthSessionContext? = null
+                if (context.settingsStore.requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable && CoderSetupWizardContext.hasOAuthSession()) {
+                    refreshOAuthToken()
+                    oauthSession = CoderSetupWizardContext.oauthSession!!.copy()
+                }
+
+                val apiToken = if (context.settingsStore.requiresTokenAuth) CoderSetupWizardContext.token else null
+
                 context.logger.info("Setting up the HTTP client...")
                 val client = CoderRestClient(
                     context,
                     url,
-                    if (context.settingsStore.requiresTokenAuth) CoderCliSetupContext.token else null,
+                    apiToken,
+                    oauthSession,
                     PluginManager.pluginInfo.version,
+                    onTokenRefreshed
                 )
                 // allows interleaving with the back/cancel action
                 yield()
@@ -109,16 +127,23 @@ class ConnectStep(
                     logAndReportProgress("Configuring Coder CLI...")
                     // allows interleaving with the back/cancel action
                     yield()
-                    cli.login(client.token!!)
+                    if (oauthSession != null) {
+                        cli.login(oauthSession.tokenResponse!!.accessToken)
+                    } else {
+                        cli.login(apiToken!!)
+                    }
                 }
                 logAndReportProgress("Successfully configured ${hostName}...")
                 // allows interleaving with the back/cancel action
                 yield()
                 context.logger.info("Connection setup done, initializing the workspace poller...")
-                onConnect(client, cli)
-
-                CoderCliSetupContext.reset()
-                CoderCliSetupWizardState.goToFirstStep()
+                onConnect.accept(client, cli)
+                // Only invoke onTokenRefreshed when we actually have an OAuth session
+                oauthSession?.let { session ->
+                    onTokenRefreshed?.invoke(client.url, session)
+                }
+                CoderSetupWizardContext.reset()
+                CoderSetupWizardState.goToDone()
                 context.envPageManager.showPluginEnvironmentsPage()
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
@@ -133,16 +158,17 @@ class ConnectStep(
             }
         }
 
-        // 2. Choose the execution strategy based on the flag
-        if (connectSynchronously) {
-            // Blocks the current thread until connectionLogic completes
-            runBlocking(CoroutineName("Synchronous Http and CLI Setup")) {
-                connectionLogic()
-            }
-        } else {
-            // Runs asynchronously using the context's scope
-            signInJob = context.cs.launch(CoroutineName("Async Http and CLI Setup"), block = connectionLogic)
-        }
+        signInJob = context.cs.launch(CoroutineName("Async Http and CLI Setup"), block = connectionLogic)
+    }
+
+    private suspend fun refreshOAuthToken() {
+        val session = CoderSetupWizardContext.oauthSession ?: return
+        if (!session.tokenResponse?.accessToken.isNullOrBlank()) return
+
+        logAndReportProgress("Refreshing OAuth token...")
+        val tokenResponse = OAuth2Client(context).refreshToken(session)
+        context.logger.info("Successfully refreshed access token")
+        CoderSetupWizardContext.oauthSession = session.copy(tokenResponse = tokenResponse)
     }
 
     private fun logAndReportProgress(msg: String) {
@@ -155,22 +181,22 @@ class ConnectStep(
      */
     private fun handleNavigation() {
         if (shouldAutoLogin.value) {
-            CoderCliSetupContext.reset()
+            CoderSetupWizardContext.reset()
             if (jumpToMainPageOnError) {
                 context.popupPluginMainPage()
             } else {
-                CoderCliSetupWizardState.goToFirstStep()
+                CoderSetupWizardState.goToFirstStep()
             }
         } else {
             if (context.settingsStore.requiresTokenAuth) {
-                CoderCliSetupWizardState.goToPreviousStep()
+                CoderSetupWizardState.goToPreviousStep()
             } else {
-                CoderCliSetupWizardState.goToFirstStep()
+                CoderSetupWizardState.goToFirstStep()
             }
         }
     }
 
-    override fun onNext(): Boolean {
+    override suspend fun onNext(): Boolean {
         return false
     }
 
