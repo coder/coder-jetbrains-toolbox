@@ -43,5 +43,3 @@ data class ClientRegistrationErrorResponse(
         }
     }
 }
-
-class ClientRegistrationException(message: String) : Exception(message)

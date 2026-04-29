@@ -6,11 +6,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 
 /**
- * Suspends the coroutine until first true value is received.
- */
-suspend fun StateFlow<Boolean>.waitForTrue() = this.first { it }
-
-/**
  * Suspends the coroutine until first false value is received.
  */
 suspend fun StateFlow<Boolean>.waitForFalseWithTimeout(duration: Duration): Boolean? {

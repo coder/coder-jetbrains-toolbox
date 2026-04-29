@@ -9,6 +9,7 @@ import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
 import com.coder.toolbox.sdk.convertors.OSConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.sdk.interceptors.CODER_SESSION_TOKEN_HEADER_NAME
 import com.coder.toolbox.sdk.interceptors.Interceptors
 import com.coder.toolbox.sdk.v2.CoderV2RestFacade
 import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
@@ -358,7 +359,7 @@ open class CoderRestClient(
             if (response.code() == HttpURLConnection.HTTP_UNAUTHORIZED && oauthContext.hasRefreshToken()) {
                 val tokenRefreshed = refreshMutex.withLock {
                     // Check if the token was already refreshed while we were waiting for the lock.
-                    if (response.raw().request.header("Authorization") != "Bearer ${oauthContext?.tokenResponse?.accessToken}") {
+                    if (response.raw().request.header(CODER_SESSION_TOKEN_HEADER_NAME) != oauthContext?.tokenResponse?.accessToken) {
                         return@withLock true
                     }
                     return@withLock try {
@@ -372,7 +373,7 @@ open class CoderRestClient(
                         true
                     } catch (e: Exception) {
                         context.logger.error(e, "Failed to refresh access token")
-                        false
+                        throw e
                     }
                 }
                 if (tokenRefreshed) {
@@ -425,7 +426,7 @@ open class CoderRestClient(
             }
         } catch (ex: Exception) {
             context.logger.error(ex, "Failed to execute refresh command")
-            false
+            throw ex
         }
     }
 

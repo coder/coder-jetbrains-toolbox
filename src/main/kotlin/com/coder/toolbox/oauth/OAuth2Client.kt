@@ -3,6 +3,8 @@ package com.coder.toolbox.oauth
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.sdk.convertors.LoggingConverterFactory
+import com.coder.toolbox.sdk.ex.ClientRegistrationException
+import com.coder.toolbox.sdk.ex.OAuthTokenResponseException
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.squareup.moshi.Moshi
 import okhttp3.Credentials
@@ -33,13 +35,9 @@ class OAuth2Client(private val context: CoderToolboxContext) {
         }
 
         val errorBody = response.errorBody()?.string()
-        val registrationError = errorBody?.let { ClientRegistrationErrorResponse.fromJson(it) }
-        val errorMessage = if (registrationError != null) {
-            "OAuth2 client registration failed: ${registrationError.toMessage()}"
-        } else {
-            "OAuth2 client registration failed with status ${response.code()}: ${response.message()}"
-        }
-        context.logger.error(errorMessage)
+        val registrationError =
+            errorBody?.let { ClientRegistrationErrorResponse.fromJson(it) }?.toMessage() ?: "${response.message()}"
+        val errorMessage = "OAuth2 client registration failed with status ${response.code()}: $registrationError"
         throw ClientRegistrationException(errorMessage)
     }
 
@@ -114,14 +112,9 @@ class OAuth2Client(private val context: CoderToolboxContext) {
         }
 
         val errorBody = response.errorBody()?.string()
-        val tokenError = errorBody?.let { OAuthTokenErrorResponse.fromJson(it) }
-        val errorMessage = if (tokenError != null) {
-            "Failed to $action: ${tokenError.toMessage()}"
-        } else {
-            "Failed to $action. Response code: ${response.code()} ${response.message()}"
-        }
-        context.logger.error(errorMessage)
-        throw Exception(errorMessage)
+        val tokenError = errorBody?.let { OAuthTokenErrorResponse.fromJson(it) }?.toMessage() ?: "${response.message()}"
+        val errorMessage = "Failed to $action. Response code: ${response.code()} $tokenError"
+        throw OAuthTokenResponseException(errorMessage)
     }
 
     private fun createAuthorizationService(): CoderAuthorizationApi {
