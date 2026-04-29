@@ -8,7 +8,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.2")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.21.3")
     implementation("org.jetbrains.intellij.plugins:structure-toolbox:3.321")
     implementation("org.jetbrains.intellij:plugin-repository-rest-client:2.0.51")
 }
