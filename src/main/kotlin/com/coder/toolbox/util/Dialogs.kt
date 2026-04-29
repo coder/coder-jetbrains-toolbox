@@ -11,10 +11,6 @@ import com.jetbrains.toolbox.api.ui.components.TextType
  */
 class DialogUi(private val context: CoderToolboxContext) {
 
-    suspend fun confirm(title: LocalizableString, description: LocalizableString): Boolean {
-        return context.ui.showOkCancelPopup(title, description, context.i18n.ptrl("Yes"), context.i18n.ptrl("No"))
-    }
-
     suspend fun ask(
         title: LocalizableString,
         description: LocalizableString,
