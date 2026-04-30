@@ -159,7 +159,7 @@ class CoderRemoteProvider(
                         context.logger.info("wake-up from an OS sleep was detected")
                     } else {
                         context.logger.error(ex, "workspace polling error encountered")
-                        if (ex is APIResponseException && ex.isTokenExpired || ex is OAuthTokenResponseException) {
+                        if ((ex is APIResponseException && ex.isTokenExpired) || ex is OAuthTokenResponseException) {
                             close()
                             context.envPageManager.showPluginEnvironmentsPage()
                             errorBuffer.add(ex)

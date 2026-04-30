@@ -36,7 +36,7 @@ class OAuth2Client(private val context: CoderToolboxContext) {
 
         val errorBody = response.errorBody()?.string()
         val registrationError =
-            errorBody?.let { ClientRegistrationErrorResponse.fromJson(it) }?.toMessage() ?: "${response.message()}"
+            errorBody?.let { ClientRegistrationErrorResponse.fromJson(it) }?.toMessage() ?: response.message()
         val errorMessage = "OAuth2 client registration failed with status ${response.code()}: $registrationError"
         throw ClientRegistrationException(errorMessage)
     }
@@ -112,7 +112,7 @@ class OAuth2Client(private val context: CoderToolboxContext) {
         }
 
         val errorBody = response.errorBody()?.string()
-        val tokenError = errorBody?.let { OAuthTokenErrorResponse.fromJson(it) }?.toMessage() ?: "${response.message()}"
+        val tokenError = errorBody?.let { OAuthTokenErrorResponse.fromJson(it) }?.toMessage() ?: response.message()
         val errorMessage = "Failed to $action. Response code: ${response.code()} $tokenError"
         throw OAuthTokenResponseException(errorMessage)
     }

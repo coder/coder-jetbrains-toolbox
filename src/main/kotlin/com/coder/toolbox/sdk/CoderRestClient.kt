@@ -373,6 +373,7 @@ open class CoderRestClient(
                         true
                     } catch (e: Exception) {
                         context.logger.error(e, "Failed to refresh access token")
+                        // propagate the exception to the main workspace polling loop
                         throw e
                     }
                 }
@@ -426,7 +427,7 @@ open class CoderRestClient(
             }
         } catch (ex: Exception) {
             context.logger.error(ex, "Failed to execute refresh command")
-            throw ex
+            false
         }
     }
 
