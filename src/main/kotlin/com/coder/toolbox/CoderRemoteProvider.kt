@@ -434,7 +434,14 @@ class CoderRemoteProvider(
             FAILED_TO_HANDLE_OAUTH2_TITLE,
             "OAuth2 server did not respond back with an access token"
         )
-
+        // before going forward we check to make sure OAuth is not disabled in the meantime
+        if (!context.settingsStore.preferOAuth2IfAvailable) {
+            context.logAndShowError(
+                FAILED_TO_HANDLE_OAUTH2_TITLE,
+                "OAuth authentication is no longer preferred or enabled for Coder Toolbox. Please use API tokens instead."
+            )
+            return
+        }
         exchangeOAuthCodeForToken(code, CoderSetupWizardContext.oauthSession!!)
     }
 
