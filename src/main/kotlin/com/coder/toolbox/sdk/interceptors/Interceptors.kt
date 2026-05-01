@@ -7,6 +7,8 @@ import com.coder.toolbox.util.getOS
 import okhttp3.Interceptor
 import java.net.URL
 
+const val CODER_SESSION_TOKEN_HEADER_NAME = "Coder-Session-Token"
+
 /**
  * Factory of okhttp interceptors
  */
@@ -19,7 +21,7 @@ object Interceptors {
         return Interceptor { chain ->
             chain.proceed(
                 chain.request().newBuilder()
-                    .addHeader("Coder-Session-Token", token)
+                    .addHeader(CODER_SESSION_TOKEN_HEADER_NAME, token)
                     .build()
             )
         }

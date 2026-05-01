@@ -8,6 +8,7 @@ import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.sdk.ex.OAuthTokenResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
@@ -158,7 +159,7 @@ class CoderRemoteProvider(
                         context.logger.info("wake-up from an OS sleep was detected")
                     } else {
                         context.logger.error(ex, "workspace polling error encountered")
-                        if (ex is APIResponseException && ex.isTokenExpired) {
+                        if ((ex is APIResponseException && ex.isTokenExpired) || ex is OAuthTokenResponseException) {
                             close()
                             context.envPageManager.showPluginEnvironmentsPage()
                             errorBuffer.add(ex)
