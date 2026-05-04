@@ -438,7 +438,7 @@ class CoderRemoteProvider(
         if (!context.settingsStore.preferOAuth2IfAvailable) {
             context.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
-                "OAuth authentication is no longer preferred or enabled for Coder Toolbox. Please use API tokens instead."
+                "OAuth based authentication is not enabled for Coder plugin in Toolbox. Please enable it in plugin settings or use the API token instead."
             )
             return
         }
