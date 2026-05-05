@@ -2,8 +2,7 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.withPath
-import com.coder.toolbox.views.state.CoderSetupWizardContext
-import com.coder.toolbox.views.state.CoderSetupWizardState
+import com.coder.toolbox.views.state.WizardModel
 import com.jetbrains.toolbox.api.ui.components.LinkField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
@@ -20,6 +19,7 @@ import kotlinx.coroutines.flow.update
  */
 class TokenStep(
     private val context: CoderToolboxContext,
+    private val model: WizardModel,
 ) : WizardStep {
     private val tokenField = TextField(context.i18n.ptrl("Token"), "", TextType.Password)
     private val linkField = LinkField(context.i18n.ptrl("Get a token"), "")
@@ -35,9 +35,9 @@ class TokenStep(
         errorField.textState.update {
             context.i18n.pnotr("")
         }
-        if (CoderSetupWizardContext.hasUrl()) {
+        if (model.hasUrl()) {
             tokenField.textState.update {
-                context.secrets.apiTokenFor(CoderSetupWizardContext.url!!) ?: ""
+                context.secrets.apiTokenFor(model.url!!) ?: ""
             }
         } else {
             errorField.textState.update {
@@ -46,7 +46,7 @@ class TokenStep(
             }
         }
         (linkField.urlState as MutableStateFlow).update {
-            CoderSetupWizardContext.url!!.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
+            model.url!!.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
         }
     }
 
@@ -57,12 +57,12 @@ class TokenStep(
             return false
         }
 
-        CoderSetupWizardContext.token = token
-        CoderSetupWizardState.goToNextStep()
+        model.token = token
+        model.goToNext()
         return true
     }
 
     override fun onBack() {
-        CoderSetupWizardState.goToPreviousStep()
+        model.goToPrevious()
     }
 }
