@@ -7,8 +7,7 @@ import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
-import com.coder.toolbox.views.state.CoderSetupWizardContext
-import com.coder.toolbox.views.state.CoderSetupWizardState
+import com.coder.toolbox.views.state.WizardModel
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
@@ -30,6 +29,7 @@ private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
  */
 class ConnectStep(
     private val context: CoderToolboxContext,
+    private val model: WizardModel,
     private val shouldAutoLogin: StateFlow<Boolean>,
     private val jumpToMainPageOnError: Boolean,
     visibilityState: StateFlow<ProviderVisibilityState>,
@@ -54,7 +54,7 @@ class ConnectStep(
             context.i18n.pnotr("")
         }
 
-        if (context.settingsStore.requiresTokenAuth && CoderSetupWizardContext.isNotReadyForAuth()) {
+        if (context.settingsStore.requiresTokenAuth && model.isNotReadyForAuth()) {
             errorField.textState.update {
                 context.i18n.pnotr("URL and token were not properly configured. Please go back and provide a proper URL and token!")
             }
@@ -67,7 +67,7 @@ class ConnectStep(
             return
         }
 
-        statusField.textState.update { context.i18n.pnotr("Connecting to ${CoderSetupWizardContext.url?.host ?: "unknown host"}...") }
+        statusField.textState.update { context.i18n.pnotr("Connecting to ${model.url?.host ?: "unknown host"}...") }
         connect()
     }
 
@@ -75,13 +75,13 @@ class ConnectStep(
      * Try connecting to Coder with the provided URL and token.
      */
     private fun connect() {
-        val url = CoderSetupWizardContext.url
+        val url = model.url
         if (url == null) {
             errorField.textState.update { context.i18n.ptrl("URL is required") }
             return
         }
 
-        if (context.settingsStore.requiresTokenAuth && !CoderSetupWizardContext.hasToken() && !CoderSetupWizardContext.hasOAuthSession()) {
+        if (context.settingsStore.requiresTokenAuth && !model.hasToken() && !model.hasOAuthSession()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return
         }
@@ -96,12 +96,12 @@ class ConnectStep(
         val connectionLogic: suspend CoroutineScope.() -> Unit = {
             try {
                 var oauthSession: CoderOAuthSessionContext? = null
-                if (context.settingsStore.requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable && CoderSetupWizardContext.hasOAuthSession()) {
+                if (context.settingsStore.requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable && model.hasOAuthSession()) {
                     refreshOAuthToken()
-                    oauthSession = CoderSetupWizardContext.oauthSession!!.copy()
+                    oauthSession = model.oauthSession!!.copy()
                 }
 
-                val apiToken = if (context.settingsStore.requiresTokenAuth) CoderSetupWizardContext.token else null
+                val apiToken = if (context.settingsStore.requiresTokenAuth) model.token else null
 
                 context.logger.info("Setting up the HTTP client...")
                 val client = CoderRestClient(
@@ -142,8 +142,8 @@ class ConnectStep(
                 oauthSession?.let { session ->
                     onTokenRefreshed?.invoke(client.url, session)
                 }
-                CoderSetupWizardContext.reset()
-                CoderSetupWizardState.goToDone()
+                // The provider's onConnect ran close() which clears the router; combined
+                // with client now being non-null this drops the wizard from getOverrideUiPage.
                 context.envPageManager.showPluginEnvironmentsPage()
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
@@ -162,13 +162,13 @@ class ConnectStep(
     }
 
     private suspend fun refreshOAuthToken() {
-        val session = CoderSetupWizardContext.oauthSession ?: return
+        val session = model.oauthSession ?: return
         if (!session.tokenResponse?.accessToken.isNullOrBlank()) return
 
         logAndReportProgress("Refreshing OAuth token...")
         val tokenResponse = OAuth2Client(context).refreshToken(session)
         context.logger.info("Successfully refreshed access token")
-        CoderSetupWizardContext.oauthSession = session.copy(tokenResponse = tokenResponse)
+        model.oauthSession = session.copy(tokenResponse = tokenResponse)
     }
 
     private fun logAndReportProgress(msg: String) {
@@ -181,17 +181,17 @@ class ConnectStep(
      */
     private fun handleNavigation() {
         if (shouldAutoLogin.value) {
-            CoderSetupWizardContext.reset()
+            model.clearFormData()
             if (jumpToMainPageOnError) {
                 context.popupPluginMainPage()
             } else {
-                CoderSetupWizardState.goToFirstStep()
+                model.goToFirst()
             }
         } else {
             if (context.settingsStore.requiresTokenAuth) {
-                CoderSetupWizardState.goToPreviousStep()
+                model.goToPrevious()
             } else {
-                CoderSetupWizardState.goToFirstStep()
+                model.goToFirst()
             }
         }
     }
@@ -207,5 +207,15 @@ class ConnectStep(
         } finally {
             handleNavigation()
         }
+    }
+
+    /**
+     * Cancels any in-flight connection without navigating. Used when the wizard
+     * itself is being torn down by an external trigger (e.g. a deep link to a
+     * different deployment).
+     */
+    fun dispose() {
+        signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
+        signInJob = null
     }
 }
