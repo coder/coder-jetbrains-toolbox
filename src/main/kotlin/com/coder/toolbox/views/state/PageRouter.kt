@@ -1,7 +1,6 @@
 package com.coder.toolbox.views.state
 
 import com.coder.toolbox.views.CoderCliSetupWizardPage
-import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -19,9 +18,6 @@ sealed interface OverrideRoute {
  */
 class PageRouter {
     private val route = MutableStateFlow<OverrideRoute>(OverrideRoute.None)
-
-    val activePage: UiPage?
-        get() = (route.value as? OverrideRoute.Wizard)?.page
 
     val activeWizard: CoderCliSetupWizardPage?
         get() = (route.value as? OverrideRoute.Wizard)?.page

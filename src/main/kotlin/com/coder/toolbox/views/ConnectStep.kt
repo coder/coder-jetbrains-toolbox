@@ -142,8 +142,8 @@ class ConnectStep(
                 oauthSession?.let { session ->
                     onTokenRefreshed?.invoke(client.url, session)
                 }
-                model.clearFormData()
-                model.goToDone()
+                // The provider's onConnect ran close() which clears the router; combined
+                // with client now being non-null this drops the wizard from getOverrideUiPage.
                 context.envPageManager.showPluginEnvironmentsPage()
             } catch (ex: CancellationException) {
                 if (ex.message != USER_HIT_THE_BACK_BUTTON) {
@@ -207,5 +207,15 @@ class ConnectStep(
         } finally {
             handleNavigation()
         }
+    }
+
+    /**
+     * Cancels any in-flight connection without navigating. Used when the wizard
+     * itself is being torn down by an external trigger (e.g. a deep link to a
+     * different deployment).
+     */
+    fun dispose() {
+        signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
+        signInJob = null
     }
 }

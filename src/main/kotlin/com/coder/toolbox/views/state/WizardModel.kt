@@ -43,10 +43,6 @@ class WizardModel {
         _step.value = WizardStep.CONNECT
     }
 
-    fun goToDone() {
-        _step.value = WizardStep.DONE
-    }
-
     fun hasUrl(): Boolean = url != null
     fun hasToken(): Boolean = !token.isNullOrBlank()
     fun hasOAuthSession(): Boolean = oauthSession?.tokenResponse?.accessToken != null
@@ -61,5 +57,5 @@ class WizardModel {
 }
 
 enum class WizardStep {
-    URL_REQUEST, TOKEN_REQUEST, CONNECT, DONE;
+    URL_REQUEST, TOKEN_REQUEST, CONNECT;
 }

@@ -8,6 +8,7 @@ import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.sha1
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -24,6 +25,7 @@ import java.nio.file.StandardOpenOption
 import java.util.zip.GZIPInputStream
 import kotlin.io.path.name
 import kotlin.io.path.notExists
+import kotlin.time.Duration.Companion.seconds
 
 private val SUPPORTED_BIN_MIME_TYPES = listOf(
     "application/octet-stream",
@@ -73,6 +75,7 @@ class CoderDownloadService(
                 }
                 context.logger.info("Downloading binary to temporary $cliTempDst")
                 response.saveToDisk(cliTempDst, showTextProgress, buildVersion)?.makeExecutable()
+                delay(10.seconds)
                 DownloadResult.Downloaded(remoteBinaryURL, cliTempDst)
             }
 
