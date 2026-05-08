@@ -22,3 +22,19 @@ data class StoredOAuthSession(
 )
 
 fun CoderOAuthSessionContext?.hasRefreshToken(): Boolean = this?.tokenResponse?.refreshToken != null
+
+fun StoredOAuthSession.toSessionContext(): CoderOAuthSessionContext = CoderOAuthSessionContext(
+    clientId = clientId,
+    clientSecret = clientSecret,
+    tokenCodeVerifier = "",
+    state = "",
+    tokenEndpoint = tokenEndpoint,
+    tokenAuthMethod = tokenAuthMethod,
+    tokenResponse = OAuthTokenResponse(
+        accessToken = "",
+        tokenType = "",
+        expiresIn = null,
+        refreshToken = refreshToken,
+        scope = null
+    )
+)

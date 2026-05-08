@@ -4,7 +4,6 @@ import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.oauth.OAuth2Client
-import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
@@ -22,14 +21,15 @@ import com.coder.toolbox.util.url
 import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
-import com.coder.toolbox.views.CoderCliSetupWizardPage
 import com.coder.toolbox.views.CoderDelimiter
 import com.coder.toolbox.views.CoderSettingsPage
+import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.NewEnvironmentPage
 import com.coder.toolbox.views.SuspendBiConsumer
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.Credentials
 import com.coder.toolbox.views.state.PageRouter
-import com.coder.toolbox.views.state.WizardStep
+import com.coder.toolbox.views.state.toSessionContext
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.core.util.LoadableState
@@ -374,20 +374,18 @@ class CoderRemoteProvider(
                 // Different URL - we need a new connection. Tear down any
                 // in-flight wizard, install a fresh one on the router, and let
                 // showPluginEnvironmentsPage() pull it through getOverrideUiPage.
-                router.activeWizard?.dispose()
-                val wizard = CoderCliSetupWizardPage(
+                val credentials = newToken?.let { Credentials.Token(it) } ?: Credentials.MTls
+                val wizard = CoderSetupWizardPage.connectStep(
                     context, settingsPage, visibilityState,
-                    initialAutoSetup = true,
+                    url = newUrl,
+                    credentials = credentials,
                     jumpToMainPageOnError = true,
                     onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl))
                         .andThen { _, _ ->
                             coderHeaderPage.isBusy.update { false }
                         },
-                    onTokenRefreshed = ::onTokenRefreshed
+                    onTokenRefreshed = ::onTokenRefreshed,
                 )
-                wizard.model.url = newUrl
-                wizard.model.token = newToken
-                wizard.model.goTo(WizardStep.CONNECT)
                 router.replaceWith(wizard)
                 context.envPageManager.showPluginEnvironmentsPage()
             }
@@ -454,14 +452,13 @@ class CoderRemoteProvider(
     private suspend fun exchangeOAuthCodeForToken(
         code: String,
         oauthSessionContext: CoderOAuthSessionContext,
-        wizard: CoderCliSetupWizardPage,
+        wizard: CoderSetupWizardPage,
     ) {
         try {
             context.logger.info("Handling OAuth callback...")
 
             val tokenResponse = OAuth2Client(context).exchangeCode(oauthSessionContext, code)
-            wizard.model.oauthSession = oauthSessionContext.copy(tokenResponse = tokenResponse)
-            wizard.model.goTo(WizardStep.CONNECT)
+            wizard.advanceToConnectWithOAuth(oauthSessionContext.copy(tokenResponse = tokenResponse))
         } catch (e: Exception) {
             context.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
         }
@@ -529,7 +526,7 @@ class CoderRemoteProvider(
      */
     override fun getOverrideUiPage(): UiPage? {
         if (client != null) return null
-        return router.requireWizard { buildSetupWizard() }
+        return router.getOrCreate { buildSetupWizard() }
     }
 
     /**
@@ -537,39 +534,23 @@ class CoderRemoteProvider(
      * (until [close] clears the router); subsequent visibility cycles reuse the
      * same instance, preserving any in-flight connect job.
      */
-    private fun buildSetupWizard(): CoderCliSetupWizardPage {
+    private fun buildSetupWizard(): CoderSetupWizardPage {
         // When coming back to the application, initializeSession immediately.
         if (shouldDoAutoSetup()) {
             try {
-                val storedOAuthSession = context.secrets.oauthSessionFor(context.deploymentUrl.toString())
-                val wizard = CoderCliSetupWizardPage(
+                val url = context.deploymentUrl
+                val credentials = context.secrets.oauthSessionFor(url.toString())?.let {
+                    Credentials.OAuth(it.toSessionContext())
+                } ?: context.secrets.apiTokenFor(url)?.let {
+                    Credentials.Token(it)
+                } ?: Credentials.MTls
+                return CoderSetupWizardPage.connectStep(
                     context, settingsPage, visibilityState,
-                    initialAutoSetup = true,
-                    jumpToMainPageOnError = false,
+                    url = url,
+                    credentials = credentials,
                     onConnect = onConnect,
-                    onTokenRefreshed = ::onTokenRefreshed
+                    onTokenRefreshed = ::onTokenRefreshed,
                 )
-                wizard.model.url = context.deploymentUrl
-                wizard.model.token = context.secrets.apiTokenFor(context.deploymentUrl)
-                if (storedOAuthSession != null) {
-                    wizard.model.oauthSession = CoderOAuthSessionContext(
-                        clientId = storedOAuthSession.clientId,
-                        clientSecret = storedOAuthSession.clientSecret,
-                        tokenCodeVerifier = "",
-                        state = "",
-                        tokenEndpoint = storedOAuthSession.tokenEndpoint,
-                        tokenAuthMethod = storedOAuthSession.tokenAuthMethod,
-                        tokenResponse = OAuthTokenResponse(
-                            accessToken = "",
-                            tokenType = "",
-                            expiresIn = null,
-                            refreshToken = storedOAuthSession.refreshToken,
-                            scope = null
-                        )
-                    )
-                }
-                wizard.model.goTo(WizardStep.CONNECT)
-                return wizard
             } catch (ex: Exception) {
                 errorBuffer.add(ex)
             } finally {
@@ -578,14 +559,11 @@ class CoderRemoteProvider(
         }
 
         // Login flow.
-        val setupWizardPage = CoderCliSetupWizardPage(
-            context,
-            settingsPage,
-            visibilityState,
+        val setupWizardPage = CoderSetupWizardPage.deploymentUrlStep(
+            context, settingsPage, visibilityState,
             onConnect = onConnect,
-            onTokenRefreshed = ::onTokenRefreshed
+            onTokenRefreshed = ::onTokenRefreshed,
         )
-        setupWizardPage.model.goToFirst()
         // We might have navigated here due to a polling error.
         errorBuffer.forEach {
             setupWizardPage.notify("Error encountered", it)

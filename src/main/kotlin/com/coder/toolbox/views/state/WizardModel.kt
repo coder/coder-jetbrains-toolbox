@@ -7,7 +7,7 @@ import java.net.URL
 /**
  * Per-wizard mutable state: current step, form values, and OAuth session.
  *
- * Owned by a single [com.coder.toolbox.views.CoderCliSetupWizardPage] instance
+ * Owned by a single [com.coder.toolbox.views.CoderSetupWizardPage] instance
  * and lives as long as that wizard does, so it survives Toolbox visibility
  * cycles without leaking across wizard recreations.
  */
@@ -58,4 +58,10 @@ class WizardModel {
 
 enum class WizardStep {
     URL_REQUEST, TOKEN_REQUEST, CONNECT;
+}
+
+sealed interface Credentials {
+    object MTls : Credentials
+    data class Token(val value: String) : Credentials
+    data class OAuth(val session: CoderOAuthSessionContext) : Credentials
 }

@@ -1,36 +1,34 @@
 package com.coder.toolbox.views.state
 
-import com.coder.toolbox.views.CoderCliSetupWizardPage
+import com.coder.toolbox.views.CoderSetupWizardPage
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * The page that should currently be rendered in place of the environment list.
  */
-sealed interface OverrideRoute {
-    object None : OverrideRoute
-    data class Wizard(val page: CoderCliSetupWizardPage) : OverrideRoute
+sealed interface PageRoute {
+    object None : PageRoute
+    data class Wizard(val page: CoderSetupWizardPage) : PageRoute
 }
 
 /**
- * Holds the active [OverrideRoute]. The same page instance is returned across
+ * Holds the active [PageRoute]. The same page instance is returned across
  * Toolbox visibility cycles so in-flight work (e.g. an ongoing connect) is
  * preserved instead of being thrown away every time the window reopens.
  */
 class PageRouter {
-    private val route = MutableStateFlow<OverrideRoute>(OverrideRoute.None)
+    private val route = MutableStateFlow<PageRoute>(PageRoute.None)
 
-    val activeWizard: CoderCliSetupWizardPage?
-        get() = (route.value as? OverrideRoute.Wizard)?.page
+    val activeWizard: CoderSetupWizardPage?
+        get() = (route.value as? PageRoute.Wizard)?.page
 
     /**
-     * Returns the wizard already on this route, or builds a new one and
+     * Returns the page already on this route, or builds a new one and
      * registers it.
      */
-    fun requireWizard(build: () -> CoderCliSetupWizardPage): CoderCliSetupWizardPage {
-        (route.value as? OverrideRoute.Wizard)?.let { return it.page }
-        val page = build()
-        route.value = OverrideRoute.Wizard(page)
-        return page
+    fun getOrCreate(build: () -> CoderSetupWizardPage): CoderSetupWizardPage {
+        (route.value as? PageRoute.Wizard)?.let { return it.page }
+        return build().also { route.value = PageRoute.Wizard(it) }
     }
 
     /**
@@ -38,11 +36,12 @@ class PageRouter {
      * (e.g. a deep link to a different deployment) needs to forcibly install
      * a new wizard.
      */
-    fun replaceWith(page: CoderCliSetupWizardPage) {
-        route.value = OverrideRoute.Wizard(page)
+    fun replaceWith(page: CoderSetupWizardPage) {
+        activeWizard?.dispose()
+        route.value = PageRoute.Wizard(page)
     }
 
     fun clear() {
-        route.value = OverrideRoute.None
+        route.value = PageRoute.None
     }
 }

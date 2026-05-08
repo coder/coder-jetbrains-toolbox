@@ -4,6 +4,7 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.Credentials
 import com.coder.toolbox.views.state.WizardModel
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
@@ -16,7 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.net.URL
 
-class CoderCliSetupWizardPage(
+class CoderSetupWizardPage private constructor(
     private val context: CoderToolboxContext,
     private val settingsPage: CoderSettingsPage,
     visibilityState: StateFlow<ProviderVisibilityState>,
@@ -25,6 +26,63 @@ class CoderCliSetupWizardPage(
     onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
     onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
+
+    companion object {
+        fun deploymentUrlStep(
+            context: CoderToolboxContext,
+            settingsPage: CoderSettingsPage,
+            visibilityState: StateFlow<ProviderVisibilityState>,
+            onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
+            onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
+        ): CoderSetupWizardPage = CoderSetupWizardPage(
+            context, settingsPage, visibilityState,
+            onConnect = onConnect,
+            onTokenRefreshed = onTokenRefreshed,
+        ).apply { model.goToFirst() }
+
+        fun tokenStep(
+            context: CoderToolboxContext,
+            settingsPage: CoderSettingsPage,
+            visibilityState: StateFlow<ProviderVisibilityState>,
+            url: URL,
+            onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
+            onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
+        ): CoderSetupWizardPage = CoderSetupWizardPage(
+            context, settingsPage, visibilityState,
+            onConnect = onConnect,
+            onTokenRefreshed = onTokenRefreshed,
+        ).apply {
+            model.url = url
+            model.goTo(WizardStep.TOKEN_REQUEST)
+        }
+
+        fun connectStep(
+            context: CoderToolboxContext,
+            settingsPage: CoderSettingsPage,
+            visibilityState: StateFlow<ProviderVisibilityState>,
+            url: URL,
+            credentials: Credentials,
+            initialAutoSetup: Boolean = true,
+            jumpToMainPageOnError: Boolean = false,
+            onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
+            onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
+        ): CoderSetupWizardPage = CoderSetupWizardPage(
+            context, settingsPage, visibilityState,
+            initialAutoSetup = initialAutoSetup,
+            jumpToMainPageOnError = jumpToMainPageOnError,
+            onConnect = onConnect,
+            onTokenRefreshed = onTokenRefreshed,
+        ).apply {
+            model.url = url
+            when (credentials) {
+                is Credentials.MTls -> Unit
+                is Credentials.Token -> model.token = credentials.value
+                is Credentials.OAuth -> model.oauthSession = credentials.session
+            }
+            model.goTo(WizardStep.CONNECT)
+        }
+    }
+
     val model: WizardModel = WizardModel()
 
     private val shouldAutoSetup = MutableStateFlow(initialAutoSetup)
@@ -123,6 +181,11 @@ class CoderCliSetupWizardPage(
                 connectStep.onVisible()
             }
         }
+    }
+
+    fun advanceToConnectWithOAuth(oauthSession: CoderOAuthSessionContext) {
+        model.oauthSession = oauthSession
+        model.goTo(WizardStep.CONNECT)
     }
 
     /**
