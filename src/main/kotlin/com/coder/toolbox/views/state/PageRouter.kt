@@ -1,5 +1,6 @@
 package com.coder.toolbox.views.state
 
+import com.coder.toolbox.views.CoderPage
 import com.coder.toolbox.views.CoderSetupWizardPage
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -26,8 +27,9 @@ class PageRouter {
      * Returns the page already on this route, or builds a new one and
      * registers it.
      */
-    fun getOrCreate(build: () -> CoderSetupWizardPage): CoderSetupWizardPage {
+    fun getOrCreate(build: () -> CoderSetupWizardPage): CoderPage {
         (route.value as? PageRoute.Wizard)?.let { return it.page }
+
         return build().also { route.value = PageRoute.Wizard(it) }
     }
 
@@ -36,7 +38,7 @@ class PageRouter {
      * (e.g. a deep link to a different deployment) needs to forcibly install
      * a new wizard.
      */
-    fun replaceWith(page: CoderSetupWizardPage) {
+    fun navigate(page: CoderSetupWizardPage) {
         activeWizard?.dispose()
         route.value = PageRoute.Wizard(page)
     }

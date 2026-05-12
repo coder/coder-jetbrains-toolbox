@@ -386,7 +386,7 @@ class CoderRemoteProvider(
                         },
                     onTokenRefreshed = ::onTokenRefreshed,
                 )
-                router.replaceWith(wizard)
+                router.navigate(wizard)
                 context.envPageManager.showPluginEnvironmentsPage()
             }
         } catch (ex: Exception) {

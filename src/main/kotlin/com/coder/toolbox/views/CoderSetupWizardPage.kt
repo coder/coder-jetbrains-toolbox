@@ -26,63 +26,6 @@ class CoderSetupWizardPage private constructor(
     onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
     onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
-
-    companion object {
-        fun deploymentUrlStep(
-            context: CoderToolboxContext,
-            settingsPage: CoderSettingsPage,
-            visibilityState: StateFlow<ProviderVisibilityState>,
-            onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
-            onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
-        ): CoderSetupWizardPage = CoderSetupWizardPage(
-            context, settingsPage, visibilityState,
-            onConnect = onConnect,
-            onTokenRefreshed = onTokenRefreshed,
-        ).apply { model.goToFirst() }
-
-        fun tokenStep(
-            context: CoderToolboxContext,
-            settingsPage: CoderSettingsPage,
-            visibilityState: StateFlow<ProviderVisibilityState>,
-            url: URL,
-            onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
-            onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
-        ): CoderSetupWizardPage = CoderSetupWizardPage(
-            context, settingsPage, visibilityState,
-            onConnect = onConnect,
-            onTokenRefreshed = onTokenRefreshed,
-        ).apply {
-            model.url = url
-            model.goTo(WizardStep.TOKEN_REQUEST)
-        }
-
-        fun connectStep(
-            context: CoderToolboxContext,
-            settingsPage: CoderSettingsPage,
-            visibilityState: StateFlow<ProviderVisibilityState>,
-            url: URL,
-            credentials: Credentials,
-            initialAutoSetup: Boolean = true,
-            jumpToMainPageOnError: Boolean = false,
-            onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
-            onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
-        ): CoderSetupWizardPage = CoderSetupWizardPage(
-            context, settingsPage, visibilityState,
-            initialAutoSetup = initialAutoSetup,
-            jumpToMainPageOnError = jumpToMainPageOnError,
-            onConnect = onConnect,
-            onTokenRefreshed = onTokenRefreshed,
-        ).apply {
-            model.url = url
-            when (credentials) {
-                is Credentials.MTls -> Unit
-                is Credentials.Token -> model.token = credentials.value
-                is Credentials.OAuth -> model.oauthSession = credentials.session
-            }
-            model.goTo(WizardStep.CONNECT)
-        }
-    }
-
     val model: WizardModel = WizardModel()
 
     private val shouldAutoSetup = MutableStateFlow(initialAutoSetup)
@@ -206,4 +149,45 @@ class CoderSetupWizardPage private constructor(
      * Show an error as a popup on this page.
      */
     fun notify(message: String, ex: Throwable) = errorReporter.report(message, ex)
+
+
+    companion object {
+        fun deploymentUrlStep(
+            context: CoderToolboxContext,
+            settingsPage: CoderSettingsPage,
+            visibilityState: StateFlow<ProviderVisibilityState>,
+            onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
+            onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
+        ): CoderSetupWizardPage = CoderSetupWizardPage(
+            context, settingsPage, visibilityState,
+            onConnect = onConnect,
+            onTokenRefreshed = onTokenRefreshed,
+        ).apply { model.goToFirst() }
+
+        fun connectStep(
+            context: CoderToolboxContext,
+            settingsPage: CoderSettingsPage,
+            visibilityState: StateFlow<ProviderVisibilityState>,
+            url: URL,
+            credentials: Credentials,
+            initialAutoSetup: Boolean = true,
+            jumpToMainPageOnError: Boolean = false,
+            onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
+            onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
+        ): CoderSetupWizardPage = CoderSetupWizardPage(
+            context, settingsPage, visibilityState,
+            initialAutoSetup = initialAutoSetup,
+            jumpToMainPageOnError = jumpToMainPageOnError,
+            onConnect = onConnect,
+            onTokenRefreshed = onTokenRefreshed,
+        ).apply {
+            model.url = url
+            when (credentials) {
+                is Credentials.MTls -> Unit
+                is Credentials.Token -> model.token = credentials.value
+                is Credentials.OAuth -> model.oauthSession = credentials.session
+            }
+            model.goTo(WizardStep.CONNECT)
+        }
+    }
 }
