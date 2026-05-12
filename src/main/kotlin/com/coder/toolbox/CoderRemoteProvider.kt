@@ -379,7 +379,6 @@ class CoderRemoteProvider(
                     context, settingsPage, visibilityState,
                     url = newUrl,
                     credentials = credentials,
-                    jumpToMainPageOnError = true,
                     onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl))
                         .andThen { _, _ ->
                             coderHeaderPage.isBusy.update { false }

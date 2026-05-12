@@ -30,10 +30,8 @@ private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
 class ConnectStep(
     private val context: CoderToolboxContext,
     private val model: WizardModel,
-    private val shouldAutoLogin: StateFlow<Boolean>,
-    private val jumpToMainPageOnError: Boolean,
     visibilityState: StateFlow<ProviderVisibilityState>,
-    private val refreshWizard: () -> Unit,
+    private val navigateBack: () -> Unit,
     private val onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
     private val onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : WizardStep {
@@ -63,7 +61,7 @@ class ConnectStep(
 
         // Don't launch another connection attempt if one is already in progress.
         if (signInJob?.isActive == true) {
-            context.logger.info(">> ConnectStep: connection already in progress, skipping duplicate")
+            context.logger.info("Connection already in progress, skipping duplicate")
             return
         }
 
@@ -145,16 +143,11 @@ class ConnectStep(
                 // The provider's onConnect ran close() which clears the router; combined
                 // with client now being non-null this drops the wizard from getOverrideUiPage.
                 context.envPageManager.showPluginEnvironmentsPage()
-            } catch (ex: CancellationException) {
-                if (ex.message != USER_HIT_THE_BACK_BUTTON) {
-                    errorReporter.report("Connection to $hostName was configured", ex)
-                    handleNavigation()
-                    refreshWizard()
-                }
             } catch (ex: Exception) {
-                errorReporter.report("Failed to configure $hostName", ex)
-                handleNavigation()
-                refreshWizard()
+                if (ex.message != USER_HIT_THE_BACK_BUTTON) {
+                    errorReporter.report("Failed to configure $hostName", ex)
+                }
+                navigateBack()
             }
         }
 
@@ -176,26 +169,6 @@ class ConnectStep(
         statusField.textState.update { context.i18n.pnotr(msg) }
     }
 
-    /**
-     * Handle navigation logic for both errors and back button
-     */
-    private fun handleNavigation() {
-        if (shouldAutoLogin.value) {
-            model.clearFormData()
-            if (jumpToMainPageOnError) {
-                context.popupPluginMainPage()
-            } else {
-                model.goToFirst()
-            }
-        } else {
-            if (context.settingsStore.requiresTokenAuth) {
-                model.goToPrevious()
-            } else {
-                model.goToFirst()
-            }
-        }
-    }
-
     override suspend fun onNext(): Boolean {
         return false
     }
@@ -205,7 +178,7 @@ class ConnectStep(
             context.logger.info("Back button was pressed, cancelling in-progress connection setup...")
             signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
         } finally {
-            handleNavigation()
+            navigateBack()
         }
     }
 

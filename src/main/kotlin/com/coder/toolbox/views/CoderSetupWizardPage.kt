@@ -21,14 +21,11 @@ class CoderSetupWizardPage private constructor(
     private val context: CoderToolboxContext,
     private val settingsPage: CoderSettingsPage,
     visibilityState: StateFlow<ProviderVisibilityState>,
-    initialAutoSetup: Boolean = false,
-    jumpToMainPageOnError: Boolean = false,
+    private var autoLogin: Boolean = false,
     onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
     onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
     val model: WizardModel = WizardModel()
-
-    private val shouldAutoSetup = MutableStateFlow(initialAutoSetup)
     private val settingsAction = Action(context, "Settings") {
         context.ui.showUiPage(settingsPage)
     }
@@ -38,10 +35,8 @@ class CoderSetupWizardPage private constructor(
     private val connectStep = ConnectStep(
         context,
         model,
-        shouldAutoLogin = shouldAutoSetup,
-        jumpToMainPageOnError = jumpToMainPageOnError,
         visibilityState,
-        refreshWizard = this::displaySteps,
+        navigateBack = this::navigateBackFromConnect,
         onConnect = onConnect,
         onTokenRefreshed = onTokenRefreshed
     )
@@ -114,9 +109,6 @@ class CoderSetupWizardPage private constructor(
                         settingsAction,
                         Action(context, "Back", closesPage = false, actionBlock = {
                             connectStep.onBack()
-                            shouldAutoSetup.update {
-                                false
-                            }
                             displaySteps()
                         })
                     )
@@ -129,6 +121,20 @@ class CoderSetupWizardPage private constructor(
     fun advanceToConnectWithOAuth(oauthSession: CoderOAuthSessionContext) {
         model.oauthSession = oauthSession
         model.goTo(WizardStep.CONNECT)
+    }
+
+    private fun navigateBackFromConnect() {
+        if (autoLogin) {
+            autoLogin = false
+            model.clearFormData()
+            model.goToFirst()
+            return
+        }
+        if (context.settingsStore.requiresTokenAuth) {
+            model.goToPrevious()
+        } else {
+            model.goToFirst()
+        }
     }
 
     /**
@@ -170,14 +176,11 @@ class CoderSetupWizardPage private constructor(
             visibilityState: StateFlow<ProviderVisibilityState>,
             url: URL,
             credentials: Credentials,
-            initialAutoSetup: Boolean = true,
-            jumpToMainPageOnError: Boolean = false,
             onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
             onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
         ): CoderSetupWizardPage = CoderSetupWizardPage(
             context, settingsPage, visibilityState,
-            initialAutoSetup = initialAutoSetup,
-            jumpToMainPageOnError = jumpToMainPageOnError,
+            autoLogin = true,
             onConnect = onConnect,
             onTokenRefreshed = onTokenRefreshed,
         ).apply {
