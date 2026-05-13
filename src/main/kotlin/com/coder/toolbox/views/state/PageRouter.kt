@@ -44,6 +44,7 @@ class PageRouter {
     }
 
     fun clear() {
+        activeWizard?.dispose()
         route.value = PageRoute.None
     }
 }

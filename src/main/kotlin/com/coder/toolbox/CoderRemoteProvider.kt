@@ -386,7 +386,7 @@ class CoderRemoteProvider(
                     onTokenRefreshed = ::onTokenRefreshed,
                 )
                 router.navigate(wizard)
-                context.envPageManager.showPluginEnvironmentsPage()
+                context.popupPluginMainPage()
             }
         } catch (ex: Exception) {
             val textError = if (ex is APIResponseException) {
@@ -524,7 +524,13 @@ class CoderRemoteProvider(
      * list.
      */
     override fun getOverrideUiPage(): UiPage? {
+        // Show the setup wizard if one is already scheduled.
+        router.activeWizard?.let { return it }
+
+        // Let the default workspace UI render if the HTTP client is initialized.
         if (client != null) return null
+
+        // Otherwise, schedule our own setup wizard.
         return router.getOrCreate { buildSetupWizard() }
     }
 

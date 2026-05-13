@@ -9,18 +9,23 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.views.CoderSetupWizardPage
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertTrue
+import java.net.URI
 import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class CoderRemoteProviderTest {
@@ -228,6 +233,30 @@ class CoderRemoteProviderTest {
     }
 
     @Test
+    fun `given connected client when URI targets different deployment then scheduled wizard overrides client`() =
+        runTest {
+            // given
+            every { mockClient.url } returns URI("https://old.example.com").toURL()
+            every { mockContext.settingsStore.requiresMTlsAuth } returns false
+            every { mockContext.settingsStore.requiresTokenAuth } returns true
+            setPrivateField(remoteProvider, "client", mockClient)
+            setPrivateField(remoteProvider, "cli", mockCli)
+
+            assertNull(remoteProvider.getOverrideUiPage())
+
+            // when
+            remoteProvider.handleUri(
+                URI("jetbrains://gateway/com.coder.toolbox?url=https%3A%2F%2Fnew.example.com&token=new-token")
+            )
+
+            // then
+            val overridePage = remoteProvider.getOverrideUiPage()
+            assertNotNull(overridePage)
+            assertTrue(overridePage is CoderSetupWizardPage)
+            verify { mockContext.popupPluginMainPage() }
+        }
+
+    @Test
     fun `given no existing environment then one is created`() = runTest {
         // given
         val agent = mockAgent("agent1")
@@ -369,6 +398,17 @@ class CoderRemoteProviderTest {
             every { this@mockk.latestBuild } returns latestBuild
             every { this@mockk.templateDisplayName } returns name
             every { this@mockk.outdated } returns false
+        }
+    }
+
+    private fun setPrivateField(
+        target: Any,
+        name: String,
+        value: Any,
+    ) {
+        target.javaClass.getDeclaredField(name).apply {
+            isAccessible = true
+            set(target, value)
         }
     }
 }
