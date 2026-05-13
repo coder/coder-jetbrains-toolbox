@@ -1,6 +1,7 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
@@ -10,6 +11,8 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.views.CoderSetupWizardPage
+import com.coder.toolbox.views.state.StoredOAuthSession
+import com.coder.toolbox.views.state.WizardStep
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -257,6 +260,130 @@ class CoderRemoteProviderTest {
         }
 
     @Test
+    fun `given mTLS is required when auto setup has stored credentials then mTLS takes precedence`() {
+        // given
+        val url = URI("https://coder.example.com").toURL()
+        every { mockContext.deploymentUrl } returns url
+        every { mockContext.settingsStore.requiresMTlsAuth } returns true
+        every { mockContext.settingsStore.requiresTokenAuth } returns false
+        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns true
+        every { mockContext.secrets.apiTokenFor(url) } returns "token"
+        every { mockContext.secrets.oauthSessionFor(url.toString()) } returns storedOAuthSession()
+        val provider = CoderRemoteProvider(mockContext)
+
+        // when
+        val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
+
+        // then
+        assertEquals(WizardStep.CONNECT, overridePage.model.currentStep())
+        assertNull(overridePage.model.token)
+        assertNull(overridePage.model.oauthSession)
+    }
+
+    @Test
+    fun `given OAuth is preferred when auto setup has token and OAuth session then OAuth is used`() {
+        // given
+        val url = URI("https://coder.example.com").toURL()
+        every { mockContext.deploymentUrl } returns url
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns true
+        every { mockContext.secrets.apiTokenFor(url) } returns "token"
+        every { mockContext.secrets.oauthSessionFor(url.toString()) } returns storedOAuthSession()
+        val provider = CoderRemoteProvider(mockContext)
+
+        // when
+        val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
+
+        // then
+        assertEquals(WizardStep.CONNECT, overridePage.model.currentStep())
+        assertNull(overridePage.model.token)
+        assertNotNull(overridePage.model.oauthSession)
+    }
+
+    @Test
+    fun `given OAuth is not preferred when auto setup has token and OAuth session then token is used`() {
+        // given
+        val url = URI("https://coder.example.com").toURL()
+        every { mockContext.deploymentUrl } returns url
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns false
+        every { mockContext.secrets.apiTokenFor(url) } returns "token"
+        every { mockContext.secrets.oauthSessionFor(url.toString()) } returns storedOAuthSession()
+        val provider = CoderRemoteProvider(mockContext)
+
+        // when
+        val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
+
+        // then
+        assertEquals(WizardStep.CONNECT, overridePage.model.currentStep())
+        assertEquals("token", overridePage.model.token)
+        assertNull(overridePage.model.oauthSession)
+    }
+
+    @Test
+    fun `given OAuth is not preferred when auto setup has API token then token is used`() {
+        // given
+        val url = URI("https://coder.example.com").toURL()
+        every { mockContext.deploymentUrl } returns url
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns false
+        every { mockContext.secrets.apiTokenFor(url) } returns "api-token"
+        val provider = CoderRemoteProvider(mockContext)
+
+        // when
+        val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
+
+        // then
+        assertEquals(WizardStep.CONNECT, overridePage.model.currentStep())
+        assertEquals("api-token", overridePage.model.token)
+        assertNull(overridePage.model.oauthSession)
+    }
+
+    @Test
+    fun `given OAuth is not preferred when auto setup has no API token then wizard starts at URL step`() {
+        // given
+        val url = URI("https://coder.example.com").toURL()
+        every { mockContext.deploymentUrl } returns url
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns false
+        every { mockContext.secrets.apiTokenFor(url) } returns null
+        val provider = CoderRemoteProvider(mockContext)
+
+        // when
+        val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
+
+        // then
+        assertEquals(WizardStep.URL_REQUEST, overridePage.model.currentStep())
+        assertNull(overridePage.model.token)
+        assertNull(overridePage.model.oauthSession)
+    }
+
+    @Test
+    fun `given OAuth is not preferred when auto setup only has OAuth session then wizard starts at URL step`() {
+        // given
+        val url = URI("https://coder.example.com").toURL()
+        every { mockContext.deploymentUrl } returns url
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns false
+        every { mockContext.secrets.apiTokenFor(url) } returns null
+        every { mockContext.secrets.oauthSessionFor(url.toString()) } returns storedOAuthSession()
+        val provider = CoderRemoteProvider(mockContext)
+
+        // when
+        val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
+
+        // then
+        assertEquals(WizardStep.URL_REQUEST, overridePage.model.currentStep())
+        assertNull(overridePage.model.token)
+        assertNull(overridePage.model.oauthSession)
+    }
+
+    @Test
     fun `given no existing environment then one is created`() = runTest {
         // given
         val agent = mockAgent("agent1")
@@ -411,4 +538,12 @@ class CoderRemoteProviderTest {
             set(target, value)
         }
     }
+
+    private fun storedOAuthSession(): StoredOAuthSession = StoredOAuthSession(
+        clientId = "client-id",
+        clientSecret = "client-secret",
+        refreshToken = "refresh-token",
+        tokenAuthMethod = TokenEndpointAuthMethod.CLIENT_SECRET_BASIC,
+        tokenEndpoint = "https://coder.example.com/oauth/token"
+    )
 }

@@ -68,8 +68,6 @@ class CoderRemoteProvider(
     private var pollJob: Job? = null
     internal val lastEnvironments = mutableListOf<CoderRemoteEnvironment>()
 
-    private val settings = context.settingsStore.readOnly()
-
     private val triggerSshConfig = Channel<Boolean>(Channel.CONFLATED)
     private val triggerProviderVisible = Channel<Boolean>(Channel.CONFLATED)
     private val dialogUi = DialogUi(context)
@@ -544,11 +542,11 @@ class CoderRemoteProvider(
         if (shouldDoAutoSetup()) {
             try {
                 val url = context.deploymentUrl
-                val credentials = context.secrets.oauthSessionFor(url.toString())?.let {
-                    Credentials.OAuth(it.toSessionContext())
-                } ?: context.secrets.apiTokenFor(url)?.let {
-                    Credentials.Token(it)
-                } ?: Credentials.MTls
+                val credentials = autoSetupCredentials(url) ?: return CoderSetupWizardPage.deploymentUrlStep(
+                    context, settingsPage, visibilityState,
+                    onConnect = onConnect,
+                    onTokenRefreshed = ::onTokenRefreshed,
+                )
                 return CoderSetupWizardPage.connectStep(
                     context, settingsPage, visibilityState,
                     url = url,
@@ -578,13 +576,25 @@ class CoderRemoteProvider(
     }
 
     /**
-     * Auto-login only on first the firs run if there is a url & token configured or the auth
-     * should be done via certificates.
+     * Auto-login only on the first run when stored credentials or mTLS auth can be used.
      */
-    private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !settings.requiresTokenAuth)
+    private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !context.settingsStore.requiresTokenAuth)
 
-    fun canAutoLogin(): Boolean = !context.secrets.apiTokenFor(context.deploymentUrl)
-        .isNullOrBlank() || context.secrets.oauthSessionFor(context.deploymentUrl.toString()) != null
+    fun canAutoLogin(): Boolean = autoSetupCredentials(context.deploymentUrl) != null
+
+    private fun autoSetupCredentials(url: URL): Credentials? {
+        if (context.settingsStore.requiresMTlsAuth) return Credentials.MTls
+
+        val tokenCredentials = context.secrets.apiTokenFor(url)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { Credentials.Token(it) }
+
+        if (!context.settingsStore.preferOAuth2IfAvailable) return tokenCredentials
+
+        return context.secrets.oauthSessionFor(url.toString())?.let {
+            Credentials.OAuth(it.toSessionContext())
+        } ?: tokenCredentials
+    }
 
     private suspend fun onTokenRefreshed(url: URL, oauthSessionCtx: CoderOAuthSessionContext) {
         oauthSessionCtx.tokenResponse?.accessToken?.let { cli?.login(it) }
