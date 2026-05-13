@@ -29,6 +29,7 @@ import com.coder.toolbox.views.SuspendBiConsumer
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.Credentials
 import com.coder.toolbox.views.state.PageRouter
+import com.coder.toolbox.views.state.PendingOAuthConnection
 import com.coder.toolbox.views.state.toSessionContext
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
@@ -417,15 +418,17 @@ class CoderRemoteProvider(
             )
         }
 
-        val activeWizard = router.activeWizard ?: return context.logAndShowError(
-            FAILED_TO_HANDLE_OAUTH2_TITLE,
-            "OAuth2 callback arrived but the setup wizard is no longer active"
-        )
-        val activeOAuthSession = activeWizard.model.oauthSession ?: return context.logAndShowError(
+        if (!router.hasActiveWizard) {
+            return context.logAndShowError(
+                FAILED_TO_HANDLE_OAUTH2_TITLE,
+                "OAuth2 callback arrived but the setup wizard is no longer active"
+            )
+        }
+        val pendingOAuthConnection = router.pendingOAuthConnection ?: return context.logAndShowError(
             FAILED_TO_HANDLE_OAUTH2_TITLE,
             "OAuth2 callback arrived but no OAuth session was started"
         )
-        params["state"]?.takeIf { it == activeOAuthSession.state }
+        params["state"]?.takeIf { it == pendingOAuthConnection.session.state }
             ?: return context.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "Server responded back with an invalid state that does not match the initial authorization state sent to the server"
@@ -443,19 +446,29 @@ class CoderRemoteProvider(
             )
             return
         }
-        exchangeOAuthCodeForToken(code, activeOAuthSession, activeWizard)
+        exchangeOAuthCodeForToken(code, pendingOAuthConnection)
     }
 
     private suspend fun exchangeOAuthCodeForToken(
         code: String,
-        oauthSessionContext: CoderOAuthSessionContext,
-        wizard: CoderSetupWizardPage,
+        pendingOAuthConnection: PendingOAuthConnection,
     ) {
         try {
             context.logger.info("Handling OAuth callback...")
 
+            val oauthSessionContext = pendingOAuthConnection.session
             val tokenResponse = OAuth2Client(context).exchangeCode(oauthSessionContext, code)
-            wizard.advanceToConnectWithOAuth(oauthSessionContext.copy(tokenResponse = tokenResponse))
+            val wizard = CoderSetupWizardPage.connectStep(
+                context, settingsPage, visibilityState,
+                url = pendingOAuthConnection.url,
+                credentials = Credentials.OAuth(oauthSessionContext.copy(tokenResponse = tokenResponse)),
+                onConnect = onConnect,
+                onTokenRefreshed = ::onTokenRefreshed,
+            )
+            router.navigate(wizard)
+
+            context.envPageManager.showPluginEnvironmentsPage(true)
+            context.ui.showUiPage(wizard)
         } catch (e: Exception) {
             context.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
         }
@@ -523,7 +536,7 @@ class CoderRemoteProvider(
      */
     override fun getOverrideUiPage(): UiPage? {
         // Show the setup wizard if one is already scheduled.
-        router.activeWizard?.let { return it }
+        router.activePage?.let { return it }
 
         // Let the default workspace UI render if the HTTP client is initialized.
         if (client != null) return null

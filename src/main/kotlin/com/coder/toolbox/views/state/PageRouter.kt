@@ -20,8 +20,17 @@ sealed interface PageRoute {
 class PageRouter {
     private val route = MutableStateFlow<PageRoute>(PageRoute.None)
 
-    val activeWizard: CoderSetupWizardPage?
+    private val activeWizard: CoderSetupWizardPage?
         get() = (route.value as? PageRoute.Wizard)?.page
+
+    val activePage: CoderPage?
+        get() = activeWizard
+
+    val hasActiveWizard: Boolean
+        get() = activeWizard != null
+
+    val pendingOAuthConnection: PendingOAuthConnection?
+        get() = activeWizard?.pendingOAuthConnection()
 
     /**
      * Returns the page already on this route, or builds a new one and

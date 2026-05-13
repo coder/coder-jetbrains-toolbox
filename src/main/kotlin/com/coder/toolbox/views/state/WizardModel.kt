@@ -65,3 +65,8 @@ sealed interface Credentials {
     data class Token(val value: String) : Credentials
     data class OAuth(val session: CoderOAuthSessionContext) : Credentials
 }
+
+data class PendingOAuthConnection(
+    val url: URL,
+    val session: CoderOAuthSessionContext
+)

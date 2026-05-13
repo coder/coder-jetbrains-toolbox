@@ -5,6 +5,7 @@ import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.Credentials
+import com.coder.toolbox.views.state.PendingOAuthConnection
 import com.coder.toolbox.views.state.WizardModel
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
@@ -118,9 +119,10 @@ class CoderSetupWizardPage private constructor(
         }
     }
 
-    fun advanceToConnectWithOAuth(oauthSession: CoderOAuthSessionContext) {
-        model.oauthSession = oauthSession
-        model.goTo(WizardStep.CONNECT)
+    fun pendingOAuthConnection(): PendingOAuthConnection? {
+        val url = model.url ?: return null
+        val oauthSession = model.oauthSession ?: return null
+        return PendingOAuthConnection(url, oauthSession)
     }
 
     private fun navigateBackFromConnect() {
