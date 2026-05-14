@@ -23,6 +23,7 @@ import kotlinx.coroutines.yield
 import java.net.URL
 
 private const val USER_HIT_THE_BACK_BUTTON = "User hit the back button"
+private const val WIZARD_WAS_DISPOSED = "Wizard was disposed"
 
 /**
  * A page that connects a REST client and cli to Coder.
@@ -143,10 +144,16 @@ class ConnectStep(
                 // The provider's onConnect ran close() which clears the router; combined
                 // with client now being non-null this drops the wizard from getOverrideUiPage.
                 context.envPageManager.showPluginEnvironmentsPage()
-            } catch (ex: Exception) {
-                if (ex.message != USER_HIT_THE_BACK_BUTTON) {
+            } catch (ex: CancellationException) {
+                // Back-button cancellation already navigates in onBack(), while
+                // dispose() must cancel without navigating. Treat these control-flow
+                // cancellations separately so we do not run navigateBack() twice.
+                if (ex.message != USER_HIT_THE_BACK_BUTTON && ex.message != WIZARD_WAS_DISPOSED) {
                     errorReporter.report("Failed to configure $hostName", ex)
+                    navigateBack()
                 }
+            } catch (ex: Exception) {
+                errorReporter.report("Failed to configure $hostName", ex)
                 navigateBack()
             }
         }
@@ -188,7 +195,7 @@ class ConnectStep(
      * different deployment).
      */
     fun dispose() {
-        signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
+        signInJob?.cancel(CancellationException(WIZARD_WAS_DISPOSED))
         signInJob = null
     }
 }
