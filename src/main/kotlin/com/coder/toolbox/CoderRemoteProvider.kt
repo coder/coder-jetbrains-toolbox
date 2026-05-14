@@ -4,7 +4,6 @@ import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.oauth.OAuth2Client
-import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
@@ -22,15 +21,16 @@ import com.coder.toolbox.util.url
 import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.Action
-import com.coder.toolbox.views.CoderCliSetupWizardPage
 import com.coder.toolbox.views.CoderDelimiter
 import com.coder.toolbox.views.CoderSettingsPage
+import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.NewEnvironmentPage
 import com.coder.toolbox.views.SuspendBiConsumer
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
-import com.coder.toolbox.views.state.CoderSetupWizardContext
-import com.coder.toolbox.views.state.CoderSetupWizardState
-import com.coder.toolbox.views.state.WizardStep
+import com.coder.toolbox.views.state.Credentials
+import com.coder.toolbox.views.state.PageRouter
+import com.coder.toolbox.views.state.PendingOAuthConnection
+import com.coder.toolbox.views.state.toSessionContext
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.core.util.LoadableState
@@ -68,8 +68,6 @@ class CoderRemoteProvider(
     // Current polling job.
     private var pollJob: Job? = null
     internal val lastEnvironments = mutableListOf<CoderRemoteEnvironment>()
-
-    private val settings = context.settingsStore.readOnly()
 
     private val triggerSshConfig = Channel<Boolean>(Channel.CONFLATED)
     private val triggerProviderVisible = Channel<Boolean>(Channel.CONFLATED)
@@ -112,6 +110,8 @@ class CoderRemoteProvider(
     }
 
     private val errorBuffer = mutableListOf<Throwable>()
+
+    private val router = PageRouter()
 
     /**
      * With the provided client, start polling for workspaces.  Every time a new
@@ -269,6 +269,7 @@ class CoderRemoteProvider(
         lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
+        router.clear()
         context.logger.info("Coder plugin is now closed")
     }
 
@@ -345,9 +346,6 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         try {
-            // Obtain focus. This switches to the main plugin screen, even
-            // if last opened provider was not Coder
-            context.envPageManager.showPluginEnvironmentsPage()
             if (uri.toString().startsWith("jetbrains://gateway/com.coder.toolbox/auth")) {
                 handleOAuthUri(uri)
                 return
@@ -372,25 +370,22 @@ class CoderRemoteProvider(
                 linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
                 coderHeaderPage.isBusy.update { false }
             } else {
-                // Different URL - we need a new connection.
-                // Chain the link handling after onConnect so it runs once the connection is established.
-                CoderSetupWizardContext.apply {
-                    url = newUrl
-                    token = newToken
-                }
-                CoderSetupWizardState.goToStep(WizardStep.CONNECT)
-                context.ui.showUiPage(
-                    CoderCliSetupWizardPage(
-                        context, settingsPage, visibilityState,
-                        initialAutoSetup = true,
-                        jumpToMainPageOnError = true,
-                        onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl))
-                            .andThen { _, _ ->
-                                coderHeaderPage.isBusy.update { false }
-                            },
-                        onTokenRefreshed = ::onTokenRefreshed
-                    )
+                // Different URL - we need a new connection. Tear down any
+                // in-flight wizard, install a fresh one on the router, and let
+                // showPluginEnvironmentsPage() pull it through getOverrideUiPage.
+                val credentials = newToken?.let { Credentials.Token(it) } ?: Credentials.MTls
+                val wizard = CoderSetupWizardPage.connectStep(
+                    context, settingsPage, visibilityState,
+                    url = newUrl,
+                    credentials = credentials,
+                    onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl))
+                        .andThen { _, _ ->
+                            coderHeaderPage.isBusy.update { false }
+                        },
+                    onTokenRefreshed = ::onTokenRefreshed,
                 )
+                router.navigate(wizard)
+                context.popupPluginMainPage()
             }
         } catch (ex: Exception) {
             val textError = if (ex is APIResponseException) {
@@ -403,7 +398,6 @@ class CoderRemoteProvider(
                 textError ?: ""
             )
             coderHeaderPage.isBusy.update { false }
-            context.envPageManager.showPluginEnvironmentsPage()
         } finally {
             firstRun = false
         }
@@ -424,7 +418,17 @@ class CoderRemoteProvider(
             )
         }
 
-        params["state"]?.takeIf { it == CoderSetupWizardContext.oauthSession?.state }
+        if (!router.hasActiveWizard) {
+            return context.logAndShowError(
+                FAILED_TO_HANDLE_OAUTH2_TITLE,
+                "OAuth2 callback arrived but the setup wizard is no longer active"
+            )
+        }
+        val pendingOAuthConnection = router.pendingOAuthConnection ?: return context.logAndShowError(
+            FAILED_TO_HANDLE_OAUTH2_TITLE,
+            "OAuth2 callback arrived but no OAuth session was started"
+        )
+        params["state"]?.takeIf { it == pendingOAuthConnection.session.state }
             ?: return context.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "Server responded back with an invalid state that does not match the initial authorization state sent to the server"
@@ -442,18 +446,29 @@ class CoderRemoteProvider(
             )
             return
         }
-        exchangeOAuthCodeForToken(code, CoderSetupWizardContext.oauthSession!!)
+        exchangeOAuthCodeForToken(code, pendingOAuthConnection)
     }
 
-    private suspend fun exchangeOAuthCodeForToken(code: String, oauthSessionContext: CoderOAuthSessionContext) {
+    private suspend fun exchangeOAuthCodeForToken(
+        code: String,
+        pendingOAuthConnection: PendingOAuthConnection,
+    ) {
         try {
             context.logger.info("Handling OAuth callback...")
 
+            val oauthSessionContext = pendingOAuthConnection.session
             val tokenResponse = OAuth2Client(context).exchangeCode(oauthSessionContext, code)
-            CoderSetupWizardContext.oauthSession = oauthSessionContext.copy(tokenResponse = tokenResponse)
+            val wizard = CoderSetupWizardPage.connectStep(
+                context, settingsPage, visibilityState,
+                url = pendingOAuthConnection.url,
+                credentials = Credentials.OAuth(oauthSessionContext.copy(tokenResponse = tokenResponse)),
+                onConnect = onConnect,
+                onTokenRefreshed = ::onTokenRefreshed,
+            )
+            router.navigate(wizard)
 
-            CoderSetupWizardState.goToStep(WizardStep.CONNECT)
-
+            context.envPageManager.showPluginEnvironmentsPage(true)
+            context.ui.showUiPage(wizard)
         } catch (e: Exception) {
             context.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
         }
@@ -520,77 +535,79 @@ class CoderRemoteProvider(
      * list.
      */
     override fun getOverrideUiPage(): UiPage? {
-        // Show the setup page if we have not configured the client yet.
-        if (client == null) {
-            // When coming back to the application, initializeSession immediately.
-            if (shouldDoAutoSetup()) {
-                try {
-                    val storedOAuthSession = context.secrets.oauthSessionFor(context.deploymentUrl.toString())
-                    CoderSetupWizardContext.apply {
-                        url = context.deploymentUrl
-                        token = context.secrets.apiTokenFor(context.deploymentUrl)
-                        if (storedOAuthSession != null) {
-                            oauthSession = CoderOAuthSessionContext(
-                                clientId = storedOAuthSession.clientId,
-                                clientSecret = storedOAuthSession.clientSecret,
-                                tokenCodeVerifier = "",
-                                state = "",
-                                tokenEndpoint = storedOAuthSession.tokenEndpoint,
-                                tokenAuthMethod = storedOAuthSession.tokenAuthMethod,
-                                tokenResponse = OAuthTokenResponse(
-                                    accessToken = "",
-                                    tokenType = "",
-                                    expiresIn = null,
-                                    refreshToken = storedOAuthSession.refreshToken,
-                                    scope = null
-                                )
-                            )
-                        }
-                    }
-                    CoderSetupWizardState.goToStep(WizardStep.CONNECT)
-                    return CoderCliSetupWizardPage(
-                        context, settingsPage, visibilityState,
-                        initialAutoSetup = true,
-                        jumpToMainPageOnError = false,
-                        onConnect = onConnect,
-                        onTokenRefreshed = ::onTokenRefreshed
-                    )
-                } catch (ex: Exception) {
-                    errorBuffer.add(ex)
-                } finally {
-                    firstRun = false
-                }
-            }
+        // Show the setup wizard if one is already scheduled.
+        router.activePage?.let { return it }
 
-            // Login flow.
-            CoderSetupWizardState.goToFirstStep()
-            val setupWizardPage =
-                CoderCliSetupWizardPage(
-                    context,
-                    settingsPage,
-                    visibilityState,
-                    onConnect = onConnect,
-                    onTokenRefreshed = ::onTokenRefreshed
-                )
-            // We might have navigated here due to a polling error.
-            errorBuffer.forEach {
-                setupWizardPage.notify("Error encountered", it)
-            }
-            errorBuffer.clear()
-            // and now reset the errors, otherwise we show it every time on the screen
-            return setupWizardPage
-        }
-        return null
+        // Let the default workspace UI render if the HTTP client is initialized.
+        if (client != null) return null
+
+        // Otherwise, schedule our own setup wizard.
+        return router.getOrCreate { buildSetupWizard() }
     }
 
     /**
-     * Auto-login only on first the firs run if there is a url & token configured or the auth
-     * should be done via certificates.
+     * Build the wizard for the current state. Called once per provider lifetime
+     * (until [close] clears the router); subsequent visibility cycles reuse the
+     * same instance, preserving any in-flight connect job.
      */
-    private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !settings.requiresTokenAuth)
+    private fun buildSetupWizard(): CoderSetupWizardPage {
+        // When coming back to the application, initializeSession immediately.
+        if (shouldDoAutoSetup()) {
+            try {
+                val url = context.deploymentUrl
+                val credentials = autoSetupCredentials(url) ?: return CoderSetupWizardPage.deploymentUrlStep(
+                    context, settingsPage, visibilityState,
+                    onConnect = onConnect,
+                    onTokenRefreshed = ::onTokenRefreshed,
+                )
+                return CoderSetupWizardPage.connectStep(
+                    context, settingsPage, visibilityState,
+                    url = url,
+                    credentials = credentials,
+                    onConnect = onConnect,
+                    onTokenRefreshed = ::onTokenRefreshed,
+                )
+            } catch (ex: Exception) {
+                errorBuffer.add(ex)
+            } finally {
+                firstRun = false
+            }
+        }
 
-    fun canAutoLogin(): Boolean = !context.secrets.apiTokenFor(context.deploymentUrl)
-        .isNullOrBlank() || context.secrets.oauthSessionFor(context.deploymentUrl.toString()) != null
+        // Login flow.
+        val setupWizardPage = CoderSetupWizardPage.deploymentUrlStep(
+            context, settingsPage, visibilityState,
+            onConnect = onConnect,
+            onTokenRefreshed = ::onTokenRefreshed,
+        )
+        // We might have navigated here due to a polling error.
+        errorBuffer.forEach {
+            setupWizardPage.notify("Error encountered", it)
+        }
+        errorBuffer.clear()
+        return setupWizardPage
+    }
+
+    /**
+     * Auto-login only on the first run when stored credentials or mTLS auth can be used.
+     */
+    private fun shouldDoAutoSetup(): Boolean = firstRun && (canAutoLogin() || !context.settingsStore.requiresTokenAuth)
+
+    fun canAutoLogin(): Boolean = autoSetupCredentials(context.deploymentUrl) != null
+
+    private fun autoSetupCredentials(url: URL): Credentials? {
+        if (context.settingsStore.requiresMTlsAuth) return Credentials.MTls
+
+        val tokenCredentials = context.secrets.apiTokenFor(url)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { Credentials.Token(it) }
+
+        if (!context.settingsStore.preferOAuth2IfAvailable) return tokenCredentials
+
+        return context.secrets.oauthSessionFor(url.toString())?.let {
+            Credentials.OAuth(it.toSessionContext())
+        } ?: tokenCredentials
+    }
 
     private suspend fun onTokenRefreshed(url: URL, oauthSessionCtx: CoderOAuthSessionContext) {
         oauthSessionCtx.tokenResponse?.accessToken?.let { cli?.login(it) }

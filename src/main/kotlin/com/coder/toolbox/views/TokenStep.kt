@@ -2,8 +2,7 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.withPath
-import com.coder.toolbox.views.state.CoderSetupWizardContext
-import com.coder.toolbox.views.state.CoderSetupWizardState
+import com.coder.toolbox.views.state.WizardModel
 import com.jetbrains.toolbox.api.ui.components.LinkField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
@@ -20,6 +19,7 @@ import kotlinx.coroutines.flow.update
  */
 class TokenStep(
     private val context: CoderToolboxContext,
+    private val model: WizardModel,
 ) : WizardStep {
     private val tokenField = TextField(context.i18n.ptrl("Token"), "", TextType.Password)
     private val linkField = LinkField(context.i18n.ptrl("Get a token"), "")
@@ -35,34 +35,37 @@ class TokenStep(
         errorField.textState.update {
             context.i18n.pnotr("")
         }
-        if (CoderSetupWizardContext.hasUrl()) {
-            tokenField.textState.update {
-                context.secrets.apiTokenFor(CoderSetupWizardContext.url!!) ?: ""
+        model.url?.let { url ->
+            tokenField.contentState.update {
+                context.secrets.apiTokenFor(url) ?: ""
             }
-        } else {
+            (linkField.urlState as MutableStateFlow).update {
+                url.withPath("/login?redirect=%2Fcli-auth").toString()
+            }
+        } ?: run {
             errorField.textState.update {
                 context.i18n.pnotr("URL not configure in the previous step. Please go back and provide a proper URL.")
-                return
             }
-        }
-        (linkField.urlState as MutableStateFlow).update {
-            CoderSetupWizardContext.url!!.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
+            (linkField.urlState as MutableStateFlow).update {
+                ""
+            }
+            return
         }
     }
 
     override suspend fun onNext(): Boolean {
-        val token = tokenField.textState.value
+        val token = tokenField.contentState.value
         if (token.isBlank()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return false
         }
 
-        CoderSetupWizardContext.token = token
-        CoderSetupWizardState.goToNextStep()
+        model.token = token
+        model.goToNext()
         return true
     }
 
     override fun onBack() {
-        CoderSetupWizardState.goToPreviousStep()
+        model.goToPrevious()
     }
 }

@@ -11,8 +11,7 @@ import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
-import com.coder.toolbox.views.state.CoderSetupWizardContext
-import com.coder.toolbox.views.state.CoderSetupWizardState
+import com.coder.toolbox.views.state.WizardModel
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.LabelField
@@ -40,6 +39,7 @@ private const val OAUTH2_SCOPE: String =
  */
 class DeploymentUrlStep(
     private val context: CoderToolboxContext,
+    private val model: WizardModel,
     visibilityState: StateFlow<ProviderVisibilityState>,
 ) :
     WizardStep {
@@ -94,20 +94,20 @@ class DeploymentUrlStep(
         }
 
         try {
-            CoderSetupWizardContext.url = validateRawUrl(rawUrl)
+            model.url = validateRawUrl(rawUrl)
         } catch (e: MalformedURLException) {
             errorReporter.report("URL is invalid", e)
             return false
         }
 
         if (context.settingsStore.requiresMTlsAuth) {
-            CoderSetupWizardState.goToLastStep()
+            model.goToLast()
             return true
         }
         if (context.settingsStore.requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable) {
             try {
                 context.logger.info("Prefers OAuth2 authentication")
-                CoderSetupWizardContext.oauthSession = handleOAuth2(rawUrl)
+                model.oauthSession = handleOAuth2(rawUrl)
                 return false
             } catch (e: Exception) {
                 errorReporter.report("Failed to authenticate with OAuth2: ${e.message}", e)
@@ -115,7 +115,7 @@ class DeploymentUrlStep(
             }
         }
         // if all else fails try the good old API token auth
-        CoderSetupWizardState.goToNextStep()
+        model.goToNext()
         return true
     }
 
