@@ -35,23 +35,26 @@ class TokenStep(
         errorField.textState.update {
             context.i18n.pnotr("")
         }
-        if (model.hasUrl()) {
-            tokenField.textState.update {
-                context.secrets.apiTokenFor(model.url!!) ?: ""
+        model.url?.let { url ->
+            tokenField.contentState.update {
+                context.secrets.apiTokenFor(url) ?: ""
             }
-        } else {
+            (linkField.urlState as MutableStateFlow).update {
+                url.withPath("/login?redirect=%2Fcli-auth").toString()
+            }
+        } ?: run {
             errorField.textState.update {
                 context.i18n.pnotr("URL not configure in the previous step. Please go back and provide a proper URL.")
-                return
             }
-        }
-        (linkField.urlState as MutableStateFlow).update {
-            model.url!!.withPath("/login?redirect=%2Fcli-auth")?.toString() ?: ""
+            (linkField.urlState as MutableStateFlow).update {
+                ""
+            }
+            return
         }
     }
 
     override suspend fun onNext(): Boolean {
-        val token = tokenField.textState.value
+        val token = tokenField.contentState.value
         if (token.isBlank()) {
             errorField.textState.update { context.i18n.ptrl("Token is required") }
             return false
