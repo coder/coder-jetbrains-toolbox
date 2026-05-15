@@ -7,8 +7,8 @@
 - `Binary destination` can now point directly to an executable, used as-is; otherwise it is treated as a base directory
   as before
 - support for OAuth2
-- workspace listing now accepts a configurable `Workspace filter` (defaults to `owner:me`); leave it blank to include
-  workspaces shared with the current user
+- workspaces shared with the current user via RBAC now appear in the workspace list alongside your own; shared
+  workspaces are namespaced by owner (`<owner>.<workspace>.<agent>`) so they don't collide with yours
 - the URI handler accepts an optional `owner` query parameter to disambiguate shared workspaces
 
 ### Removed

@@ -88,8 +88,6 @@ class CoderSettingsStore(
         get() = store[WORKSPACE_VIEW_URL]
     override val workspaceCreateUrl: String?
         get() = store[WORKSPACE_CREATE_URL]
-    override val workspaceFilter: String
-        get() = store[WORKSPACE_FILTER] ?: "owner:me"
 
     /**
      * Where the specified deployment should put its data.
@@ -262,10 +260,6 @@ class CoderSettingsStore(
 
     fun updatePreferAuthViaOAuth2(preferAuthViaOAuth2: Boolean) {
         store[PREFER_OAUTH2_IF_AVAILABLE] = preferAuthViaOAuth2.toString()
-    }
-
-    fun updateWorkspaceFilter(filter: String) {
-        store[WORKSPACE_FILTER] = filter
     }
 
     private fun getDefaultGlobalDataDir(): Path {

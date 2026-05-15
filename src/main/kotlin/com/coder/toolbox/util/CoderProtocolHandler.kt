@@ -2,6 +2,7 @@ package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.environmentId
 import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.feed.IdeType
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
@@ -59,7 +60,7 @@ open class CoderProtocolHandler(
             ) ?: return
             if (!ensureAgentIsReady(workspace, agent)) return
             delay(2.seconds)
-            val environmentId = "${workspace.name}.${agent.name}"
+            val environmentId = environmentId(workspace, agent, restClient.me.username)
             context.showEnvironmentPage(environmentId)
 
             val productCode = params.ideProductCode()

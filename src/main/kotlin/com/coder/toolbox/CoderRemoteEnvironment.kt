@@ -43,6 +43,20 @@ import kotlin.time.Duration.Companion.seconds
 private val POLL_INTERVAL = 5.seconds
 
 /**
+ * Build the environment id for a workspace/agent pair. Workspaces shared
+ * with the current user are namespaced by owner (`<owner>.<workspace>.<agent>`)
+ * so they don't collide with the user's own workspaces, while owned
+ * workspaces keep the legacy `<workspace>.<agent>` id to preserve persistent
+ * per-environment state (auto-connect, etc.).
+ */
+fun environmentId(workspace: Workspace, agent: WorkspaceAgent, currentUser: String): String =
+    if (workspace.ownerName == currentUser) {
+        "${workspace.name}.${agent.name}"
+    } else {
+        "${workspace.ownerName}.${workspace.name}.${agent.name}"
+    }
+
+/**
  * Represents an agent and workspace combination.
  *
  * Used in the environment list view.
@@ -53,10 +67,12 @@ class CoderRemoteEnvironment(
     internal var cli: CoderCLIManager,
     private var workspace: Workspace,
     private var agent: WorkspaceAgent,
-) : RemoteProviderEnvironment("${workspace.name}.${agent.name}"), BeforeConnectionHook, AfterDisconnectHook {
+) : RemoteProviderEnvironment(environmentId(workspace, agent, client.me.username)),
+    BeforeConnectionHook,
+    AfterDisconnectHook {
     private var environmentStatus = WorkspaceAndAgentStatus.from(workspace, agent)
 
-    override var name: String = "${workspace.name}.${agent.name}"
+    override var name: String = environmentId(workspace, agent, client.me.username)
     private var isConnected: MutableStateFlow<Boolean> = MutableStateFlow(false)
     override val connectionRequest: MutableStateFlow<Boolean> = MutableStateFlow(false)
 

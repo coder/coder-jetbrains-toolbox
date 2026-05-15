@@ -163,27 +163,46 @@ open class CoderRestClient(
     /**
      * Retrieves the available workspaces visible to the current user.
      *
-     * The query string is taken from
-     * [com.coder.toolbox.settings.ReadOnlyCoderSettings.workspaceFilter], which
-     * defaults to `owner:me`. Users can broaden it (for example to an empty
-     * string) to also include workspaces shared with them.
+     * Runs two queries against the server, `owner:me` (workspaces owned by the
+     * current user) and `shared:true` (workspaces shared with them via RBAC),
+     * and returns the union deduplicated by workspace id. The `shared:true`
+     * query is best-effort: if the server does not understand it (older
+     * deployments) we log the error and return only the owned set.
      *
-     * @throws [APIResponseException].
+     * @throws [APIResponseException] when the `owner:me` query fails.
      */
     suspend fun workspaces(): List<Workspace> {
-        val workspacesResponse = callWithRetry {
-            retroRestClient.workspaces(context.settingsStore.workspaceFilter)
-        }
-        if (!workspacesResponse.isSuccessful) {
-            throw APIResponseException(
-                "retrieve workspaces",
-                url,
-                workspacesResponse.code(),
-                workspacesResponse.parseErrorBody(moshi)
-            )
+        val owned = fetchWorkspaces("owner:me")
+        val shared = try {
+            fetchWorkspaces("shared:true")
+        } catch (ex: APIResponseException) {
+            context.logger.warn(ex, "Failed to list shared workspaces on $url; continuing with owned workspaces only")
+            emptyList()
         }
 
-        return requireNotNull(workspacesResponse.body()?.workspaces) {
+        if (shared.isEmpty()) return owned
+
+        // Dedupe by id in case the server returns a workspace in both queries
+        // (for example if a user shares a workspace with themselves).
+        val seen = HashSet<UUID>(owned.size + shared.size)
+        return buildList {
+            for (ws in owned + shared) {
+                if (seen.add(ws.id)) add(ws)
+            }
+        }
+    }
+
+    private suspend fun fetchWorkspaces(query: String): List<Workspace> {
+        val response = callWithRetry { retroRestClient.workspaces(query) }
+        if (!response.isSuccessful) {
+            throw APIResponseException(
+                "retrieve workspaces matching '$query'",
+                url,
+                response.code(),
+                response.parseErrorBody(moshi)
+            )
+        }
+        return requireNotNull(response.body()?.workspaces) {
             "Successful response returned null body or workspaces"
         }
     }
