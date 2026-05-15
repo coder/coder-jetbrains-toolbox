@@ -11,6 +11,7 @@ import com.coder.toolbox.store.TLS_ALTERNATE_HOSTNAME
 import com.coder.toolbox.store.TLS_CA_PATH
 import com.coder.toolbox.store.TLS_CERT_PATH
 import com.coder.toolbox.store.TLS_KEY_PATH
+import com.coder.toolbox.store.WORKSPACE_FILTER
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.pluginTestSettingsStore
@@ -280,6 +281,28 @@ internal class CoderSettingsTest {
         assertEquals(null, settings.readOnly().tls.caPath)
         assertEquals(null, settings.readOnly().tls.altHostname)
         assertEquals(getOS() == OS.MAC, settings.readOnly().disableAutostart)
+        assertEquals("owner:me", settings.readOnly().workspaceFilter)
+    }
+
+    @Test
+    fun testWorkspaceFilter() {
+        // An empty value should be preserved so users can broaden the filter
+        // (for example to also list workspaces shared with them).
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(WORKSPACE_FILTER to ""),
+            Environment(),
+            logger,
+        )
+        assertEquals("", settings.readOnly().workspaceFilter)
+
+        // Custom filters should round-trip through the store.
+        val customFilter = "owner:me OR shared:true"
+        val custom = CoderSettingsStore(
+            pluginTestSettingsStore(WORKSPACE_FILTER to customFilter),
+            Environment(),
+            logger,
+        )
+        assertEquals(customFilter, custom.readOnly().workspaceFilter)
     }
 
     @Test

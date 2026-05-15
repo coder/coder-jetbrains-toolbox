@@ -161,11 +161,19 @@ open class CoderRestClient(
     }
 
     /**
-     * Retrieves the available workspaces created by the user.
+     * Retrieves the available workspaces visible to the current user.
+     *
+     * The query string is taken from
+     * [com.coder.toolbox.settings.ReadOnlyCoderSettings.workspaceFilter], which
+     * defaults to `owner:me`. Users can broaden it (for example to an empty
+     * string) to also include workspaces shared with them.
+     *
      * @throws [APIResponseException].
      */
     suspend fun workspaces(): List<Workspace> {
-        val workspacesResponse = callWithRetry { retroRestClient.workspaces("owner:me") }
+        val workspacesResponse = callWithRetry {
+            retroRestClient.workspaces(context.settingsStore.workspaceFilter)
+        }
         if (!workspacesResponse.isSuccessful) {
             throw APIResponseException(
                 "retrieve workspaces",

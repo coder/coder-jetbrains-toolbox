@@ -64,7 +64,8 @@ class CoderRemoteEnvironment(
         MutableStateFlow(environmentStatus.toRemoteEnvironmentState(context))
     override val description: MutableStateFlow<EnvironmentDescription> =
         MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
-    override val additionalEnvironmentInformation: MutableMap<LocalizableString, String> = mutableMapOf()
+    override val additionalEnvironmentInformation: MutableMap<LocalizableString, String> =
+        mutableMapOf(context.i18n.ptrl("Owner") to workspace.ownerName)
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(emptyList())
 
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)

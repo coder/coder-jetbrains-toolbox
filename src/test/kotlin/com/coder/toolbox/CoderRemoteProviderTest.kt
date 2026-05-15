@@ -514,7 +514,8 @@ class CoderRemoteProviderTest {
     private fun mockWorkspace(
         name: String,
         status: WorkspaceStatus,
-        resources: List<WorkspaceResource>
+        resources: List<WorkspaceResource>,
+        ownerName: String = "owner",
     ): Workspace {
         val latestBuild = mockk<WorkspaceBuild> {
             every { this@mockk.status } returns status
@@ -522,6 +523,7 @@ class CoderRemoteProviderTest {
         }
         return mockk {
             every { this@mockk.name } returns name
+            every { this@mockk.ownerName } returns ownerName
             every { this@mockk.latestBuild } returns latestBuild
             every { this@mockk.templateDisplayName } returns name
             every { this@mockk.outdated } returns false

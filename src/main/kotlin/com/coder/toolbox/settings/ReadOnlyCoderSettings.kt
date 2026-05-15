@@ -158,6 +158,13 @@ interface ReadOnlyCoderSettings {
     val workspaceCreateUrl: String?
 
     /**
+     * The filter applied when listing workspaces, passed to the server as the
+     * `q` query parameter. Defaults to `owner:me`. Set to an empty string to
+     * include workspaces shared with the current user.
+     */
+    val workspaceFilter: String
+
+    /**
      * The path where network information for SSH hosts are stored
      */
     val networkInfoDir: String

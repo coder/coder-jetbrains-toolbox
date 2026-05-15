@@ -125,6 +125,12 @@ class CoderSettingsPage(
         TextType.General
     )
 
+    private val workspaceFilterField = TextField(
+        context.i18n.ptrl("Workspace filter (leave blank to include shared workspaces)"),
+        settings.workspaceFilter,
+        TextType.General,
+    )
+
     private lateinit var visibilityUpdateJob: Job
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
         listOf(
@@ -134,6 +140,7 @@ class CoderSettingsPage(
                 listOf(
                     useAppNameField,
                     disableAutostartField,
+                    workspaceFilterField,
                     httpLoggingField,
                 )
             ),
@@ -214,6 +221,7 @@ class CoderSettingsPage(
                     updateSshLogDir(sshLogDirField.contentState.value)
                     updateNetworkInfoDir(networkInfoDirField.contentState.value)
                     updateSshConfigOptions(sshExtraArgs.contentState.value)
+                    updateWorkspaceFilter(workspaceFilterField.contentState.value)
                 }
             }
         )
@@ -286,6 +294,10 @@ class CoderSettingsPage(
 
         networkInfoDirField.contentState.update {
             settings.networkInfoDir
+        }
+
+        workspaceFilterField.contentState.update {
+            settings.workspaceFilter
         }
 
         visibilityUpdateJob = context.cs.launch(CoroutineName("Signature Verification Fallback Setting")) {

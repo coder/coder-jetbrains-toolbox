@@ -53,6 +53,7 @@ internal const val NETWORK_INFO_DIR = "networkInfoDir"
 
 internal const val WORKSPACE_VIEW_URL = "workspaceViewUrl"
 internal const val WORKSPACE_CREATE_URL = "workspaceCreateUrl"
+internal const val WORKSPACE_FILTER = "workspaceFilter"
 
 internal const val SSH_AUTO_CONNECT_PREFIX = "ssh_auto_connect_"
 
