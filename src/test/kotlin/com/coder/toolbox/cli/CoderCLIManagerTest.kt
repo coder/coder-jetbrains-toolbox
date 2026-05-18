@@ -74,6 +74,7 @@ private val noOpTextProgress: (String) -> Unit = { _ -> }
 
 internal class CoderCLIManagerTest {
     private val ui = mockk<ToolboxUi>(relaxed = true)
+    private val logger = mockk<Logger>(relaxed = true)
     private val context = CoderToolboxContext(
         ui,
         mockk<EnvironmentUiPageManager>(),
@@ -82,12 +83,12 @@ internal class CoderCLIManagerTest {
         mockk<ClientHelper>(),
         mockk<LocalDesktopManager>(),
         mockk<CoroutineScope>(),
-        mockk<Logger>(relaxed = true),
+        logger,
         mockk<LocalizableStringFactory>(relaxed = true),
         CoderSettingsStore(
             pluginTestSettingsStore(),
             Environment(),
-            mockk<Logger>(relaxed = true)
+            logger
         ),
         mockk<CoderSecretsStore>(),
         object : ToolboxProxySettings {
@@ -118,6 +119,14 @@ internal class CoderCLIManagerTest {
     } else {
         listOf("#!/bin/sh", str)
     }.joinToString(System.lineSeparator())
+
+    private fun writeExecutable(path: Path, contents: String) {
+        path.parent.toFile().mkdirs()
+        path.toFile().writeText(contents)
+        if (getOS() != OS.WINDOWS) {
+            path.toFile().setExecutable(true)
+        }
+    }
 
     /**
      * Return the contents of a script that outputs JSON containing the version.
@@ -422,6 +431,49 @@ internal class CoderCLIManagerTest {
             exceptionClass = ProcessInitException::class,
             block = { ccm.login("fake-token") },
         )
+    }
+
+    @Test
+    fun `login passes token via environment instead of argv`() {
+        val binaryFile = tmpdir.resolve("login-env").resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
+        val argsFile = tmpdir.resolve("login-env").resolve("argv.txt")
+        val envFile = tmpdir.resolve("login-env").resolve("env.txt")
+        val token = "super-secret-token"
+        val stdout = "login ok"
+        val script = if (getOS() == OS.WINDOWS) {
+            mkbin(
+                """
+                echo %* > "${argsFile.toAbsolutePath()}"
+                echo %CODER_SESSION_TOKEN% > "${envFile.toAbsolutePath()}"
+                echo $stdout
+                """.trimIndent()
+            )
+        } else {
+            mkbin(
+                """
+                printf '%s\n' "$*" > '${argsFile.toAbsolutePath()}'
+                printf '%s\n' "${'$'}CODER_SESSION_TOKEN" > '${envFile.toAbsolutePath()}'
+                printf '$stdout\n'
+                """.trimIndent()
+            )
+        }
+        writeExecutable(binaryFile, script)
+
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryFile.toString(),
+                ENABLE_DOWNLOADS to "false",
+            ),
+            Environment(),
+            logger
+        )
+        val ccm = CoderCLIManager(context.copy(settingsStore = settings), URL("https://test.coder.com"))
+
+        assertEquals("$stdout\n", ccm.login(token))
+        assertContains(argsFile.toFile().readText(), "login https://test.coder.com --global-config")
+        assertFalse(argsFile.toFile().readText().contains("--token"))
+        assertFalse(argsFile.toFile().readText().contains(token))
+        assertEquals(token, envFile.toFile().readText().trim())
     }
 
     @Test
