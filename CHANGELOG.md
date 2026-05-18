@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.0 - 2026-05-14
+
 ### Added
 
 - `Binary destination` can now point directly to an executable, used as-is; otherwise it is treated as a base directory
