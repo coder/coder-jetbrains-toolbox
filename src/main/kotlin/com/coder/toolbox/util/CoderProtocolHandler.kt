@@ -2,6 +2,7 @@ package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.environmentId
 import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.feed.IdeType
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
@@ -46,7 +47,7 @@ open class CoderProtocolHandler(
         cli: CoderCLIManager
     ) {
         val workspaceName = resolveWorkspaceName(params) ?: return
-        val workspace = restClient.workspaces().matchName(workspaceName, url)
+        val workspace = restClient.workspaces().matchName(workspaceName, params.owner(), url)
         if (workspace != null) {
             if (!prepareWorkspace(workspace, restClient, cli, url)) return
             // we resolve the agent after the workspace is started otherwise we can get misleading
@@ -59,7 +60,7 @@ open class CoderProtocolHandler(
             ) ?: return
             if (!ensureAgentIsReady(workspace, agent)) return
             delay(2.seconds)
-            val environmentId = "${workspace.name}.${agent.name}"
+            val environmentId = environmentId(workspace, agent, restClient.me.username)
             context.showEnvironmentPage(environmentId)
 
             val productCode = params.ideProductCode()
@@ -82,12 +83,22 @@ open class CoderProtocolHandler(
         return workspace
     }
 
-    private suspend fun List<Workspace>.matchName(workspaceName: String, deploymentURL: URL): Workspace? {
-        val workspace = this.firstOrNull { it.name == workspaceName }
+    private suspend fun List<Workspace>.matchName(
+        workspaceName: String,
+        owner: String?,
+        deploymentURL: URL,
+    ): Workspace? {
+        val candidates = this.filter { it.name == workspaceName }
+        val workspace = if (owner.isNullOrBlank()) {
+            candidates.firstOrNull()
+        } else {
+            candidates.firstOrNull { it.ownerName == owner }
+        }
         if (workspace == null) {
+            val descriptor = if (owner.isNullOrBlank()) workspaceName else "$owner/$workspaceName"
             context.logAndShowError(
                 CAN_T_HANDLE_URI_TITLE,
-                "There is no workspace with name $workspaceName on $deploymentURL"
+                "There is no workspace with name $descriptor on $deploymentURL"
             )
             return null
         }

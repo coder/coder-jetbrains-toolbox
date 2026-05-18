@@ -214,7 +214,8 @@ class CoderRemoteProvider(
                 .flatMap { it.agents ?: emptyList() }
                 .distinctBy { it.name }
                 .map { agent ->
-                    lastEnvironments.firstOrNull { it.id == "${ws.name}.${agent.name}" }
+                    val envId = environmentId(ws, agent, client.me.username)
+                    lastEnvironments.firstOrNull { it.id == envId }
                         ?.also {
                             // If we have an environment already, update that.
                             it.update(ws, agent)

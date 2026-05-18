@@ -44,6 +44,10 @@ class CoderRemoteProviderTest {
         mockCli = mockk(relaxed = true)
         mockContext = mockk(relaxed = true)
         remoteProvider = CoderRemoteProvider(mockContext)
+        // Default mocked client is the owner of every mocked workspace so the
+        // env id stays in the legacy `<workspace>.<agent>` form. Tests that
+        // exercise shared workspaces override `mockClient.me.username`.
+        every { mockClient.me.username } returns "owner"
     }
 
     @AfterTest
@@ -495,6 +499,23 @@ class CoderRemoteProviderTest {
             assertEquals("workspace2.mockAgent", result[1].id)
         }
 
+    @Test
+    fun `given a workspace owned by someone else then env id is namespaced by owner`() = runTest {
+        // given
+        val agent = mockAgent("agent1")
+        val resource = mockResource(agents = listOf(agent))
+        val owned = mockWorkspace("mine", WorkspaceStatus.RUNNING, listOf(resource), ownerName = "me")
+        val shared = mockWorkspace("shared", WorkspaceStatus.RUNNING, listOf(resource), ownerName = "coworker")
+        every { mockClient.me.username } returns "me"
+        coEvery { mockClient.workspaces() } returns listOf(owned, shared)
+
+        // when
+        val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
+
+        // then
+        assertEquals(setOf("mine.agent1", "coworker.shared.agent1"), result.map { it.id }.toSet())
+    }
+
     // Helper functions
     private fun mockAgent(name: String, status: WorkspaceAgentStatus = WorkspaceAgentStatus.CONNECTED): WorkspaceAgent {
         return mockk {
@@ -514,7 +535,8 @@ class CoderRemoteProviderTest {
     private fun mockWorkspace(
         name: String,
         status: WorkspaceStatus,
-        resources: List<WorkspaceResource>
+        resources: List<WorkspaceResource>,
+        ownerName: String = "owner",
     ): Workspace {
         val latestBuild = mockk<WorkspaceBuild> {
             every { this@mockk.status } returns status
@@ -522,6 +544,7 @@ class CoderRemoteProviderTest {
         }
         return mockk {
             every { this@mockk.name } returns name
+            every { this@mockk.ownerName } returns ownerName
             every { this@mockk.latestBuild } returns latestBuild
             every { this@mockk.templateDisplayName } returns name
             every { this@mockk.outdated } returns false
