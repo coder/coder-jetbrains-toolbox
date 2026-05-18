@@ -539,6 +539,10 @@ support, may trigger regeneration of SSH configurations.
 > [!IMPORTANT]
 > Token authentication is required when TLS certificates are not configured.
 
+When the plugin logs the Coder CLI in with a session token, it passes that token through the
+`CODER_SESSION_TOKEN` environment variable instead of `--token`. This reduces the chances of the token showing up in
+process listings, shell history, or command-line audit logs.
+
 ## Releasing
 
 1. Check that the changelog lists all the important changes.

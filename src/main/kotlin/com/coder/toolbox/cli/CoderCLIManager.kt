@@ -265,10 +265,9 @@ class CoderCLIManager(
     fun login(token: String): String {
         context.logger.info("Storing CLI credentials in $coderConfigPath")
         return exec(
+            env = mapOf(CODER_SESSION_TOKEN_ENV_VAR to token),
             "login",
             deploymentURL.toString(),
-            "--token",
-            token,
             "--global-config",
             coderConfigPath.toString(),
         )
@@ -534,17 +533,23 @@ class CoderCLIManager(
         return matches
     }
 
-    private fun exec(vararg args: String): String {
-        val stdout =
-            ProcessExecutor()
-                .command(localBinaryPath.toString(), *args)
-                .environment("CODER_HEADER_COMMAND", context.settingsStore.headerCommand)
-                .exitValues(0)
-                .readOutput(true)
-                .execute()
-                .outputUTF8()
-        val redactedArgs = listOf(*args).joinToString(" ").replace(tokenRegex, "--token <redacted>")
-        context.logger.info("`$localBinaryPath $redactedArgs`: $stdout")
+    private fun exec(vararg args: String): String = exec(env = emptyMap(), *args)
+
+    private fun exec(env: Map<String, String>, vararg args: String): String {
+        val executor = ProcessExecutor()
+            .command(localBinaryPath.toString(), *args)
+            .exitValues(0)
+            .readOutput(true)
+
+        context.settingsStore.headerCommand?.let {
+            executor.environment("CODER_HEADER_COMMAND", it)
+        }
+        env.forEach { (key, value) ->
+            executor.environment(key, value)
+        }
+
+        val stdout = executor.execute().outputUTF8()
+        context.logger.info("`$localBinaryPath ${listOf(*args).joinToString(" ")}`: $stdout")
         return stdout
     }
 
@@ -572,7 +577,7 @@ class CoderCLIManager(
     }
 
     companion object {
-        private val tokenRegex = "--token [^ ]+".toRegex()
+        private const val CODER_SESSION_TOKEN_ENV_VAR = "CODER_SESSION_TOKEN"
 
         private fun getHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}"
 

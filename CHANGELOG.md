@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- reduce token exposure in process arguments and command logs
+
 ## 0.9.0 - 2026-05-14
 
 ### Added
