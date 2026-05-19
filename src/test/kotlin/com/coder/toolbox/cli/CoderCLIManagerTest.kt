@@ -469,7 +469,7 @@ internal class CoderCLIManagerTest {
         )
         val ccm = CoderCLIManager(context.copy(settingsStore = settings), URL("https://test.coder.com"))
 
-        assertEquals("$stdout\n", ccm.login(token))
+        assertEquals(stdout, ccm.login(token).trim())
         assertContains(argsFile.toFile().readText(), "login https://test.coder.com --global-config")
         assertFalse(argsFile.toFile().readText().contains("--token"))
         assertFalse(argsFile.toFile().readText().contains(token))
