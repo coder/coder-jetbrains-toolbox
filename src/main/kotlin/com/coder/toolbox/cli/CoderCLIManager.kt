@@ -20,14 +20,15 @@ import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.escapeSubcommand
+import com.coder.toolbox.util.runProcess
 import com.coder.toolbox.util.safeHost
+import com.coder.toolbox.util.sanitizeSecrets
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.zeroturnaround.exec.ProcessExecutor
 import retrofit2.Retrofit
 import java.io.EOFException
 import java.io.FileNotFoundException
@@ -536,20 +537,15 @@ class CoderCLIManager(
     private fun exec(vararg args: String): String = exec(env = emptyMap(), *args)
 
     private fun exec(env: Map<String, String>, vararg args: String): String {
-        val executor = ProcessExecutor()
-            .command(localBinaryPath.toString(), *args)
-            .exitValues(0)
-            .readOutput(true)
-
-        context.settingsStore.headerCommand?.let {
-            executor.environment("CODER_HEADER_COMMAND", it)
-        }
-        env.forEach { (key, value) ->
-            executor.environment(key, value)
+        val command = listOf(localBinaryPath.toString(), *args)
+        val processEnv = buildMap {
+            context.settingsStore.headerCommand?.let { put("CODER_HEADER_COMMAND", it) }
+            putAll(env)
         }
 
-        val stdout = executor.execute().outputUTF8()
-        context.logger.info("`$localBinaryPath ${listOf(*args).joinToString(" ")}`: $stdout")
+        val stdout = runProcess(command, environment = processEnv).stdout
+        val sanitizedStdout = stdout.sanitizeSecrets()
+        context.logger.info("`$localBinaryPath ${listOf(*args).joinToString(" ")}`: $sanitizedStdout")
         return stdout
     }
 

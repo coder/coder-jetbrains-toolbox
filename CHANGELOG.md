@@ -5,6 +5,8 @@
 ### Changed
 
 - reduce token exposure in process arguments and command logs
+- replaced the external process execution dependency with a lightweight internal runner, reducing plugin dependencies
+  and improving error sanitization.
 
 ## 0.9.0 - 2026-05-14
 

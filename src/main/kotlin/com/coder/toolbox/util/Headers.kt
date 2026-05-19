@@ -1,7 +1,5 @@
 package com.coder.toolbox.util
 
-import org.zeroturnaround.exec.ProcessExecutor
-import java.io.OutputStream
 import java.net.URL
 
 private val newlineRegex = "\r?\n".toRegex()
@@ -20,16 +18,11 @@ fun getHeaders(
             else -> Pair("sh", "-c")
         }
     val output =
-        ProcessExecutor()
-            .command(shell, caller, headerCommand)
-            .environment("CODER_URL", url.toString())
-            // By default stderr is in the output, but we want to ignore it.  stderr
-            // will still be included in the exception if something goes wrong.
-            .redirectError(OutputStream.nullOutputStream())
-            .exitValues(0)
-            .readOutput(true)
-            .execute()
-            .outputUTF8()
+        runProcess(
+            listOf(shell, caller, headerCommand),
+            environment = mapOf("CODER_URL" to url.toString()),
+            stderrMode = ProcessStderrMode.DISCARD_ON_SUCCESS,
+        ).stdout
 
     // The Coder CLI will allow no output, but not blank lines.  Possibly we
     // should skip blank lines, but it is better to have parity so commands will
