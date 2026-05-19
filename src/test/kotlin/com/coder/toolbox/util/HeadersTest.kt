@@ -104,7 +104,7 @@ internal class HeadersTest {
                 "echo foo  foo=bar" to "Header name cannot contain spaces, got \"foo  foo\"",
                 "echo   foo=bar  " to "Header name cannot contain spaces, got \"  foo\"",
                 "exit /b 1" to "Unexpected exit value: 1",
-                // "foobar" appears in the InvalidExitValueException message as part of the command string.
+                // "foobar" appears in the process error message as part of the command string.
                 "echo foobar>&2&&exit /b 1" to "foobar",
                 // echo. outputs a bare CRLF; a blank line anywhere in the output is an error.
                 "echo foo=bar&&echo." to "Blank lines are not allowed",

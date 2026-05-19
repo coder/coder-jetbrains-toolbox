@@ -25,6 +25,8 @@ import com.coder.toolbox.store.SSH_LOG_DIR
 import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.OS
+import com.coder.toolbox.util.ProcessExecutionException
+import com.coder.toolbox.util.ProcessExitException
 import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.getOS
@@ -49,8 +51,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.assertDoesNotThrow
-import org.zeroturnaround.exec.InvalidExitValueException
-import org.zeroturnaround.exec.ProcessInitException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -358,7 +358,7 @@ internal class CoderCLIManagerTest {
 
         // Make sure login failures propagate.
         assertFailsWith(
-            exceptionClass = InvalidExitValueException::class,
+            exceptionClass = ProcessExitException::class,
             block = { ccm.login("jetbrains-ci-test") },
         )
     }
@@ -428,7 +428,7 @@ internal class CoderCLIManagerTest {
         )
 
         assertFailsWith(
-            exceptionClass = ProcessInitException::class,
+            exceptionClass = ProcessExecutionException::class,
             block = { ccm.login("fake-token") },
         )
     }
@@ -859,14 +859,14 @@ internal class CoderCLIManagerTest {
     fun testFailVersionParse() {
         val tests =
             mapOf(
-                null to ProcessInitException::class,
+                null to ProcessExecutionException::class,
                 echo("""{"foo": true, "baz": 1}""") to MissingVersionException::class,
                 echo("""{"version": ""}""") to MissingVersionException::class,
                 echo("""v0.0.1""") to JsonEncodingException::class,
                 echo("""{"version: """) to JsonEncodingException::class,
                 echo("""{"version": "invalid"}""") to InvalidVersionException::class,
                 exit(0) to MissingVersionException::class,
-                exit(1) to InvalidExitValueException::class,
+                exit(1) to ProcessExitException::class,
             )
 
         val ccm = CoderCLIManager(
