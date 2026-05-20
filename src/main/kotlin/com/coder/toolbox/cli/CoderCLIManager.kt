@@ -268,6 +268,7 @@ class CoderCLIManager(
         return exec(
             env = mapOf(CODER_SESSION_TOKEN_ENV_VAR to token),
             "login",
+            "--use-token-as-session",
             deploymentURL.toString(),
             "--global-config",
             coderConfigPath.toString(),
