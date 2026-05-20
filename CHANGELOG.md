@@ -7,7 +7,8 @@
 - reduce token exposure in process arguments and command logs
 - replaced the external process execution dependency with a lightweight internal runner, reducing plugin dependencies
   and improving error sanitization.
-- Updated CLI login to keep REST client and CLI auth on the same persisted token, reducing credential drift.
+- updated CLI login to keep REST client and CLI auth on the same persisted token, reducing credential drift.
+- added an opt-in keyring-backed CLI login mode to securely store the session token on supported platforms.
 
 ## 0.9.0 - 2026-05-14
 

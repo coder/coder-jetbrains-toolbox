@@ -22,6 +22,7 @@ import com.coder.toolbox.store.NETWORK_INFO_DIR
 import com.coder.toolbox.store.SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.SSH_CONFIG_PATH
 import com.coder.toolbox.store.SSH_LOG_DIR
+import com.coder.toolbox.store.USE_KEYRING
 import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.OS
@@ -433,11 +434,17 @@ internal class CoderCLIManagerTest {
         )
     }
 
-    @Test
-    fun `login passes token via environment instead of argv`() {
-        val binaryFile = tmpdir.resolve("login-env").resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
-        val argsFile = tmpdir.resolve("login-env").resolve("argv.txt")
-        val envFile = tmpdir.resolve("login-env").resolve("env.txt")
+    private fun assertLoginUsesExpectedArgs(
+        extraSettings: Array<out Pair<String, String>>,
+        expectedArgsSubstring: String,
+        expectGlobalConfig: Boolean,
+        feats: Features = Features(),
+        osOverride: OS? = getOS(),
+    ) {
+        val binaryFile = tmpdir.resolve("login-env-${UUID.randomUUID()}")
+            .resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
+        val argsFile = binaryFile.parent.resolve("argv.txt")
+        val envFile = binaryFile.parent.resolve("env.txt")
         val token = "super-secret-token"
         val stdout = "login ok"
         val script = if (getOS() == OS.WINDOWS) {
@@ -463,20 +470,202 @@ internal class CoderCLIManagerTest {
             pluginTestSettingsStore(
                 BINARY_DESTINATION to binaryFile.toString(),
                 ENABLE_DOWNLOADS to "false",
+                *extraSettings,
+            ),
+            Environment(),
+            logger
+        )
+        val ccm = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            URL("https://test.coder.com"),
+            osOverride,
+        )
+
+        assertEquals(stdout, ccm.login(token, feats).trim())
+        val args = argsFile.toFile().readText()
+        assertContains(args, expectedArgsSubstring)
+        assertEquals(expectGlobalConfig, args.contains("--global-config"))
+        assertFalse(args.contains("--token"))
+        assertFalse(args.contains(token))
+        assertEquals(token, envFile.toFile().readText().trim())
+    }
+
+    @Test
+    fun `login passes token via environment and uses global config by default`() {
+        assertLoginUsesExpectedArgs(
+            extraSettings = emptyArray(),
+            expectedArgsSubstring = "login --use-token-as-session https://test.coder.com --global-config",
+            expectGlobalConfig = true,
+        )
+    }
+
+    @Test
+    fun `login passes token via environment and uses global config when keyring is disabled`() {
+        assertLoginUsesExpectedArgs(
+            extraSettings = arrayOf(USE_KEYRING to "false"),
+            expectedArgsSubstring = "login --use-token-as-session https://test.coder.com --global-config",
+            expectGlobalConfig = true,
+        )
+    }
+
+    @Test
+    fun `login only skips global config when keyring is enabled and runtime supports it`() {
+        val keyringSupported = CoderCLIManager.supportsKeyringStorage(getOS())
+        assertLoginUsesExpectedArgs(
+            extraSettings = arrayOf(USE_KEYRING to "true"),
+            expectedArgsSubstring = "login --use-token-as-session https://test.coder.com",
+            expectGlobalConfig = !keyringSupported,
+            feats = Features(keyringAuth = true),
+        )
+    }
+
+    @Test
+    fun `login keeps global config when keyring is enabled but CLI does not support it`() {
+        assertLoginUsesExpectedArgs(
+            extraSettings = arrayOf(USE_KEYRING to "true"),
+            expectedArgsSubstring = "login --use-token-as-session https://test.coder.com --global-config",
+            expectGlobalConfig = true,
+        )
+    }
+
+    @Test
+    fun `login keeps global config on linux even when keyring is enabled and CLI supports it`() {
+        assertLoginUsesExpectedArgs(
+            extraSettings = arrayOf(USE_KEYRING to "true"),
+            expectedArgsSubstring = "login --use-token-as-session https://test.coder.com --global-config",
+            expectGlobalConfig = true,
+            feats = Features(keyringAuth = true),
+            osOverride = OS.LINUX,
+        )
+    }
+
+    @Test
+    fun `start workspace only uses url auth when keyring is enabled and runtime supports it`() {
+        val binaryFile = tmpdir.resolve("start-workspace-${UUID.randomUUID()}")
+            .resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
+        val argsFile = binaryFile.parent.resolve("argv.txt")
+        val stdout = "start ok"
+        val script = if (getOS() == OS.WINDOWS) {
+            mkbin(
+                """
+                echo %* > "${argsFile.toAbsolutePath()}"
+                echo $stdout
+                """.trimIndent()
+            )
+        } else {
+            mkbin(
+                """
+                printf '%s\n' "$*" > '${argsFile.toAbsolutePath()}'
+                printf '$stdout\n'
+                """.trimIndent()
+            )
+        }
+        writeExecutable(binaryFile, script)
+
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryFile.toString(),
+                ENABLE_DOWNLOADS to "false",
+                USE_KEYRING to "true",
             ),
             Environment(),
             logger
         )
         val ccm = CoderCLIManager(context.copy(settingsStore = settings), URL("https://test.coder.com"))
 
-        assertEquals(stdout, ccm.login(token).trim())
-        assertContains(
-            argsFile.toFile().readText(),
-            "login --use-token-as-session https://test.coder.com --global-config"
+        val keyringSupported = CoderCLIManager.supportsKeyringStorage(getOS())
+        assertEquals(stdout, ccm.startWorkspace("alice", "dev", Features(keyringAuth = true)).trim())
+        val args = argsFile.toFile().readText()
+        if (keyringSupported) {
+            assertContains(args, "--url https://test.coder.com start --yes alice/dev")
+            assertFalse(args.contains("--global-config"))
+        } else {
+            assertContains(args, "--global-config")
+        }
+    }
+
+    @Test
+    fun `start workspace keeps global config when keyring is enabled but CLI does not support it`() {
+        val binaryFile = tmpdir.resolve("start-workspace-${UUID.randomUUID()}")
+            .resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
+        val argsFile = binaryFile.parent.resolve("argv.txt")
+        val stdout = "start ok"
+        val script = if (getOS() == OS.WINDOWS) {
+            mkbin(
+                """
+                echo %* > "${argsFile.toAbsolutePath()}"
+                echo $stdout
+                """.trimIndent()
+            )
+        } else {
+            mkbin(
+                """
+                printf '%s\n' "$*" > '${argsFile.toAbsolutePath()}'
+                printf '$stdout\n'
+                """.trimIndent()
+            )
+        }
+        writeExecutable(binaryFile, script)
+
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryFile.toString(),
+                ENABLE_DOWNLOADS to "false",
+                USE_KEYRING to "true",
+            ),
+            Environment(),
+            logger
         )
-        assertFalse(argsFile.toFile().readText().contains("--token"))
-        assertFalse(argsFile.toFile().readText().contains(token))
-        assertEquals(token, envFile.toFile().readText().trim())
+        val ccm = CoderCLIManager(context.copy(settingsStore = settings), URL("https://test.coder.com"))
+
+        assertEquals(stdout, ccm.startWorkspace("alice", "dev", Features()).trim())
+        val args = argsFile.toFile().readText()
+        assertContains(args, "--global-config")
+        assertFalse(args.contains("--url https://test.coder.com start --yes alice/dev"))
+    }
+
+    @Test
+    fun `start workspace keeps global config on linux even when keyring is enabled and CLI supports it`() {
+        val binaryFile = tmpdir.resolve("start-workspace-${UUID.randomUUID()}")
+            .resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
+        val argsFile = binaryFile.parent.resolve("argv.txt")
+        val stdout = "start ok"
+        val script = if (getOS() == OS.WINDOWS) {
+            mkbin(
+                """
+                echo %* > "${argsFile.toAbsolutePath()}"
+                echo $stdout
+                """.trimIndent()
+            )
+        } else {
+            mkbin(
+                """
+                printf '%s\n' "$*" > '${argsFile.toAbsolutePath()}'
+                printf '$stdout\n'
+                """.trimIndent()
+            )
+        }
+        writeExecutable(binaryFile, script)
+
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryFile.toString(),
+                ENABLE_DOWNLOADS to "false",
+                USE_KEYRING to "true",
+            ),
+            Environment(),
+            logger
+        )
+        val ccm = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            URL("https://test.coder.com"),
+            OS.LINUX,
+        )
+
+        assertEquals(stdout, ccm.startWorkspace("alice", "dev", Features(keyringAuth = true)).trim())
+        val args = argsFile.toFile().readText()
+        assertContains(args, "--global-config")
+        assertFalse(args.contains("--url https://test.coder.com start --yes alice/dev"))
     }
 
     @Test
@@ -804,6 +993,101 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
+    fun `ssh config only uses url auth when keyring is enabled and runtime supports it`() {
+        val workspace = workspace("foo", agents = mapOf("agent1" to UUID.randomUUID().toString()))
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                USE_KEYRING to "true",
+                SSH_CONFIG_PATH to tmpdir.resolve("keyring-ssh.conf").toString(),
+                DATA_DIRECTORY to tmpdir.resolve("keyring-ssh-data").toString(),
+                NETWORK_INFO_DIR to tmpdir.resolve("keyring-network-info").toString(),
+            ),
+            Environment(),
+            context.logger
+        )
+        val ccm = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            URI.create("https://test.coder.invalid").toURL()
+        )
+
+        ccm.configSsh(
+            workspace.latestBuild.resources
+                .filter { it.agents != null }
+                .flatMap { resource -> resource.agents!!.map { agent -> workspace to agent } }
+                .toSet(),
+            Features(reportWorkspaceUsage = true, keyringAuth = true),
+        )
+
+        val keyringSupported = CoderCLIManager.supportsKeyringStorage(getOS())
+        val sshConfig = Path.of(settings.sshConfigPath).toFile().readText()
+        assertContains(sshConfig, "--url https://test.coder.invalid")
+        assertEquals(!keyringSupported, sshConfig.contains("--global-config"))
+    }
+
+    @Test
+    fun `ssh config keeps global config when keyring is enabled but CLI does not support it`() {
+        val workspace = workspace("foo", agents = mapOf("agent1" to UUID.randomUUID().toString()))
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                USE_KEYRING to "true",
+                SSH_CONFIG_PATH to tmpdir.resolve("keyring-ssh-unsupported.conf").toString(),
+                DATA_DIRECTORY to tmpdir.resolve("keyring-ssh-unsupported-data").toString(),
+                NETWORK_INFO_DIR to tmpdir.resolve("keyring-ssh-unsupported-network-info").toString(),
+            ),
+            Environment(),
+            context.logger
+        )
+        val ccm = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            URI.create("https://test.coder.invalid").toURL()
+        )
+
+        ccm.configSsh(
+            workspace.latestBuild.resources
+                .filter { it.agents != null }
+                .flatMap { resource -> resource.agents!!.map { agent -> workspace to agent } }
+                .toSet(),
+            Features(reportWorkspaceUsage = true),
+        )
+
+        val sshConfig = Path.of(settings.sshConfigPath).toFile().readText()
+        assertContains(sshConfig, "--global-config")
+        assertContains(sshConfig, "--url https://test.coder.invalid")
+    }
+
+    @Test
+    fun `ssh config keeps global config on linux even when keyring is enabled and CLI supports it`() {
+        val workspace = workspace("foo", agents = mapOf("agent1" to UUID.randomUUID().toString()))
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                USE_KEYRING to "true",
+                SSH_CONFIG_PATH to tmpdir.resolve("keyring-linux-ssh.conf").toString(),
+                DATA_DIRECTORY to tmpdir.resolve("keyring-linux-ssh-data").toString(),
+                NETWORK_INFO_DIR to tmpdir.resolve("keyring-linux-network-info").toString(),
+            ),
+            Environment(),
+            context.logger
+        )
+        val ccm = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            URI.create("https://test.coder.invalid").toURL(),
+            OS.LINUX,
+        )
+
+        ccm.configSsh(
+            workspace.latestBuild.resources
+                .filter { it.agents != null }
+                .flatMap { resource -> resource.agents!!.map { agent -> workspace to agent } }
+                .toSet(),
+            Features(reportWorkspaceUsage = true, keyringAuth = true),
+        )
+
+        val sshConfig = Path.of(settings.sshConfigPath).toFile().readText()
+        assertContains(sshConfig, "--global-config")
+        assertContains(sshConfig, "--url https://test.coder.invalid")
+    }
+
+    @Test
     fun testMalformedHeader() {
         val tests =
             listOf(
@@ -983,7 +1267,7 @@ internal class CoderCLIManagerTest {
     fun testFeatures() {
         val tests =
             listOf(
-                Pair("2.5.0", Features(true)),
+                Pair("2.5.0", Features(disableAutostart = true)),
                 Pair("2.13.0", Features(disableAutostart = true, reportWorkspaceUsage = true)),
                 Pair(
                     "2.25.0",
@@ -999,11 +1283,22 @@ internal class CoderCLIManagerTest {
                         disableAutostart = true,
                         reportWorkspaceUsage = true,
                         wildcardSsh = true,
-                        buildReason = true
+                        buildReason = true,
+                        keyringAuth = true,
                     )
                 ),
-                Pair("2.4.9", Features(false)),
-                Pair("1.0.1", Features(false)),
+                Pair(
+                    "2.29.0",
+                    Features(
+                        disableAutostart = true,
+                        reportWorkspaceUsage = true,
+                        wildcardSsh = true,
+                        buildReason = true,
+                        keyringAuth = true,
+                    )
+                ),
+                Pair("2.4.9", Features()),
+                Pair("1.0.1", Features()),
             )
 
         tests.forEach {
@@ -1030,6 +1325,14 @@ internal class CoderCLIManagerTest {
 
             srv.stop(0)
         }
+    }
+
+    @Test
+    fun `keyring storage is only supported on mac and windows`() {
+        assertTrue(CoderCLIManager.supportsKeyringStorage(OS.MAC))
+        assertTrue(CoderCLIManager.supportsKeyringStorage(OS.WINDOWS))
+        assertFalse(CoderCLIManager.supportsKeyringStorage(OS.LINUX))
+        assertFalse(CoderCLIManager.supportsKeyringStorage(null))
     }
 
     companion object {

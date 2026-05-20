@@ -17,9 +17,11 @@ import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.settings.SignatureFallbackStrategy.ALLOW
 import com.coder.toolbox.util.InvalidVersionException
+import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.escapeSubcommand
+import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.runProcess
 import com.coder.toolbox.util.safeHost
 import com.coder.toolbox.util.sanitizeSecrets
@@ -105,6 +107,7 @@ data class Features(
     val reportWorkspaceUsage: Boolean = false,
     val wildcardSsh: Boolean = false,
     val buildReason: Boolean = false,
+    val keyringAuth: Boolean = false,
 )
 
 /**
@@ -113,7 +116,8 @@ data class Features(
 class CoderCLIManager(
     private val context: CoderToolboxContext,
     // The URL of the deployment this CLI is for.
-    private val deploymentURL: URL
+    private val deploymentURL: URL,
+    private val currentOs: OS? = getOS(),
 ) {
     private val downloader = createDownloadService()
     private val gpgVerifier = GPGVerifier(context)
@@ -261,17 +265,24 @@ class CoderCLIManager(
     }
 
     /**
-     * Use the provided token to initializeSession the CLI.
+     * Use the provided token to initialize the CLI.
+     *
+     * When keyring storage is enabled and supported, omit --global-config so supported CLIs
+     * can select their default OS-backed credential storage. This only applies
+     * on macOS and Windows.
      */
-    fun login(token: String): String {
-        context.logger.info("Storing CLI credentials in $coderConfigPath")
-        return exec(
-            env = mapOf(CODER_SESSION_TOKEN_ENV_VAR to token),
+    fun login(token: String, feats: Features = features): String {
+        val args = mutableListOf(
             "login",
             "--use-token-as-session",
             deploymentURL.toString(),
-            "--global-config",
-            coderConfigPath.toString(),
+        )
+        if (!shouldUseKeyringAuth(feats)) {
+            args.addAll(globalConfigArgs())
+        }
+        return exec(
+            env = mapOf(CODER_SESSION_TOKEN_ENV_VAR to token),
+            *args.toTypedArray(),
         )
     }
 
@@ -280,8 +291,7 @@ class CoderCLIManager(
      */
     fun startWorkspace(workspaceOwner: String, workspaceName: String, feats: Features = features): String {
         val args = mutableListOf(
-            "--global-config",
-            coderConfigPath.toString(),
+            *workspaceAuthArgs(feats).toTypedArray(),
             "start",
             "--yes",
             "$workspaceOwner/$workspaceName"
@@ -337,8 +347,8 @@ class CoderCLIManager(
         val baseArgs =
             listOfNotNull(
                 escape(localBinaryPath.toString()),
-                "--global-config",
-                escape(coderConfigPath.toString()),
+                if (!shouldUseKeyringAuth(feats)) "--global-config" else null,
+                if (!shouldUseKeyringAuth(feats)) escape(coderConfigPath.toString()) else null,
                 // CODER_URL might be set, and it will override the URL file in
                 // the config directory, so override that here to make sure we
                 // always use the correct URL.
@@ -561,6 +571,7 @@ class CoderCLIManager(
                     reportWorkspaceUsage = version >= SemVer(2, 13, 0),
                     wildcardSsh = version >= SemVer(2, 19, 0),
                     buildReason = version >= SemVer(2, 25, 0),
+                    keyringAuth = version >= SemVer(2, 29, 0),
                 )
             }
         }
@@ -576,6 +587,8 @@ class CoderCLIManager(
     companion object {
         private const val CODER_SESSION_TOKEN_ENV_VAR = "CODER_SESSION_TOKEN"
 
+        internal fun supportsKeyringStorage(os: OS?): Boolean = os == OS.MAC || os == OS.WINDOWS
+
         private fun getHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}"
 
         private fun getWsByOwner(ws: Workspace, agent: WorkspaceAgent): String =
@@ -585,4 +598,16 @@ class CoderCLIManager(
 
         private fun Pair<Workspace, WorkspaceAgent>.agent() = this.second
     }
+
+    private fun globalConfigArgs(): List<String> = listOf("--global-config", coderConfigPath.toString())
+
+    private fun workspaceAuthArgs(feats: Features): List<String> =
+        if (shouldUseKeyringAuth(feats)) {
+            listOf("--url", deploymentURL.toString())
+        } else {
+            globalConfigArgs()
+        }
+
+    private fun shouldUseKeyringAuth(feats: Features): Boolean =
+        context.settingsStore.useKeyring && feats.keyringAuth && supportsKeyringStorage(currentOs)
 }

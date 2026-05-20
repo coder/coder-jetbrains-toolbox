@@ -27,6 +27,8 @@ internal const val ENABLE_DOWNLOADS = "enableDownloads"
 
 internal const val HEADER_COMMAND = "headerCommand"
 
+internal const val USE_KEYRING = "useKeyring"
+
 internal const val TLS_CERT_PATH = "tlsCertPath"
 
 internal const val TLS_KEY_PATH = "tlsKeyPath"

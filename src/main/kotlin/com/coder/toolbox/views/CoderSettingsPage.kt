@@ -77,6 +77,10 @@ class CoderSettingsPage(
         settings.headerCommand ?: "",
         TextType.General
     )
+    private val useKeyringField = CheckboxField(
+        settings.useKeyring,
+        context.i18n.ptrl("Store CLI session in OS keyring when supported (CLI >= 2.29.0)")
+    )
 
     private val tlsCertPathField = TextField(
         context.i18n.ptrl("TLS cert path"),
@@ -142,6 +146,7 @@ class CoderSettingsPage(
                 false,
                 listOf(
                     preferOAuth2IfAvailableField,
+                    useKeyringField,
                     headerCommandField,
                     tlsCertPathField,
                     tlsKeyPathField,
@@ -188,6 +193,7 @@ class CoderSettingsPage(
                     updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
                     updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
                     updateHeaderCommand(headerCommandField.contentState.value)
+                    updateUseKeyring(useKeyringField.checkedState.value)
                     updatePreferAuthViaOAuth2(preferOAuth2IfAvailableField.checkedState.value)
                     updateCertPath(tlsCertPathField.contentState.value)
                     updateKeyPath(tlsKeyPathField.contentState.value)
@@ -242,6 +248,10 @@ class CoderSettingsPage(
 
         headerCommandField.contentState.update {
             settings.headerCommand ?: ""
+        }
+
+        useKeyringField.checkedState.update {
+            settings.useKeyring
         }
 
         preferOAuth2IfAvailableField.checkedState.update {
