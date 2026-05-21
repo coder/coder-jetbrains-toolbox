@@ -206,9 +206,11 @@ class CoderSettingsPage(
 
                     val sshWildcardEnabled = enableSshWildCardConfig.checkedState.value
                     val sshTimeout = sshConnectionTimeoutField.contentState.value.toInt()
+                    val useKeyring = useKeyringField.checkedState.value
 
                     val sshSettingsChanged = sshWildcardEnabled != settings.isSshWildcardConfigEnabled ||
-                            sshTimeout != settings.sshConnectionTimeoutInSeconds
+                            sshTimeout != settings.sshConnectionTimeoutInSeconds ||
+                            useKeyring != settings.useKeyring
 
                     updateEnableSshWildcardConfig(sshWildcardEnabled)
                     updateSshConnectionTimeoutInSeconds(sshTimeout)
