@@ -47,6 +47,7 @@ import com.jetbrains.toolbox.api.ui.ToolboxUi
 import com.squareup.moshi.JsonEncodingException
 import com.sun.net.httpserver.HttpServer
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
@@ -537,6 +538,96 @@ internal class CoderCLIManagerTest {
             feats = Features(keyringAuth = true),
             osOverride = OS.LINUX,
         )
+    }
+
+    @Test
+    fun `login warns when keyring is enabled but CLI does not support it`() {
+        val binaryFile = tmpdir.resolve("login-warning-cli-${UUID.randomUUID()}")
+            .resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
+        writeExecutable(binaryFile, mkbin(echo("ok")))
+
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryFile.toString(),
+                ENABLE_DOWNLOADS to "false",
+                USE_KEYRING to "true",
+            ),
+            Environment(),
+            logger
+        )
+        val ccm = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            URL("https://test.coder.com"),
+        )
+
+        ccm.login("super-secret-token", Features())
+
+        coVerify(exactly = 1) { ui.showSnackbar(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `login warns when keyring is enabled but OS does not support it`() {
+        val binaryFile = tmpdir.resolve("login-warning-os-${UUID.randomUUID()}")
+            .resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
+        writeExecutable(binaryFile, mkbin(echo("ok")))
+
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryFile.toString(),
+                ENABLE_DOWNLOADS to "false",
+                USE_KEYRING to "true",
+            ),
+            Environment(),
+            logger
+        )
+        val ccm = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            URL("https://test.coder.com"),
+            OS.LINUX,
+        )
+
+        ccm.login("super-secret-token", Features(keyringAuth = true))
+
+        coVerify(exactly = 1) { ui.showSnackbar(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `start workspace warns when keyring is enabled but CLI does not support it`() {
+        val binaryFile = tmpdir.resolve("start-warning-cli-${UUID.randomUUID()}")
+            .resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
+        val stdout = "start ok"
+        val script = if (getOS() == OS.WINDOWS) {
+            mkbin(
+                """
+                echo $stdout
+                """.trimIndent()
+            )
+        } else {
+            mkbin(
+                """
+                printf '$stdout\n'
+                """.trimIndent()
+            )
+        }
+        writeExecutable(binaryFile, script)
+
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryFile.toString(),
+                ENABLE_DOWNLOADS to "false",
+                USE_KEYRING to "true",
+            ),
+            Environment(),
+            logger
+        )
+        val ccm = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            URL("https://test.coder.com"),
+        )
+
+        assertEquals(stdout, ccm.startWorkspace("alice", "dev", Features()).trim())
+
+        coVerify(exactly = 1) { ui.showSnackbar(any(), any(), any(), any()) }
     }
 
     @Test

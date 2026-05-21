@@ -30,6 +30,7 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import java.io.EOFException
@@ -272,6 +273,7 @@ class CoderCLIManager(
      * on macOS and Windows.
      */
     fun login(token: String, feats: Features = features): String {
+        maybeWarnAboutKeyringFallback(feats)
         val args = mutableListOf(
             "login",
             "--use-token-as-session",
@@ -290,6 +292,7 @@ class CoderCLIManager(
      * Start a workspace. Throws if the command execution fails.
      */
     fun startWorkspace(workspaceOwner: String, workspaceName: String, feats: Features = features): String {
+        maybeWarnAboutKeyringFallback(feats)
         val args = mutableListOf(
             *workspaceAuthArgs(feats).toTypedArray(),
             "start",
@@ -610,4 +613,24 @@ class CoderCLIManager(
 
     private fun shouldUseKeyringAuth(feats: Features): Boolean =
         context.settingsStore.useKeyring && feats.keyringAuth && supportsKeyringStorage(currentOs)
+
+    private fun maybeWarnAboutKeyringFallback(feats: Features) {
+        if (!context.settingsStore.useKeyring || shouldUseKeyringAuth(feats)) {
+            return
+        }
+
+        val warning = when {
+            !supportsKeyringStorage(currentOs) ->
+                "OS keyring storage is enabled, but keyring-backed CLI auth is only supported on macOS and Windows. Falling back to file-based CLI storage."
+
+            !feats.keyringAuth ->
+                "OS keyring storage is enabled, but the installed Coder CLI does not support keyring-backed auth. Coder CLI 2.29.0 or newer is required. Falling back to file-based CLI storage."
+
+            else -> null
+        } ?: return
+
+        runBlocking {
+            context.logAndShowWarning("Keyring storage unavailable", warning)
+        }
+    }
 }
