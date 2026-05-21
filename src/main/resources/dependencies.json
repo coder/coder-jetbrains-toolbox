@@ -61,12 +61,5 @@
     "url": "http://www.slf4j.org",
     "license": "MIT License",
     "licenseUrl": "http://www.opensource.org/licenses/mit-license.php"
-  },
-  {
-    "name": "org.zeroturnaround:zt-exec",
-    "version": "1.12",
-    "url": "https://github.com/zeroturnaround/zt-exec",
-    "license": "The Apache Software License, Version 2.0",
-    "licenseUrl": "http://www.apache.org/licenses/LICENSE-2.0.txt"
   }
 ]

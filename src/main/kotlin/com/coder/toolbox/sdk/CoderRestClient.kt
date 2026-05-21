@@ -24,6 +24,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.util.ReloadableTlsContext
+import com.coder.toolbox.util.runProcess
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.hasRefreshToken
 import com.squareup.moshi.Moshi
@@ -32,7 +33,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import org.zeroturnaround.exec.ProcessExecutor
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -411,18 +411,17 @@ open class CoderRestClient(
         if (command.isNullOrBlank()) return@withContext false
 
         return@withContext try {
-            val result = ProcessExecutor()
-                .command(command.split(" ").toList())
-                .exitValueAny()
-                .readOutput(true)
-                .execute()
+            val result = runProcess(
+                command.split(" ").filter { it.isNotBlank() },
+                expectedExitCodes = Int.MIN_VALUE..Int.MAX_VALUE,
+            )
             if (tlsContext.reload()) {
                 context.logger.info("Certificate refresh successful. Reloading TLS and evicting pool.")
                 // forces OkHttp to close the broken HTTP/2 connection.
                 httpClient.connectionPool.evictAll()
                 return@withContext true
             } else {
-                context.logger.error("Refresh command failed with code ${result.exitValue}")
+                context.logger.error("Refresh command failed with code ${result.exitCode}")
                 false
             }
         } catch (ex: Exception) {

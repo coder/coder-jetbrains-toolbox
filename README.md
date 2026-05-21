@@ -456,10 +456,15 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 
 - `Data directory` directory where deployment-specific data such as session tokens and CLI binaries
   are stored. Each deployment gets a host-specific subdirectory (e.g. `coder.example.com`). Supports `~` and `$HOME`
-  expansion.
+  expansion. When keyring-backed CLI storage is enabled, the session token is no longer persisted in this directory.
 
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
   The environment variable CODER_URL will be available to the command process.
+
+- `Store CLI session in OS keyring when supported (CLI >= 2.29.0)` is an opt-in setting to force the CLI to use its
+  default credential backend on supported platforms instead of forcing a custom `--global-config` login path.
+  On macOS and Windows, that allows newer CLIs to persist the token in the OS keyring. On Linux, we continue to use
+  the plugin-managed `--global-config` flow even if this setting is enabled. Disabled by default.
 
 - `lastDeploymentURL` the last Coder deployment URL that Coder Toolbox successfully authenticated to.
 
@@ -489,6 +494,27 @@ Once the binary location is resolved:
    Any download error is reported to the user.
 3. If **downloads are disabled** and the CLI exists but its version does not match, the stale
    CLI is used with a warning. If no CLI exists at all, an error is raised.
+
+#### How keyring-backed CLI login works
+
+When **Store CLI session in OS keyring when supported (CLI >= 2.29.0)** is disabled, Toolbox logs the CLI in with a
+deployment-specific `--global-config` directory under the configured data directory. That keeps the CLI session
+isolated inside the plugin-managed config tree.
+
+When the setting is enabled, Toolbox still logs in with `CODER_SESSION_TOKEN` and `--use-token-as-session`, but it
+stops forcing `--global-config` for authenticated CLI commands and relies on deployment URL-based auth resolution
+instead. On supported platforms, this lets newer Coder CLIs use their default OS-backed storage instead of the
+plugin-managed config directory.
+
+This matters for two reasons:
+
+- the CLI persists the same token that Toolbox already uses for REST API calls, instead of minting a separate token
+- Toolbox can move toward managing one shared credential consistently across REST and CLI flows, including future
+  revoke/logout behavior
+
+Keyring-backed storage requires Coder CLI `2.29.0` or newer and is only supported on macOS and Windows. The setting is
+opt-in and defaults to disabled. On Linux, enabling the setting does not switch the
+CLI to keyring-backed auth; Toolbox keeps using the deployment-specific `--global-config` directory.
 
 ### TLS settings
 
@@ -538,6 +564,10 @@ support, may trigger regeneration of SSH configurations.
 
 > [!IMPORTANT]
 > Token authentication is required when TLS certificates are not configured.
+
+When the plugin logs the Coder CLI in with a session token, it passes that token through the
+`CODER_SESSION_TOKEN` environment variable instead of `--token`. This reduces the chances of the token showing up in
+process listings, shell history, or command-line audit logs.
 
 ## Releasing
 

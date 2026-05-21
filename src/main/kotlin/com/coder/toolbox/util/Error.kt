@@ -2,7 +2,6 @@ package com.coder.toolbox.util
 
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.sdk.ex.APIResponseException
-import org.zeroturnaround.exec.InvalidExitValueException
 import java.net.ConnectException
 import java.net.UnknownHostException
 
@@ -17,7 +16,7 @@ fun Throwable.prettify(): String {
         is FileSystemException -> fileSystemFailed(this.file.toString())
         is java.nio.file.FileSystemException -> fileSystemFailed(this.file)
         is UnknownHostException -> "Unknown host $reason"
-        is InvalidExitValueException -> "CLI exited unexpectedly with ${this.exitValue}."
+        is ProcessExitException -> "CLI exited unexpectedly with ${this.result.exitCode}."
         is APIResponseException -> {
             if (this.isUnauthorized) {
                 "Authorization failed"
