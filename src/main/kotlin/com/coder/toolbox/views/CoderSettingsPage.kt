@@ -5,6 +5,8 @@ import com.coder.toolbox.settings.HttpLoggingVerbosity.BASIC
 import com.coder.toolbox.settings.HttpLoggingVerbosity.BODY
 import com.coder.toolbox.settings.HttpLoggingVerbosity.HEADERS
 import com.coder.toolbox.settings.HttpLoggingVerbosity.NONE
+import com.coder.toolbox.util.OS
+import com.coder.toolbox.util.getOS
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField
@@ -35,6 +37,7 @@ class CoderSettingsPage(
 ) :
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
     private val settings = context.settingsStore.readOnly()
+    private val shouldShowKeyringField = getOS() == OS.MAC || getOS() == OS.WINDOWS
 
     private val preferOAuth2IfAvailableField = CheckboxField(
         context.settingsStore.preferOAuth2IfAvailable,
@@ -144,9 +147,9 @@ class CoderSettingsPage(
             SectionField(
                 "Security & Authentication",
                 false,
-                listOf(
+                listOfNotNull(
                     preferOAuth2IfAvailableField,
-                    useKeyringField,
+                    useKeyringField.takeIf { shouldShowKeyringField },
                     headerCommandField,
                     tlsCertPathField,
                     tlsKeyPathField,
