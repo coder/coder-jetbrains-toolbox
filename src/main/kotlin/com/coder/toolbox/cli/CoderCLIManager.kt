@@ -555,8 +555,9 @@ class CoderCLIManager(
         }
 
         val stdout = runProcess(command, environment = processEnv).stdout
+        val sanitizedArgs = listOf(*args).joinToString(" ").sanitizeSecrets()
         val sanitizedStdout = stdout.sanitizeSecrets()
-        context.logger.info("`$localBinaryPath ${listOf(*args).joinToString(" ")}`: $sanitizedStdout")
+        context.logger.info("`$localBinaryPath $sanitizedArgs`: $sanitizedStdout")
         return stdout
     }
 

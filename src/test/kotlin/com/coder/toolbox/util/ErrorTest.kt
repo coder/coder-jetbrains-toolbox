@@ -11,6 +11,7 @@ internal class ErrorTest {
             env={CODER_SESSION_TOKEN=super-secret-token}
             header=Coder-Session-Token: super-secret-token
             argv=--token super-secret-token
+            argv=--token=super-secret-token
             uri=https://coder.example.com?token=super-secret-token
         """.trimIndent()
 
@@ -19,6 +20,7 @@ internal class ErrorTest {
         assertContains(sanitized, "CODER_SESSION_TOKEN=<redacted>")
         assertContains(sanitized, "Coder-Session-Token: <redacted>")
         assertContains(sanitized, "--token <redacted>")
+        assertContains(sanitized, "--token=<redacted>")
         assertContains(sanitized, "?token=<redacted>")
         assertFalse(sanitized.contains("super-secret-token"))
     }
