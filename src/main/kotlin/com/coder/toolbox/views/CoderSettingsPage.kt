@@ -1,6 +1,7 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.cli.Features
 import com.coder.toolbox.settings.HttpLoggingVerbosity.BASIC
 import com.coder.toolbox.settings.HttpLoggingVerbosity.BODY
 import com.coder.toolbox.settings.HttpLoggingVerbosity.HEADERS
@@ -33,6 +34,7 @@ import kotlinx.coroutines.launch
 class CoderSettingsPage(
     private val context: CoderToolboxContext,
     triggerSshConfig: Channel<Boolean>,
+    private val currentFeatures: () -> Features?,
     private val onSettingsClosed: () -> Unit
 ) :
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
@@ -207,7 +209,13 @@ class CoderSettingsPage(
                     val sshWildcardEnabled = enableSshWildCardConfig.checkedState.value
                     val sshTimeout = sshConnectionTimeoutField.contentState.value.toInt()
                     val useKeyring = useKeyringField.checkedState.value
-
+                    val feats = currentFeatures()
+                    if (useKeyring && feats != null && !feats.keyringAuth) {
+                        context.logAndShowWarning(
+                            "Keyring storage unavailable",
+                            "OS keyring storage is enabled, but the installed Coder CLI does not support keyring-backed auth. Coder CLI 2.29.0 or newer is required. Falling back to file-based CLI storage."
+                        )
+                    }
                     val sshSettingsChanged = sshWildcardEnabled != settings.isSshWildcardConfigEnabled ||
                             sshTimeout != settings.sshConnectionTimeoutInSeconds ||
                             useKeyring != settings.useKeyring
