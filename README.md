@@ -509,8 +509,7 @@ plugin-managed config directory.
 This matters for two reasons:
 
 - the CLI persists the same token that Toolbox already uses for REST API calls, instead of minting a separate token
-- Toolbox can move toward managing one shared credential consistently across REST and CLI flows, including future
-  revoke/logout behavior
+- REST and CLI flows share one credential, so revoking or rotating the token affects both consistently
 
 Keyring-backed storage requires Coder CLI `2.29.0` or newer and is only supported on macOS and Windows. The setting is
 opt-in and defaults to disabled. On Linux, enabling the setting does not switch the
