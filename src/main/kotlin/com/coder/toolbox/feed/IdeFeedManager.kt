@@ -40,7 +40,7 @@ class IdeFeedManager(
     private val feedService: JetBrainsFeedService by lazy {
         if (feedService != null) return@lazy feedService
 
-        val okHttpClient = CoderHttpClientBuilder.default(context)
+        val okHttpClient = CoderHttpClientBuilder.defaultWithoutTlsAlternateHostname(context)
 
         val retrofit = Retrofit.Builder()
             .baseUrl("https://data.services.jetbrains.com/")

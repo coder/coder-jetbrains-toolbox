@@ -3,6 +3,7 @@ package com.coder.toolbox.sdk
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.interceptors.Interceptors
+import com.coder.toolbox.settings.ReadOnlyTLSSettings
 import com.coder.toolbox.util.CoderHostnameVerifier
 import com.coder.toolbox.util.ReloadableTlsContext
 import com.jetbrains.toolbox.api.remoteDev.connection.ProxyAuth
@@ -14,7 +15,8 @@ object CoderHttpClientBuilder {
     fun build(
         context: CoderToolboxContext,
         interceptors: List<Interceptor>,
-        tlsContext: ReloadableTlsContext
+        tlsContext: ReloadableTlsContext,
+        tlsAlternateHostname: String? = context.settingsStore.tls.altHostname
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
 
@@ -41,7 +43,7 @@ object CoderHttpClientBuilder {
         }
 
         builder.sslSocketFactory(tlsContext.sslSocketFactory, tlsContext.trustManager)
-            .hostnameVerifier(CoderHostnameVerifier(context.settingsStore.tls.altHostname))
+            .hostnameVerifier(CoderHostnameVerifier(tlsAlternateHostname))
             .retryOnConnectionFailure(true)
 
         interceptors.forEach { interceptor ->
@@ -61,5 +63,25 @@ object CoderHttpClientBuilder {
             interceptors,
             ReloadableTlsContext(context.settingsStore.readOnly().tls)
         )
+    }
+
+    fun defaultWithoutTlsAlternateHostname(context: CoderToolboxContext): OkHttpClient {
+        val interceptors = buildList {
+            add((Interceptors.userAgent(PluginManager.pluginInfo.version)))
+            add(Interceptors.logging(context))
+        }
+        return build(
+            context,
+            interceptors,
+            ReloadableTlsContext(context.settingsStore.readOnly().tls.withoutAlternateHostname()),
+            tlsAlternateHostname = null
+        )
+    }
+
+    private fun ReadOnlyTLSSettings.withoutAlternateHostname(): ReadOnlyTLSSettings {
+        val settings = this
+        return object : ReadOnlyTLSSettings by settings {
+            override val altHostname: String? = null
+        }
     }
 }
