@@ -1,11 +1,14 @@
 package com.coder.toolbox.feed
 
 import com.coder.toolbox.CoderToolboxContext
-import com.coder.toolbox.sdk.CoderHttpClientBuilder
+import com.coder.toolbox.plugin.PluginManager
+import com.coder.toolbox.sdk.interceptors.Interceptors
+import com.coder.toolbox.sdk.proxy.applyProxySettings
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.nio.file.Path
@@ -40,7 +43,12 @@ class IdeFeedManager(
     private val feedService: JetBrainsFeedService by lazy {
         if (feedService != null) return@lazy feedService
 
-        val okHttpClient = CoderHttpClientBuilder.defaultWithoutTlsAlternateHostname(context)
+        val okHttpClient = OkHttpClient.Builder()
+            .applyProxySettings(context)
+            .addInterceptor(Interceptors.userAgent(PluginManager.pluginInfo.version))
+            .addInterceptor(Interceptors.logging(context))
+            .retryOnConnectionFailure(true)
+            .build()
 
         val retrofit = Retrofit.Builder()
             .baseUrl("https://data.services.jetbrains.com/")
