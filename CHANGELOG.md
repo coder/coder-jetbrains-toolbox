@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- skip the Coder TLS alternate hostname when fetching IDE metadata from JetBrains
+
 ## 0.9.0 - 2026-05-14
 
 ### Added
