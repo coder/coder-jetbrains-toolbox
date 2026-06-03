@@ -4,8 +4,6 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.prettify
 import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
-import java.util.UUID
 
 sealed class ErrorReporter {
 
@@ -47,15 +45,7 @@ private class ErrorReporterImpl(
 
     private fun showError(ex: Throwable) {
         val textError = ex.prettify()
-
-        context.cs.launch {
-            context.ui.showSnackbar(
-                UUID.randomUUID().toString(),
-                context.i18n.ptrl("Error encountered while setting up Coder"),
-                context.i18n.pnotr(textError),
-                context.i18n.ptrl("Dismiss")
-            )
-        }
+        context.showSnackbar("Error encountered while setting up Coder", textError)
     }
 
     override fun flush() {
