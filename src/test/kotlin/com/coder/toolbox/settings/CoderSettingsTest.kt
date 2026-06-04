@@ -11,6 +11,7 @@ import com.coder.toolbox.store.TLS_ALTERNATE_HOSTNAME
 import com.coder.toolbox.store.TLS_CA_PATH
 import com.coder.toolbox.store.TLS_CERT_PATH
 import com.coder.toolbox.store.TLS_KEY_PATH
+import com.coder.toolbox.store.USE_KEYRING
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.pluginTestSettingsStore
@@ -275,6 +276,7 @@ internal class CoderSettingsTest {
         val settings = CoderSettingsStore(pluginTestSettingsStore(), Environment(), logger)
         assertEquals(true, settings.readOnly().enableDownloads)
         assertEquals(null, settings.readOnly().headerCommand)
+        assertEquals(false, settings.readOnly().useKeyring)
         assertEquals(null, settings.readOnly().tls.certPath)
         assertEquals(null, settings.readOnly().tls.keyPath)
         assertEquals(null, settings.readOnly().tls.caPath)
@@ -290,6 +292,7 @@ internal class CoderSettingsTest {
                 pluginTestSettingsStore(
                     ENABLE_DOWNLOADS to false.toString(),
                     HEADER_COMMAND to "test header",
+                    USE_KEYRING to true.toString(),
                     TLS_CERT_PATH to "tls cert path",
                     TLS_KEY_PATH to "tls key path",
                     TLS_CA_PATH to "tls ca path",
@@ -303,6 +306,7 @@ internal class CoderSettingsTest {
 
         assertEquals(false, settings.readOnly().enableDownloads)
         assertEquals("test header", settings.readOnly().headerCommand)
+        assertEquals(true, settings.readOnly().useKeyring)
         assertEquals("tls cert path", settings.readOnly().tls.certPath)
         assertEquals("tls key path", settings.readOnly().tls.keyPath)
         assertEquals("tls ca path", settings.readOnly().tls.caPath)

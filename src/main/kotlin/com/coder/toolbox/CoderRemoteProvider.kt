@@ -83,7 +83,7 @@ class CoderRemoteProvider(
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
     private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
-    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig) {
+    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig, { cli?.features }) {
         client?.let { restClient ->
             if (context.settingsStore.useAppNameAsTitle) {
                 coderHeaderPage.setTitle(context.i18n.pnotr(restClient.appName))

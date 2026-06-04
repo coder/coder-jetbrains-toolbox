@@ -1,10 +1,13 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.cli.Features
 import com.coder.toolbox.settings.HttpLoggingVerbosity.BASIC
 import com.coder.toolbox.settings.HttpLoggingVerbosity.BODY
 import com.coder.toolbox.settings.HttpLoggingVerbosity.HEADERS
 import com.coder.toolbox.settings.HttpLoggingVerbosity.NONE
+import com.coder.toolbox.util.OS
+import com.coder.toolbox.util.getOS
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField
@@ -31,10 +34,12 @@ import kotlinx.coroutines.launch
 class CoderSettingsPage(
     private val context: CoderToolboxContext,
     triggerSshConfig: Channel<Boolean>,
+    private val currentFeatures: () -> Features?,
     private val onSettingsClosed: () -> Unit
 ) :
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
     private val settings = context.settingsStore.readOnly()
+    private val shouldShowKeyringField = getOS() == OS.MAC || getOS() == OS.WINDOWS
 
     private val preferOAuth2IfAvailableField = CheckboxField(
         context.settingsStore.preferOAuth2IfAvailable,
@@ -76,6 +81,10 @@ class CoderSettingsPage(
         context.i18n.ptrl("Header command"),
         settings.headerCommand ?: "",
         TextType.General
+    )
+    private val useKeyringField = CheckboxField(
+        settings.useKeyring,
+        context.i18n.ptrl("Store CLI session in OS keyring when supported (CLI >= 2.29.0)")
     )
 
     private val tlsCertPathField = TextField(
@@ -140,8 +149,9 @@ class CoderSettingsPage(
             SectionField(
                 "Security & Authentication",
                 false,
-                listOf(
+                listOfNotNull(
                     preferOAuth2IfAvailableField,
+                    useKeyringField.takeIf { shouldShowKeyringField },
                     headerCommandField,
                     tlsCertPathField,
                     tlsKeyPathField,
@@ -188,6 +198,7 @@ class CoderSettingsPage(
                     updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
                     updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
                     updateHeaderCommand(headerCommandField.contentState.value)
+                    updateUseKeyring(useKeyringField.checkedState.value)
                     updatePreferAuthViaOAuth2(preferOAuth2IfAvailableField.checkedState.value)
                     updateCertPath(tlsCertPathField.contentState.value)
                     updateKeyPath(tlsKeyPathField.contentState.value)
@@ -197,9 +208,17 @@ class CoderSettingsPage(
 
                     val sshWildcardEnabled = enableSshWildCardConfig.checkedState.value
                     val sshTimeout = sshConnectionTimeoutField.contentState.value.toInt()
-
+                    val useKeyring = useKeyringField.checkedState.value
+                    val feats = currentFeatures()
+                    if (useKeyring && feats != null && !feats.keyringAuth) {
+                        context.logAndShowWarning(
+                            "Keyring storage unavailable",
+                            "OS keyring storage is enabled, but the installed Coder CLI does not support keyring-backed auth. Coder CLI 2.29.0 or newer is required. Falling back to file-based CLI storage."
+                        )
+                    }
                     val sshSettingsChanged = sshWildcardEnabled != settings.isSshWildcardConfigEnabled ||
-                            sshTimeout != settings.sshConnectionTimeoutInSeconds
+                            sshTimeout != settings.sshConnectionTimeoutInSeconds ||
+                            useKeyring != settings.useKeyring
 
                     updateEnableSshWildcardConfig(sshWildcardEnabled)
                     updateSshConnectionTimeoutInSeconds(sshTimeout)
@@ -242,6 +261,10 @@ class CoderSettingsPage(
 
         headerCommandField.contentState.update {
             settings.headerCommand ?: ""
+        }
+
+        useKeyringField.checkedState.update {
+            settings.useKeyring
         }
 
         preferOAuth2IfAvailableField.checkedState.update {
