@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- snackbar dismissal no longer cancels the calling coroutine, so error popups during URI handling don't leave the page
+  stuck in a busy state
+
 ### Changed
 
 - skip the Coder TLS alternate hostname when fetching IDE metadata from JetBrains

@@ -13,7 +13,10 @@ import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import java.net.URL
 import java.util.UUID
 
@@ -49,44 +52,53 @@ data class CoderToolboxContext(
                 ?: settingsStore.defaultURL.toURL()
         }
 
-    suspend fun logAndShowError(title: String, error: String) {
+    fun logAndShowError(title: String, error: String) {
         logger.error(error)
-        ui.showSnackbar(
-            UUID.randomUUID().toString(),
-            i18n.pnotr(title),
-            i18n.pnotr(error),
-            i18n.ptrl("OK")
-        )
+        showSnackbar(title, error)
     }
 
-    suspend fun logAndShowError(title: String, error: String, exception: Exception) {
+    fun logAndShowError(title: String, error: String, exception: Exception) {
         logger.error(exception, error)
-        ui.showSnackbar(
-            UUID.randomUUID().toString(),
-            i18n.pnotr(title),
-            i18n.pnotr(error),
-            i18n.ptrl("OK")
-        )
+        showSnackbar(title, error)
     }
 
-    suspend fun logAndShowWarning(title: String, warning: String) {
+    fun logAndShowWarning(title: String, warning: String) {
         logger.warn(warning)
-        ui.showSnackbar(
-            UUID.randomUUID().toString(),
-            i18n.pnotr(title),
-            i18n.pnotr(warning),
-            i18n.ptrl("OK")
-        )
+        showSnackbar(title, warning)
     }
 
-    suspend fun logAndShowInfo(title: String, info: String) {
+    fun logAndShowInfo(title: String, info: String) {
         logger.info(info)
-        ui.showSnackbar(
-            UUID.randomUUID().toString(),
-            i18n.pnotr(title),
-            i18n.pnotr(info),
-            i18n.ptrl("OK")
-        )
+        showSnackbar(title, info)
+    }
+
+    /**
+     * Displays a snackbar on a child of the plugin coroutine scope rather than on the
+     * caller's coroutine, without waiting for it.
+     *
+     * Toolbox keeps the [ToolboxUi.showSnackbar] coroutine suspended for the entire lifetime
+     * of the snackbar and cancels it (rather than resuming it) when the snackbar goes away.
+     * Calling it directly on the caller's coroutine would therefore either block the caller
+     * until the snackbar is gone or, on dismissal, abruptly cancel the caller (e.g. the URI
+     * handler) - skipping any code that runs after the error is shown, such as resetting the
+     * busy state. Launching it fire-and-forget on the plugin scope lets the caller continue
+     * immediately while the snackbar lives independently.
+     */
+    fun showSnackbar(title: String, text: String) {
+        cs.launch(CoroutineName("snackbar")) {
+            try {
+                ui.showSnackbar(
+                    UUID.randomUUID().toString(),
+                    i18n.pnotr(title),
+                    i18n.pnotr(text),
+                    i18n.ptrl("OK")
+                )
+            } catch (_: CancellationException) {
+                // Expected when the snackbar is dismissed or the plugin scope shuts down.
+            } catch (ex: Exception) {
+                logger.error(ex, "Failed to display snackbar with title '$title'")
+            }
+        }
     }
 
     fun popupPluginMainPage() {

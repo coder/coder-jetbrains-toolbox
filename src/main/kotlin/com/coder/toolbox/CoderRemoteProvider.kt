@@ -360,15 +360,18 @@ class CoderRemoteProvider(
             context.logger.info("Handling $uri...")
             val newUrl = resolveDeploymentUrl(params)?.toURL() ?: return
             val newToken = if (context.settingsStore.requiresMTlsAuth) null else resolveToken(params) ?: return
-            coderHeaderPage.isBusy.update { true }
             if (sameUrl(newUrl, client?.url)) {
-                if (context.settingsStore.requiresTokenAuth) {
-                    newToken?.let {
-                        refreshSession(newUrl, it)
+                coderHeaderPage.isBusy.update { true }
+                try {
+                    if (context.settingsStore.requiresTokenAuth) {
+                        newToken?.let {
+                            refreshSession(newUrl, it)
+                        }
                     }
+                    linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
+                } finally {
+                    coderHeaderPage.isBusy.update { false }
                 }
-                linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
-                coderHeaderPage.isBusy.update { false }
             } else {
                 // Different URL - we need a new connection. Tear down any
                 // in-flight wizard, install a fresh one on the router, and let
@@ -378,10 +381,7 @@ class CoderRemoteProvider(
                     context, settingsPage, visibilityState,
                     url = newUrl,
                     credentials = credentials,
-                    onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl))
-                        .andThen { _, _ ->
-                            coderHeaderPage.isBusy.update { false }
-                        },
+                    onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl)),
                     onTokenRefreshed = ::onTokenRefreshed,
                 )
                 router.navigate(wizard)
@@ -397,7 +397,6 @@ class CoderRemoteProvider(
                 "Error encountered while handling Coder URI",
                 textError ?: ""
             )
-            coderHeaderPage.isBusy.update { false }
         } finally {
             firstRun = false
         }
@@ -654,6 +653,7 @@ class CoderRemoteProvider(
         deploymentUrl: URL,
     ): SuspendBiConsumer<CoderRestClient, CoderCLIManager> = SuspendBiConsumer { client, cli ->
         context.cs.launch(CoroutineName("Deferred Link Handler")) {
+            coderHeaderPage.isBusy.update { true }
             try {
                 linkHandler.handle(params, deploymentUrl, client, cli)
             } catch (ex: Exception) {
@@ -661,6 +661,8 @@ class CoderRemoteProvider(
                     "Error handling deferred link",
                     ex.message ?: ""
                 )
+            } finally {
+                coderHeaderPage.isBusy.update { false }
             }
         }
     }
