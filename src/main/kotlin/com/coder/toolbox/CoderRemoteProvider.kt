@@ -397,7 +397,6 @@ class CoderRemoteProvider(
                 "Error encountered while handling Coder URI",
                 textError ?: ""
             )
-            coderHeaderPage.isBusy.update { false }
         } finally {
             firstRun = false
         }
