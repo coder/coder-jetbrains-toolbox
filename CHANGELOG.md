@@ -10,6 +10,7 @@
 ### Changed
 
 - skip the Coder TLS alternate hostname when fetching IDE metadata from JetBrains
+- notifications are now persistent popups instead of snackbars, so they survive a hidden window and no longer get dropped
 
 ## 0.9.0 - 2026-05-14
 

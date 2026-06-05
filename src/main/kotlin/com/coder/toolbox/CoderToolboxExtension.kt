@@ -3,7 +3,6 @@ package com.coder.toolbox
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
-import com.coder.toolbox.util.ConnectionMonitoringService
 import com.jetbrains.toolbox.api.core.PluginSecretStore
 import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.ServiceLocator
@@ -45,12 +44,6 @@ class CoderToolboxExtension : RemoteDevExtension {
                 CoderSettingsStore(serviceLocator.getService<PluginSettingsStore>(), Environment(), logger),
                 CoderSecretsStore(serviceLocator.getService<PluginSecretStore>()),
                 serviceLocator.getService<ToolboxProxySettings>(),
-                ConnectionMonitoringService(
-                    cs,
-                    ui,
-                    logger,
-                    i18n
-                )
             )
         )
     }

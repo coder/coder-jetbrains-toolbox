@@ -12,7 +12,6 @@ import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.WizardModel
-import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.LabelStyleType
@@ -20,7 +19,6 @@ import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.net.MalformedURLException
@@ -40,11 +38,8 @@ private const val OAUTH2_SCOPE: String =
 class DeploymentUrlStep(
     private val context: CoderToolboxContext,
     private val model: WizardModel,
-    visibilityState: StateFlow<ProviderVisibilityState>,
 ) :
     WizardStep {
-    private val errorReporter = ErrorReporter.create(context, visibilityState, this.javaClass)
-
     private val urlField = TextField(context.i18n.ptrl("Deployment URL"), "", TextType.General)
     private val emptyLine = LabelField(context.i18n.pnotr(""), LabelStyleType.Normal)
 
@@ -82,7 +77,6 @@ class DeploymentUrlStep(
         signatureFallbackStrategyField.checkedState.update {
             context.settingsStore.fallbackOnCoderForSignatures.isAllowed()
         }
-        errorReporter.flush()
     }
 
     override suspend fun onNext(): Boolean {
@@ -96,7 +90,7 @@ class DeploymentUrlStep(
         try {
             model.url = validateRawUrl(rawUrl)
         } catch (e: MalformedURLException) {
-            errorReporter.report("URL is invalid", e)
+            context.logAndShowError("Error encountered while setting up Coder", "URL is invalid", e)
             return false
         }
 
@@ -110,7 +104,11 @@ class DeploymentUrlStep(
                 model.oauthSession = handleOAuth2(rawUrl)
                 return false
             } catch (e: Exception) {
-                errorReporter.report("Failed to authenticate with OAuth2: ${e.message}", e)
+                context.logAndShowError(
+                    "Error encountered while setting up Coder",
+                    "Failed to authenticate with OAuth2: ${e.message}",
+                    e
+                )
                 return false
             }
         }

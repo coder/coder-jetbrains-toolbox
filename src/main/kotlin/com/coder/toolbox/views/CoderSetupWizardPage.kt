@@ -8,12 +8,10 @@ import com.coder.toolbox.views.state.Credentials
 import com.coder.toolbox.views.state.PendingOAuthConnection
 import com.coder.toolbox.views.state.WizardModel
 import com.coder.toolbox.views.state.WizardStep
-import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.net.URL
@@ -21,7 +19,6 @@ import java.net.URL
 class CoderSetupWizardPage private constructor(
     private val context: CoderToolboxContext,
     private val settingsPage: CoderSettingsPage,
-    visibilityState: StateFlow<ProviderVisibilityState>,
     private var autoLogin: Boolean = false,
     onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
     onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
@@ -31,17 +28,15 @@ class CoderSetupWizardPage private constructor(
         context.ui.showUiPage(settingsPage)
     }
 
-    private val deploymentUrlStep = DeploymentUrlStep(context, model, visibilityState)
+    private val deploymentUrlStep = DeploymentUrlStep(context, model)
     private val tokenStep = TokenStep(context, model)
     private val connectStep = ConnectStep(
         context,
         model,
-        visibilityState,
         navigateBack = this::navigateBackFromConnect,
         onConnect = onConnect,
         onTokenRefreshed = onTokenRefreshed
     )
-    private val errorReporter = ErrorReporter.create(context, visibilityState, this.javaClass)
     private var stateCollectJob: Job? = null
 
     /**
@@ -58,7 +53,6 @@ class CoderSetupWizardPage private constructor(
                 displaySteps()
             }
         }
-        errorReporter.flush()
     }
 
     private fun displaySteps() {
@@ -153,21 +147,14 @@ class CoderSetupWizardPage private constructor(
         stateCollectJob?.cancel()
     }
 
-    /**
-     * Show an error as a popup on this page.
-     */
-    fun notify(message: String, ex: Throwable) = errorReporter.report(message, ex)
-
-
     companion object {
         fun deploymentUrlStep(
             context: CoderToolboxContext,
             settingsPage: CoderSettingsPage,
-            visibilityState: StateFlow<ProviderVisibilityState>,
             onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
             onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
         ): CoderSetupWizardPage = CoderSetupWizardPage(
-            context, settingsPage, visibilityState,
+            context, settingsPage,
             onConnect = onConnect,
             onTokenRefreshed = onTokenRefreshed,
         ).apply { model.goToFirst() }
@@ -175,13 +162,12 @@ class CoderSetupWizardPage private constructor(
         fun connectStep(
             context: CoderToolboxContext,
             settingsPage: CoderSettingsPage,
-            visibilityState: StateFlow<ProviderVisibilityState>,
             url: URL,
             credentials: Credentials,
             onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
             onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
         ): CoderSetupWizardPage = CoderSetupWizardPage(
-            context, settingsPage, visibilityState,
+            context, settingsPage,
             autoLogin = true,
             onConnect = onConnect,
             onTokenRefreshed = onTokenRefreshed,

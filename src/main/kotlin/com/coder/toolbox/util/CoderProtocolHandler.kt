@@ -17,7 +17,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.withTimeout
 import java.net.URL
-import java.util.UUID
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -273,8 +272,7 @@ open class CoderProtocolHandler(
             context.logger.info("Successfully installed $selectedIde on $environmentId.")
             return selectedIde
         } else {
-            context.ui.showSnackbar(
-                UUID.randomUUID().toString(),
+            context.ui.showInfoPopup(
                 context.i18n.pnotr("$selectedIde could not be installed"),
                 context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
                 context.i18n.ptrl("OK")
