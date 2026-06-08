@@ -17,8 +17,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.net.URL
 
 @Suppress("UnstableApiUsage")
@@ -37,13 +35,6 @@ data class CoderToolboxContext(
     val proxySettings: ToolboxProxySettings,
 ) {
     val connectionMonitoringService: ConnectionMonitoringService = ConnectionMonitoringService(this)
-
-    /**
-     * Serializes popups so they are shown one after another. [ToolboxUi.showInfoPopup] is
-     * backed by a single dialog slot, so launching two popups concurrently would cause the
-     * second to replace the first before the user ever sees it.
-     */
-    private val popupMutex = Mutex()
 
     /**
      * Try to find a URL.
@@ -98,13 +89,11 @@ data class CoderToolboxContext(
     fun showInfoPopup(title: String, text: String) {
         cs.launch(CoroutineName("popup")) {
             try {
-                popupMutex.withLock {
-                    ui.showInfoPopup(
-                        i18n.pnotr(title),
-                        i18n.pnotr(text),
-                        i18n.ptrl("OK")
-                    )
-                }
+                ui.showInfoPopup(
+                    i18n.pnotr(title),
+                    i18n.pnotr(text),
+                    i18n.ptrl("OK")
+                )
             } catch (_: CancellationException) {
                 // Expected when the plugin scope shuts down while the popup is open.
             } catch (ex: Exception) {

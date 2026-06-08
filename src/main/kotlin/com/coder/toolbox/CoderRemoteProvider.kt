@@ -155,7 +155,7 @@ class CoderRemoteProvider(
                             context.envPageManager.showPluginEnvironmentsPage()
                             context.logAndShowError(
                                 "Error encountered while setting up Coder",
-                                "workspace polling error encountered",
+                                "Your Coder session has expired. Please re-authenticate and try again.",
                                 ex
                             )
                             break
