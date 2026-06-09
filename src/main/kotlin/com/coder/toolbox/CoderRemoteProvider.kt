@@ -92,12 +92,6 @@ class CoderRemoteProvider(
             }
         }
     }
-    private val visibilityState = MutableStateFlow(
-        ProviderVisibilityState(
-            applicationVisible = false,
-            providerVisible = false
-        )
-    )
     private val linkHandler = CoderProtocolHandler(context, IdeFeedManager(context))
 
     override val loadingEnvironmentsDescription: LocalizableString = context.i18n.ptrl("Loading workspaces...")
@@ -108,8 +102,6 @@ class CoderRemoteProvider(
         logout()
         context.envPageManager.showPluginEnvironmentsPage()
     }
-
-    private val errorBuffer = mutableListOf<Throwable>()
 
     private val router = PageRouter()
 
@@ -158,13 +150,17 @@ class CoderRemoteProvider(
                     if (elapsed > POLL_INTERVAL * 2) {
                         context.logger.info("wake-up from an OS sleep was detected")
                     } else {
-                        context.logger.error(ex, "workspace polling error encountered")
                         if ((ex is APIResponseException && ex.isTokenExpired) || ex is OAuthTokenResponseException) {
                             close()
                             context.envPageManager.showPluginEnvironmentsPage()
-                            errorBuffer.add(ex)
+                            context.logAndShowError(
+                                "Error encountered while setting up Coder",
+                                "Your Coder session has expired. Please re-authenticate and try again.",
+                                ex
+                            )
                             break
                         }
+                        context.logger.error(ex, "workspace polling error encountered")
                     }
                 }
 
@@ -331,9 +327,6 @@ class CoderRemoteProvider(
      *        and a manual refresh button.
      */
     override fun setVisible(visibility: ProviderVisibilityState) {
-        visibilityState.update {
-            visibility
-        }
         if (visibility.providerVisible) {
             context.cs.launch(CoroutineName("Notify Plugin Visibility")) {
                 triggerProviderVisible.send(true)
@@ -378,7 +371,7 @@ class CoderRemoteProvider(
                 // showPluginEnvironmentsPage() pull it through getOverrideUiPage.
                 val credentials = newToken?.let { Credentials.Token(it) } ?: Credentials.MTls
                 val wizard = CoderSetupWizardPage.connectStep(
-                    context, settingsPage, visibilityState,
+                    context, settingsPage,
                     url = newUrl,
                     credentials = credentials,
                     onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl)),
@@ -458,7 +451,7 @@ class CoderRemoteProvider(
             val oauthSessionContext = pendingOAuthConnection.session
             val tokenResponse = OAuth2Client(context).exchangeCode(oauthSessionContext, code)
             val wizard = CoderSetupWizardPage.connectStep(
-                context, settingsPage, visibilityState,
+                context, settingsPage,
                 url = pendingOAuthConnection.url,
                 credentials = Credentials.OAuth(oauthSessionContext.copy(tokenResponse = tokenResponse)),
                 onConnect = onConnect,
@@ -555,36 +548,30 @@ class CoderRemoteProvider(
             try {
                 val url = context.deploymentUrl
                 val credentials = autoSetupCredentials(url) ?: return CoderSetupWizardPage.deploymentUrlStep(
-                    context, settingsPage, visibilityState,
+                    context, settingsPage,
                     onConnect = onConnect,
                     onTokenRefreshed = ::onTokenRefreshed,
                 )
                 return CoderSetupWizardPage.connectStep(
-                    context, settingsPage, visibilityState,
+                    context, settingsPage,
                     url = url,
                     credentials = credentials,
                     onConnect = onConnect,
                     onTokenRefreshed = ::onTokenRefreshed,
                 )
             } catch (ex: Exception) {
-                errorBuffer.add(ex)
+                context.logAndShowError("Error encountered while setting up Coder", "Failed to set up Coder", ex)
             } finally {
                 firstRun = false
             }
         }
 
         // Login flow.
-        val setupWizardPage = CoderSetupWizardPage.deploymentUrlStep(
-            context, settingsPage, visibilityState,
+        return CoderSetupWizardPage.deploymentUrlStep(
+            context, settingsPage,
             onConnect = onConnect,
             onTokenRefreshed = ::onTokenRefreshed,
         )
-        // We might have navigated here due to a polling error.
-        errorBuffer.forEach {
-            setupWizardPage.notify("Error encountered", it)
-        }
-        errorBuffer.clear()
-        return setupWizardPage
     }
 
     /**

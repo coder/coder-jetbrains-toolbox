@@ -9,7 +9,6 @@ import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.DATA_DIRECTORY
 import com.coder.toolbox.store.DISABLE_SIGNATURE_VALIDATION
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
-import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.IgnoreOnWindows
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
@@ -79,7 +78,6 @@ internal class EnsureCLITest {
             override fun addProxyChangeListener(listener: Runnable) {}
             override fun removeProxyChangeListener(listener: Runnable) {}
         },
-        mockk<ConnectionMonitoringService>(),
     )
 
     @BeforeTest

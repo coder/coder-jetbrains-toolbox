@@ -18,7 +18,6 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.net.URL
-import java.util.UUID
 
 @Suppress("UnstableApiUsage")
 data class CoderToolboxContext(
@@ -34,8 +33,9 @@ data class CoderToolboxContext(
     val settingsStore: CoderSettingsStore,
     val secrets: CoderSecretsStore,
     val proxySettings: ToolboxProxySettings,
-    val connectionMonitoringService: ConnectionMonitoringService,
 ) {
+    val connectionMonitoringService: ConnectionMonitoringService = ConnectionMonitoringService(this)
+
     /**
      * Try to find a URL.
      *
@@ -54,49 +54,50 @@ data class CoderToolboxContext(
 
     fun logAndShowError(title: String, error: String) {
         logger.error(error)
-        showSnackbar(title, error)
+        showInfoPopup(title, error)
     }
 
     fun logAndShowError(title: String, error: String, exception: Exception) {
         logger.error(exception, error)
-        showSnackbar(title, error)
+        showInfoPopup(title, error)
     }
 
     fun logAndShowWarning(title: String, warning: String) {
         logger.warn(warning)
-        showSnackbar(title, warning)
+        showInfoPopup(title, warning)
     }
 
     fun logAndShowInfo(title: String, info: String) {
         logger.info(info)
-        showSnackbar(title, info)
+        showInfoPopup(title, info)
     }
 
     /**
-     * Displays a snackbar on a child of the plugin coroutine scope rather than on the
-     * caller's coroutine, without waiting for it.
+     * Displays an informational popup on a child of the plugin coroutine scope rather than on
+     * the caller's coroutine, without waiting for it.
      *
-     * Toolbox keeps the [ToolboxUi.showSnackbar] coroutine suspended for the entire lifetime
-     * of the snackbar and cancels it (rather than resuming it) when the snackbar goes away.
-     * Calling it directly on the caller's coroutine would therefore either block the caller
-     * until the snackbar is gone or, on dismissal, abruptly cancel the caller (e.g. the URI
-     * handler) - skipping any code that runs after the error is shown, such as resetting the
-     * busy state. Launching it fire-and-forget on the plugin scope lets the caller continue
-     * immediately while the snackbar lives independently.
+     * Unlike [ToolboxUi.showSnackbar], a popup is backed by a persistent dialog state: it is
+     * still rendered once the window becomes visible even if it was requested while the window
+     * was hidden, it is not silently dropped when several are requested, and dismissing it
+     * resumes the [ToolboxUi.showInfoPopup] coroutine normally instead of cancelling it.
+     *
+     * It is launched fire-and-forget so the caller is not suspended until the user closes the
+     * popup - the caller (e.g. the URI handler) can run any follow-up code, such as resetting
+     * the busy state, immediately. The popups are serialized via [popupMutex] so they are
+     * shown one after another rather than overwriting each other.
      */
-    fun showSnackbar(title: String, text: String) {
-        cs.launch(CoroutineName("snackbar")) {
+    fun showInfoPopup(title: String, text: String) {
+        cs.launch(CoroutineName("popup")) {
             try {
-                ui.showSnackbar(
-                    UUID.randomUUID().toString(),
+                ui.showInfoPopup(
                     i18n.pnotr(title),
                     i18n.pnotr(text),
                     i18n.ptrl("OK")
                 )
             } catch (_: CancellationException) {
-                // Expected when the snackbar is dismissed or the plugin scope shuts down.
+                // Expected when the plugin scope shuts down while the popup is open.
             } catch (ex: Exception) {
-                logger.error(ex, "Failed to display snackbar with title '$title'")
+                logger.error(ex, "Failed to display popup with title '$title'")
             }
         }
     }
