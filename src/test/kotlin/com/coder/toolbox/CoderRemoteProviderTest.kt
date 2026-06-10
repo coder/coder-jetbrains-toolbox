@@ -27,6 +27,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -258,6 +259,27 @@ class CoderRemoteProviderTest {
             assertTrue(overridePage is CoderSetupWizardPage)
             verify { mockContext.popupPluginMainPage() }
         }
+
+    @Test
+    fun `given Toolbox 3_5 provider page then header surface is available and account dropdown starts hidden`() {
+        // Toolbox 3.5 hides the whole top section when this flag is false.
+        // The Coder header page keeps the deployment URL and account dropdown renderable.
+        assertTrue(remoteProvider.canCreateNewEnvironments)
+        assertNotNull(remoteProvider.getNewEnvironmentUiPage())
+
+        val accountDropdown = assertNotNull(remoteProvider.getAccountDropDown())
+        assertFalse(accountDropdown.visibility.value)
+    }
+
+    @Test
+    fun `given visible account dropdown when provider closes then dropdown is hidden`() {
+        val accountDropdown = assertNotNull(remoteProvider.getAccountDropDown())
+        accountDropdown.visibility.value = true
+
+        remoteProvider.close()
+
+        assertFalse(accountDropdown.visibility.value)
+    }
 
     @Test
     fun `given mTLS is required when auto setup has stored credentials then mTLS takes precedence`() {

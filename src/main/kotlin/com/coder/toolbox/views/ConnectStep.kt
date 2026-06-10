@@ -138,7 +138,7 @@ class ConnectStep(
                 }
                 // The provider's onConnect ran close() which clears the router; combined
                 // with client now being non-null this drops the wizard from getOverrideUiPage.
-                context.envPageManager.showPluginEnvironmentsPage()
+                context.envPageManager.showPluginEnvironmentsPage(false)
             } catch (ex: CancellationException) {
                 // Back-button cancellation already navigates in onBack(), while
                 // dispose() must cancel without navigating. Treat these control-flow

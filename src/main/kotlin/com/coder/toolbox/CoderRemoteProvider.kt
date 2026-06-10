@@ -100,7 +100,9 @@ class CoderRemoteProvider(
     )
     private val accountDropdownField = dropDownFactory(context.i18n.pnotr("")) {
         logout()
-        context.envPageManager.showPluginEnvironmentsPage()
+        context.envPageManager.showPluginEnvironmentsPage(false)
+    }.apply {
+        visibility.update { false }
     }
 
     private val router = PageRouter()
@@ -152,7 +154,7 @@ class CoderRemoteProvider(
                     } else {
                         if ((ex is APIResponseException && ex.isTokenExpired) || ex is OAuthTokenResponseException) {
                             close()
-                            context.envPageManager.showPluginEnvironmentsPage()
+                            context.envPageManager.showPluginEnvironmentsPage(false)
                             context.logAndShowError(
                                 "Error encountered while setting up Coder",
                                 "Your Coder session has expired. Please re-authenticate and try again.",
@@ -265,6 +267,7 @@ class CoderRemoteProvider(
         lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
+        accountDropdownField.visibility.update { false }
         router.clear()
         context.logger.info("Coder plugin is now closed")
     }
@@ -299,15 +302,12 @@ class CoderRemoteProvider(
      */
     override val noEnvironmentsDescription: String? = "No workspaces yet"
 
-
     /**
-     * TODO@JB: Supposedly, setting this to false causes the new environment
-     *          page to not show but it shows anyway.  For now we have it
-     *          displaying the deployment URL, which is actually useful, so if
-     *          this changes it would be nice to have a new spot to show the
-     *          URL.
+     * Toolbox 3.5 removes the entire top section when this is false. Coder uses
+     * the new-environment page as a provider header so the deployment URL and
+     * account dropdown remain visible above the workspace list.
      */
-    override val canCreateNewEnvironments: Boolean = false
+    override val canCreateNewEnvironments: Boolean = true
 
     /**
      * Just displays the deployment URL at the moment, but we could use this as
@@ -459,7 +459,7 @@ class CoderRemoteProvider(
             )
             router.navigate(wizard)
 
-            context.envPageManager.showPluginEnvironmentsPage(true)
+            context.envPageManager.showPluginEnvironmentsPage(false)
             context.ui.showUiPage(wizard)
         } catch (e: Exception) {
             context.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
@@ -626,6 +626,7 @@ class CoderRemoteProvider(
         accountDropdownField.labelState.update {
             context.i18n.pnotr(client.me.username)
         }
+        accountDropdownField.visibility.update { true }
         pollJob = poll(client, cli)
         context.logger.info("Workspace poll job with name ${pollJob.toString()} was created")
     }
