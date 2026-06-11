@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- support Toolbox 3.5 provider header behavior
+
 ### Fixed
 
 - snackbar dismissal no longer cancels the calling coroutine, so error popups during URI handling don't leave the page

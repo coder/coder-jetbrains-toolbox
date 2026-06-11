@@ -104,6 +104,6 @@ data class CoderToolboxContext(
 
     fun popupPluginMainPage() {
         this.ui.showWindow()
-        this.envPageManager.showPluginEnvironmentsPage(true)
+        this.envPageManager.showPluginEnvironmentsPage(false)
     }
 }
