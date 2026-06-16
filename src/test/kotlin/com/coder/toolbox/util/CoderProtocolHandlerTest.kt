@@ -1,13 +1,16 @@
 package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.feed.Ide
 import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.feed.IdeType
 import com.coder.toolbox.feed.JetBrainsFeedService
+import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
@@ -17,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
+import java.net.URI
 import java.util.UUID
 import kotlin.test.Test
 
@@ -57,6 +61,63 @@ class CoderProtocolHandlerTest {
         every { context.remoteIdeOrchestrator } returns remoteToolsHelper
 
         handler = CoderProtocolHandler(context, ideFeedManager)
+    }
+
+    @Test
+    fun `returns an owner-only search query when an owner is provided`() {
+        assertNull(handler.workspaceOwnerSearchQuery(mapOf("workspace" to "delta-eridani")))
+        assertEquals(
+            "owner:bill",
+            handler.workspaceOwnerSearchQuery(mapOf("workspace" to "delta-eridani", "owner" to "bill"))
+        )
+    }
+
+    @Test
+    fun `builds the search query from the owner and ignores the workspace name`() {
+        assertEquals(
+            "owner:riker",
+            handler.workspaceOwnerSearchQuery(mapOf("workspace" to "omicron-eridani", "owner" to "riker"))
+        )
+    }
+
+    @Test
+    fun `handle lists all workspaces when no owner is provided`() = runTest(dispatcher) {
+        val restClient = mockk<CoderRestClient>(relaxed = true)
+        val cli = mockk<CoderCLIManager>(relaxed = true)
+        val url = URI("https://coder.example.com").toURL()
+        val workspace = DataGen.workspace("delta-eridani", agents = SINGLE_AGENT)
+
+        coEvery { restClient.workspaces(null) } returns listOf(workspace)
+        coEvery { restClient.workspace(workspace.id) } returns workspace
+
+        handler.handle(
+            mapOf("workspace" to "delta-eridani"),
+            url,
+            restClient,
+            cli
+        )
+
+        coVerify(exactly = 1) { restClient.workspaces(null) }
+    }
+
+    @Test
+    fun `handle filters workspaces by owner when an owner is provided`() = runTest(dispatcher) {
+        val restClient = mockk<CoderRestClient>(relaxed = true)
+        val cli = mockk<CoderCLIManager>(relaxed = true)
+        val url = URI("https://coder.example.com").toURL()
+        val workspace = DataGen.workspace("epsilon-eridani", agents = SINGLE_AGENT).copy(ownerName = "homer")
+
+        coEvery { restClient.workspaces("owner:homer") } returns listOf(workspace)
+        coEvery { restClient.workspace(workspace.id) } returns workspace
+
+        handler.handle(
+            mapOf("workspace" to "epsilon-eridani", "owner" to "homer"),
+            url,
+            restClient,
+            cli
+        )
+
+        coVerify(exactly = 1) { restClient.workspaces("owner:homer") }
     }
 
     @Test

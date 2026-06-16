@@ -10,6 +10,8 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.settings.WorkspaceScope
+import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.state.StoredOAuthSession
 import com.coder.toolbox.views.state.WizardStep
@@ -44,6 +46,10 @@ class CoderRemoteProviderTest {
         mockClient = mockk(relaxed = true)
         mockCli = mockk(relaxed = true)
         mockContext = mockk(relaxed = true)
+        val settingsStore = mockk<CoderSettingsStore>(relaxed = true)
+        every { mockContext.settingsStore } returns settingsStore
+        every { settingsStore.workspaceScope(any()) } returns WorkspaceScope.ALL_WORKSPACES
+        every { mockClient.url } returns URI("https://coder.example.com").toURL()
         remoteProvider = CoderRemoteProvider(mockContext)
     }
 
@@ -60,6 +66,17 @@ class CoderRemoteProviderTest {
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
         // then
         assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `given my workspaces scope then workspace resolution passes owner query`() = runTest {
+        every { mockContext.settingsStore.workspaceScope(any()) } returns WorkspaceScope.MY_WORKSPACES
+        coEvery { mockClient.workspaces("owner:me") } returns emptyList()
+
+        val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
+
+        assertTrue(result.isEmpty())
+        coVerify(exactly = 1) { mockClient.workspaces("owner:me") }
     }
 
     @Test

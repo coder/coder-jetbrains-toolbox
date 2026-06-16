@@ -161,11 +161,13 @@ open class CoderRestClient(
     }
 
     /**
-     * Retrieves the available workspaces created by the user.
+     * Retrieves workspaces matching the provided Coder search query.
      * @throws [APIResponseException].
      */
-    suspend fun workspaces(): List<Workspace> {
-        val workspacesResponse = callWithRetry { retroRestClient.workspaces("owner:me") }
+    suspend fun workspaces(searchQuery: String? = null): List<Workspace> {
+        val workspacesResponse = callWithRetry {
+            retroRestClient.workspaces(searchQuery)
+        }
         if (!workspacesResponse.isSuccessful) {
             throw APIResponseException(
                 "retrieve workspaces",

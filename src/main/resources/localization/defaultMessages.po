@@ -198,3 +198,12 @@ msgstr ""
 
 msgid "Prefer OAuth2 if available over authentication via API Key"
 msgstr ""
+
+msgid "Search workspaces"
+msgstr ""
+
+msgid "All"
+msgstr ""
+
+msgid "My workspaces"
+msgstr ""

@@ -3,6 +3,7 @@ package com.coder.toolbox.util
 const val URL = "url"
 const val TOKEN = "token"
 const val WORKSPACE = "workspace"
+const val OWNER = "owner"
 const val AGENT_NAME = "agent_name"
 private const val IDE_PRODUCT_CODE = "ide_product_code"
 private const val IDE_BUILD_NUMBER = "ide_build_number"
@@ -13,6 +14,8 @@ fun Map<String, String>.url() = this[URL]
 fun Map<String, String>.token() = this[TOKEN]
 
 fun Map<String, String>.workspace() = this[WORKSPACE]
+
+fun Map<String, String>.owner() = this[OWNER]
 
 fun Map<String, String?>.agentName() = this[AGENT_NAME]
 

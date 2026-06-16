@@ -5,6 +5,7 @@ import com.coder.toolbox.settings.HttpLoggingVerbosity
 import com.coder.toolbox.settings.ReadOnlyCoderSettings
 import com.coder.toolbox.settings.ReadOnlyTLSSettings
 import com.coder.toolbox.settings.SignatureFallbackStrategy
+import com.coder.toolbox.settings.WorkspaceScope
 import com.coder.toolbox.util.Arch
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.expand
@@ -88,6 +89,8 @@ class CoderSettingsStore(
         get() = store[WORKSPACE_VIEW_URL]
     override val workspaceCreateUrl: String?
         get() = store[WORKSPACE_CREATE_URL]
+    override fun workspaceScope(url: URL): WorkspaceScope =
+        WorkspaceScope.fromValue(store["$WORKSPACE_SCOPE.${url.safeHost()}"] ?: store[WORKSPACE_SCOPE])
 
     /**
      * Where the specified deployment should put its data.
@@ -260,6 +263,11 @@ class CoderSettingsStore(
 
     fun updatePreferAuthViaOAuth2(preferAuthViaOAuth2: Boolean) {
         store[PREFER_OAUTH2_IF_AVAILABLE] = preferAuthViaOAuth2.toString()
+    }
+
+    fun updateWorkspaceScope(url: URL, scope: WorkspaceScope?) {
+        if (scope == null) return
+        store["$WORKSPACE_SCOPE.${url.safeHost()}"] = scope.name
     }
 
     private fun getDefaultGlobalDataDir(): Path {

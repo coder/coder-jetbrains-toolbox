@@ -9,6 +9,7 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.settings.WorkspaceSearchTerm
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
@@ -45,7 +46,10 @@ open class CoderProtocolHandler(
         cli: CoderCLIManager
     ) {
         val workspaceName = resolveWorkspaceName(params) ?: return
-        val workspace = restClient.workspaces().matchName(workspaceName, url)
+
+        val ownerName = params.owner()?.takeIf { it.isNotBlank() }
+        val workspaces = restClient.workspaces(workspaceOwnerSearchQuery(params))
+        val workspace = workspaces.matchWorkspace(workspaceName, ownerName, url)
         if (workspace != null) {
             if (!prepareWorkspace(workspace, restClient, cli, url)) return
             // we resolve the agent after the workspace is started otherwise we can get misleading
@@ -68,11 +72,10 @@ open class CoderProtocolHandler(
             if (!productCode.isNullOrBlank() && !buildNumber.isNullOrBlank()) {
                 launchIde(environmentId, productCode, buildNumber, projectFolder)
             }
-
         }
     }
 
-    private suspend fun resolveWorkspaceName(params: Map<String, String>): String? {
+    private fun resolveWorkspaceName(params: Map<String, String>): String? {
         val workspace = params.workspace()
         if (workspace.isNullOrBlank()) {
             context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$WORKSPACE\" is missing from URI")
@@ -81,12 +84,24 @@ open class CoderProtocolHandler(
         return workspace
     }
 
-    private suspend fun List<Workspace>.matchName(workspaceName: String, deploymentURL: URL): Workspace? {
-        val workspace = this.firstOrNull { it.name == workspaceName }
+    internal fun workspaceOwnerSearchQuery(params: Map<String, String>): String? {
+        val ownerName = params.owner()?.takeIf { it.isNotBlank() } ?: return null
+        return WorkspaceSearchTerm("owner", ownerName).format()
+    }
+
+    private fun List<Workspace>.matchWorkspace(
+        workspaceName: String,
+        ownerName: String?,
+        deploymentURL: URL
+    ): Workspace? {
+        val workspace = this.firstOrNull { workspace ->
+            workspace.name == workspaceName && (ownerName == null || workspace.ownerName == ownerName)
+        }
         if (workspace == null) {
+            val workspaceLabel = if (ownerName == null) workspaceName else "$ownerName/$workspaceName"
             context.logAndShowError(
                 CAN_T_HANDLE_URI_TITLE,
-                "There is no workspace with name $workspaceName on $deploymentURL"
+                "There is no workspace with name $workspaceLabel on $deploymentURL"
             )
             return null
         }
@@ -156,7 +171,7 @@ open class CoderProtocolHandler(
         return true
     }
 
-    private suspend fun resolveAgent(
+    private fun resolveAgent(
         params: Map<String, String>,
         workspace: Workspace
     ): WorkspaceAgent? {
@@ -177,7 +192,7 @@ open class CoderProtocolHandler(
      *
      * @throws [IllegalArgumentException]
      */
-    internal suspend fun getMatchingAgent(
+    internal fun getMatchingAgent(
         parameters: Map<String, String?>,
         workspace: Workspace,
     ): WorkspaceAgent? {
@@ -217,7 +232,7 @@ open class CoderProtocolHandler(
         return agent
     }
 
-    private suspend fun ensureAgentIsReady(
+    private fun ensureAgentIsReady(
         workspace: Workspace,
         agent: WorkspaceAgent
     ): Boolean {

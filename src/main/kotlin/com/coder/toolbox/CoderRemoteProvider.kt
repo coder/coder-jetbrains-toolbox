@@ -9,6 +9,7 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.ex.OAuthTokenResponseException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.settings.asWorkspaceSearchQuery
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.util.TOKEN
@@ -70,6 +71,7 @@ class CoderRemoteProvider(
     internal val lastEnvironments = mutableListOf<CoderRemoteEnvironment>()
 
     private val triggerSshConfig = Channel<Boolean>(Channel.CONFLATED)
+    private val triggerWorkspaceRefresh = Channel<Boolean>(Channel.CONFLATED)
     private val triggerProviderVisible = Channel<Boolean>(Channel.CONFLATED)
     private val dialogUi = DialogUi(context)
 
@@ -82,7 +84,11 @@ class CoderRemoteProvider(
 
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
-    private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
+    private val coderHeaderPage = NewEnvironmentPage(
+        context,
+        context.i18n.pnotr(context.deploymentUrl.toString()),
+        triggerWorkspaceRefresh
+    )
     private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig) {
         client?.let { restClient ->
             if (context.settingsStore.useAppNameAsTitle) {
@@ -176,6 +182,11 @@ class CoderRemoteProvider(
                             cli.configSsh(lastEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
                         }
                     }
+                    triggerWorkspaceRefresh.onReceive { shouldTrigger ->
+                        if (shouldTrigger) {
+                            context.logger.debug("workspace poller waked up to fetch workspaces from the latest header settings")
+                        }
+                    }
                     triggerProviderVisible.onReceive { isCoderProviderVisible ->
                         if (isCoderProviderVisible) {
                             context.logger.debug("workspace poller waked up by Coder Toolbox which is currently visible, fetching latest workspace statuses")
@@ -199,7 +210,9 @@ class CoderRemoteProvider(
         client: CoderRestClient,
         cli: CoderCLIManager,
     ): List<CoderRemoteEnvironment> {
-        return client.workspaces().flatMap { ws ->
+        val searchQuery = coderHeaderPage.workspaceSearchQuery.value
+            .asWorkspaceSearchQuery(context.settingsStore.workspaceScope(client.url))
+        return client.workspaces(searchQuery).flatMap { ws ->
             // Agents are not included in workspaces that are off
             // so fetch them separately.
             val resources = when (ws.latestBuild.status) {
@@ -356,12 +369,14 @@ class CoderRemoteProvider(
             if (sameUrl(newUrl, client?.url)) {
                 coderHeaderPage.isBusy.update { true }
                 try {
-                    if (context.settingsStore.requiresTokenAuth) {
+                    val activeSession = if (context.settingsStore.requiresTokenAuth) {
                         newToken?.let {
                             refreshSession(newUrl, it)
-                        }
+                        } ?: (this.client!! to this.cli!!)
+                    } else {
+                        this.client!! to this.cli!!
                     }
-                    linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
+                    linkHandler.handle(params, newUrl, activeSession.first, activeSession.second)
                 } finally {
                     coderHeaderPage.isBusy.update { false }
                 }

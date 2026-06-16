@@ -1,6 +1,7 @@
 package com.coder.toolbox.store
 
 import com.coder.toolbox.settings.Environment
+import com.coder.toolbox.settings.WorkspaceScope
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import io.mockk.mockk
@@ -72,6 +73,48 @@ class CoderSettingsStoreTest {
     @Test
     fun `Default CLI and signature for unknown Arch fallback on Linux`() =
         assertBinaryAndSignature("Linux", "mips64", "coder-linux-amd64", "coder-linux-amd64.asc")
+
+    @Test
+    fun `workspace scope defaults to my workspaces`() {
+        assertEquals(WorkspaceScope.MY_WORKSPACES, store.workspaceScope(URL("https://test.coder.com")))
+    }
+
+    @Test
+    fun `workspace scope can be set to all workspaces`() {
+        val url = URL("https://test.coder.com")
+
+        assertEquals(WorkspaceScope.MY_WORKSPACES, store.workspaceScope(url))
+
+        store.updateWorkspaceScope(url, WorkspaceScope.ALL_WORKSPACES)
+
+        assertEquals(WorkspaceScope.ALL_WORKSPACES, store.workspaceScope(url))
+    }
+
+    @Test
+    fun `workspace scope is persisted per deployment hostname`() {
+        val firstURL = URL("https://first.coder.com")
+        val firstURLWithDifferentSchemeAndPort = URL("http://first.coder.com:8443")
+        val secondURL = URL("https://second.coder.com")
+
+        store.updateWorkspaceScope(firstURL, WorkspaceScope.ALL_WORKSPACES)
+        store.updateWorkspaceScope(secondURL, WorkspaceScope.MY_WORKSPACES)
+
+        assertEquals(WorkspaceScope.ALL_WORKSPACES, store.workspaceScope(firstURL))
+        assertEquals(WorkspaceScope.ALL_WORKSPACES, store.workspaceScope(firstURLWithDifferentSchemeAndPort))
+        assertEquals(WorkspaceScope.MY_WORKSPACES, store.workspaceScope(secondURL))
+    }
+
+    @Test
+    fun `workspace scope per deployment hostname falls back to previous global setting`() {
+        // ALL_WORKSPACES is not the default, so this proves the per-host lookup reads the
+        // global value rather than simply returning the default.
+        val settings = storeWith(WORKSPACE_SCOPE to WorkspaceScope.ALL_WORKSPACES.name)
+
+        assertEquals(
+            WorkspaceScope.ALL_WORKSPACES,
+            settings.workspaceScope(URL("https://test.coder.com"))
+        )
+    }
 
     // --- binPath tests ---
     @Test

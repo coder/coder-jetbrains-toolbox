@@ -76,6 +76,7 @@ jetbrains://gateway/com.coder.toolbox
   ?url=http(s)://<your-coder-deployment>
   &token=<auth-token>
   &workspace=<workspace-name>
+  &owner=<workspace-owner>
   &agent_name=<agent-name>
   &ide_product_code=<IDE-code>
   &ide_build_number=<IDE-build>
@@ -94,10 +95,15 @@ jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
 | url              | 	Your Coder deployment URL (encoded)                                                               | Yes       |
 | token            | 	Coder authentication token                                                                        | Yes       |
 | workspace        | 	Name of the Coder workspace to connect to.                                                        | Yes       |
+| owner            | 	Owner username, UUID, or `me` used to disambiguate the workspace lookup.                          | No        |
 | agent_name       | 	The name of the agent with the workspace                                                          | No        |
 | ide_product_code | 	JetBrains IDE product code (e.g., GO for GoLand, RR for Rider)                                    | No        |
 | ide_build_number | 	Specific build number or placeholder (see below) of the JetBrains IDE to install on the workspace | No        |
 | folder           | 	Absolute path to the project folder to open in the remote IDE (URL-encoded)                       | No        |
+
+When `owner` is present, the URI handler sends `owner:<owner>` as the workspace lookup query and then exact-matches the
+`workspace` value in the returned list. This lookup is independent of the workspace list scope and search controls in
+the header. When `owner` is omitted, the URI handler sends no workspace lookup query.
 
 > [!NOTE]
 > If only a single agent is available, specifying an agent name is optional. However, if multiple agents exist, you must
@@ -442,6 +448,45 @@ When reporting issues, include HTTP logs to help diagnose:
 The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data
 storage paths. The options can be configured from the plugin's main Workspaces page > deployment action menu > Settings.
 
+### Workspace list filtering
+
+The expandable header on the Coder Workspaces page contains workspace scope and search controls.
+
+- `My workspaces` is the new default scope. It adds `owner:me`, so Coder returns workspaces owned by the authenticated
+  user unless they choose a broader scope.
+- `All workspaces` does not add an owner filter, so Coder returns every workspace the authenticated user is allowed to
+  read. The scope selection is remembered separately for each Coder deployment hostname.
+- Search text is not remembered between sessions.
+- The search box supports only `owner`, `template`, `name`, and `status`. Unsupported keys and empty values are ignored.
+- If the search box includes `owner`, that owner takes precedence over the selected scope. For example, `owner:bob`
+  still searches Bob's workspaces even when `My workspaces` is selected.
+- Text without a prefix is treated as a workspace name search. For example, `bobiverse` becomes `name:bobiverse`.
+- Values with multiple words for a keyed search must be typed in double quotes, for example `template:"Heaven 3"`.
+  Bare multi-word text is treated as one workspace name search, so `bobiverse alpha` becomes `name:"bobiverse alpha"`.
+
+The final Coder API call uses a single `q` parameter. Examples:
+
+| Header/Search input                         | Sent as `q`                |
+|---------------------------------------------|----------------------------|
+| `All workspaces`, empty search              | no `q` parameter           |
+| `My workspaces`, empty search               | `owner:me`                 |
+| `My workspaces`, `bobiverse`                | `owner:me name:bobiverse`  |
+| `My workspaces`, `owner:bob name:bobiverse` | `owner:bob name:bobiverse` |
+| `All workspaces`, `template:"Heaven 3"`     | `template:"Heaven 3"`      |
+| `All workspaces`, `status: running`         | `status:running`           |
+
+Changing the scope or search refreshes the workspace list and regenerates SSH configuration from the refreshed
+workspace set. With wildcard SSH enabled, the generated block uses the deployment wildcard host pattern. With wildcard
+SSH disabled, the generated block contains entries for the currently resolved workspace/agent pairs.
+
+SSH hostnames include the workspace owner so workspaces with the same name owned by different users remain distinct.
+With wildcard SSH enabled, the SSH config contains a deployment-wide `Host coder-jetbrains-toolbox-<host>--*` entry, and
+the plugin connects through hostnames shaped like
+`coder-jetbrains-toolbox-<host>--<owner>--<workspace>.<agent>`. With wildcard SSH disabled, the SSH config writes one
+explicit entry per resolved workspace/agent using
+`Host coder-jetbrains-toolbox--<owner>--<workspace>.<agent>--<host>`, and its proxy command targets
+`<owner>/<workspace>.<agent>`.
+
 ### CLI related settings
 
 - `Binary source` specifies the source URL or relative path from which the Coder CLI should be downloaded.
@@ -549,7 +594,7 @@ support, may trigger regeneration of SSH configurations.
    JetBrains enabled auto-approval for the plugin, so we need to ensure we continue to meet the following requirements:
     - do **not** use Kotlin experimental APIs.
     - do **not** add any lambdas, handlers, or class handles to Java runtime hooks.
-   - do **not** create threads manually (including via libraries). If you must, ensure they are properly cleaned up in
-     the plugin's `CoderRemoteProvider#close()` method.
+    - do **not** create threads manually (including via libraries). If you must, ensure they are properly cleaned up in
+      the plugin's `CoderRemoteProvider#close()` method.
     - do **not** bundle libraries that are already provided by Toolbox.
     - do **not** perform any ill-intentioned actions.

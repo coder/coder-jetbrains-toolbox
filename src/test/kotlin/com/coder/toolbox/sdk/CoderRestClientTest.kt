@@ -273,9 +273,11 @@ class CoderRestClientTest {
         tests.forEach { workspaces ->
             val (srv, url) = mockServer()
             val client = CoderRestClient(context, URL(url), "token")
+            val queries = mutableListOf<String?>()
             srv.createContext(
                 "/api/v2/workspaces",
                 BaseHttpHandler("GET") { exchange ->
+                    queries.add(exchange.requestURI.rawQuery)
                     val response = WorkspacesResponse(workspaces)
                     val body = moshi.adapter(WorkspacesResponse::class.java).toJson(response).toByteArray()
                     exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
@@ -283,8 +285,35 @@ class CoderRestClientTest {
                 },
             )
             assertEquals(workspaces.map { ws -> ws.name }, runBlocking { client.workspaces() }.map { ws -> ws.name })
+            assertEquals(listOf<String?>(null), queries)
             srv.stop(0)
         }
+    }
+
+    @Test
+    fun `workspaces request can use explicit search query override`() {
+        val workspaces = listOf(DataGen.workspace("ws1"))
+        val (srv, url) = mockServer()
+        val client = CoderRestClient(context, URL(url), "token")
+        val queries = mutableListOf<String?>()
+        srv.createContext(
+            "/api/v2/workspaces",
+            BaseHttpHandler("GET") { exchange ->
+                queries.add(exchange.requestURI.rawQuery)
+                val response = WorkspacesResponse(workspaces)
+                val body = moshi.adapter(WorkspacesResponse::class.java).toJson(response).toByteArray()
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
+                exchange.responseBody.write(body)
+            },
+        )
+
+        assertEquals(
+            workspaces.map { ws -> ws.name },
+            runBlocking { client.workspaces("owner:riker name:omicron-eridani") }.map { ws -> ws.name }
+        )
+        assertEquals(listOf<String?>("q=owner%3Ariker%20name%3Aomicron-eridani"), queries)
+
+        srv.stop(0)
     }
 
     @Test

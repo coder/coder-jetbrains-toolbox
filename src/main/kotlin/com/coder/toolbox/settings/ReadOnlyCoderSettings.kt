@@ -158,6 +158,12 @@ interface ReadOnlyCoderSettings {
     val workspaceCreateUrl: String?
 
     /**
+     * Controls whether the workspace list for the given deployment includes only the
+     * authenticated user's workspaces or all workspaces the user can access.
+     */
+    fun workspaceScope(url: URL): WorkspaceScope
+
+    /**
      * The path where network information for SSH hosts are stored
      */
     val networkInfoDir: String
@@ -256,6 +262,19 @@ enum class SignatureFallbackStrategy {
             "allow" -> ALLOW
             "forbidden" -> FORBIDDEN
             else -> NOT_CONFIGURED
+        }
+    }
+}
+
+enum class WorkspaceScope {
+    MY_WORKSPACES,
+    ALL_WORKSPACES;
+
+    companion object {
+        fun fromValue(value: String?): WorkspaceScope = when (value?.lowercase(getDefault())) {
+            "all_workspaces" -> ALL_WORKSPACES
+            "my_workspaces" -> MY_WORKSPACES
+            else -> MY_WORKSPACES
         }
     }
 }

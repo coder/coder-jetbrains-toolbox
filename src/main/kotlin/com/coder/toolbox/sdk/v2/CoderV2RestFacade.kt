@@ -35,7 +35,7 @@ interface CoderV2RestFacade {
      */
     @GET("api/v2/workspaces")
     suspend fun workspaces(
-        @Query("q") searchParams: String,
+        @Query("q") searchParams: String?,
     ): Response<WorkspacesResponse>
 
     /**
