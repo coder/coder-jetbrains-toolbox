@@ -5,7 +5,7 @@
 ### Added
 
 - support Toolbox 3.5 provider header behavior
-- support for filtering workspaces by name, template name, owner and status
+- workspace list filtering that mirrors the Coder web dashboard
 
 ### Fixed
 

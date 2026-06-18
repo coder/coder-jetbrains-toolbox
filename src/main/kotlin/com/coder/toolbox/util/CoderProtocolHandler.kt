@@ -9,7 +9,6 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.coder.toolbox.settings.WorkspaceSearchTerm
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
@@ -86,7 +85,7 @@ open class CoderProtocolHandler(
 
     internal fun workspaceOwnerSearchQuery(params: Map<String, String>): String? {
         val ownerName = params.owner()?.takeIf { it.isNotBlank() } ?: return null
-        return WorkspaceSearchTerm("owner", ownerName).format()
+        return "owner:$ownerName"
     }
 
     private fun List<Workspace>.matchWorkspace(

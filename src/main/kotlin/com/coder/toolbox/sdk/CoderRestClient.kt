@@ -244,6 +244,26 @@ open class CoderRestClient(
     }
 
     /**
+     * Retrieves all templates the authenticated user can access.
+     * @throws [APIResponseException].
+     */
+    suspend fun templates(): List<Template> {
+        val templatesResponse = callWithRetry { retroRestClient.templates() }
+        if (!templatesResponse.isSuccessful) {
+            throw APIResponseException(
+                "retrieve templates",
+                url,
+                templatesResponse.code(),
+                templatesResponse.parseErrorBody(moshi)
+            )
+        }
+
+        return requireNotNull(templatesResponse.body()) {
+            "Successful response returned null body or templates"
+        }
+    }
+
+    /**
      * @throws [APIResponseException].
      */
     private suspend fun template(templateID: UUID): Template {

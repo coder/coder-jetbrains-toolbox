@@ -10,7 +10,6 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.coder.toolbox.settings.WorkspaceScope
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.state.StoredOAuthSession
@@ -48,7 +47,6 @@ class CoderRemoteProviderTest {
         mockContext = mockk(relaxed = true)
         val settingsStore = mockk<CoderSettingsStore>(relaxed = true)
         every { mockContext.settingsStore } returns settingsStore
-        every { settingsStore.workspaceScope(any()) } returns WorkspaceScope.ALL_WORKSPACES
         every { mockClient.url } returns URI("https://coder.example.com").toURL()
         remoteProvider = CoderRemoteProvider(mockContext)
     }
@@ -61,7 +59,7 @@ class CoderRemoteProviderTest {
     @Test
     fun `given an empty workspace list expect an empty list of environments`() = runTest {
         // given
-        coEvery { mockClient.workspaces() } returns emptyList()
+        coEvery { mockClient.workspaces(any()) } returns emptyList()
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
         // then
@@ -69,8 +67,7 @@ class CoderRemoteProviderTest {
     }
 
     @Test
-    fun `given my workspaces scope then workspace resolution passes owner query`() = runTest {
-        every { mockContext.settingsStore.workspaceScope(any()) } returns WorkspaceScope.MY_WORKSPACES
+    fun `workspace resolution passes the default owner filter query`() = runTest {
         coEvery { mockClient.workspaces("owner:me") } returns emptyList()
 
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -87,7 +84,7 @@ class CoderRemoteProviderTest {
         val resource = mockResource(agents = listOf(agent1, agent2))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
         coEvery { mockClient.resources(any()) } returns emptyList()
 
         // when
@@ -107,7 +104,7 @@ class CoderRemoteProviderTest {
         val resource = mockResource(agents = listOf(agent))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.STOPPED, emptyList())
 
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
         coEvery { mockClient.resources(any()) } returns listOf(resource)
 
         // when
@@ -126,7 +123,7 @@ class CoderRemoteProviderTest {
         val resource = mockResource(agents = listOf(agent))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.PENDING, emptyList())
 
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
         coEvery { mockClient.resources(workspace) } returns listOf(resource)
 
         // when
@@ -144,7 +141,7 @@ class CoderRemoteProviderTest {
         val resource = mockResource(agents = listOf(agent))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, emptyList())
 
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
         coEvery { mockClient.resources(workspace) } returns listOf(resource)
 
         // when
@@ -163,7 +160,7 @@ class CoderRemoteProviderTest {
             val resource = mockResource(agents = null)
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -180,7 +177,7 @@ class CoderRemoteProviderTest {
             val resource = mockResource(agents = emptyList())
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -199,7 +196,7 @@ class CoderRemoteProviderTest {
             val resource = mockResource(agents = listOf(agent1, agent2))
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -220,7 +217,7 @@ class CoderRemoteProviderTest {
             val resource2 = mockResource(agents = listOf(agent2))
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource1, resource2))
 
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -242,7 +239,7 @@ class CoderRemoteProviderTest {
         remoteProvider.lastEnvironments.add(existingEnv)
 
         every { existingEnv.id } returns "ws1.agent1"
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -429,7 +426,7 @@ class CoderRemoteProviderTest {
         val resource = mockResource(agents = listOf(agent))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -455,7 +452,7 @@ class CoderRemoteProviderTest {
         val ws2 = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource2))
         val ws3 = mockWorkspace("ws2", WorkspaceStatus.RUNNING, listOf(resource3))
 
-        coEvery { mockClient.workspaces() } returns listOf(ws2, ws1, ws3)
+        coEvery { mockClient.workspaces(any()) } returns listOf(ws2, ws1, ws3)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -480,7 +477,7 @@ class CoderRemoteProviderTest {
             val resource2 = mockResource(agents = listOf(agent3, agent4))
 
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource1, resource2))
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -503,7 +500,7 @@ class CoderRemoteProviderTest {
             val agent3 = mockAgent("duplicate")
             val resource = mockResource(agents = listOf(agent1, agent2, agent3))
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -523,7 +520,7 @@ class CoderRemoteProviderTest {
             val resource2 = mockResource(agents = listOf(agent2))
             val ws1 = mockWorkspace("workspace1", WorkspaceStatus.RUNNING, listOf(resource1))
             val ws2 = mockWorkspace("workspace2", WorkspaceStatus.RUNNING, listOf(resource2))
-            coEvery { mockClient.workspaces() } returns listOf(ws1, ws2)
+            coEvery { mockClient.workspaces(any()) } returns listOf(ws1, ws2)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)

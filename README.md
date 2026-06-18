@@ -102,8 +102,8 @@ jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
 | folder           | 	Absolute path to the project folder to open in the remote IDE (URL-encoded)                       | No        |
 
 When `owner` is present, the URI handler sends `owner:<owner>` as the workspace lookup query and then exact-matches the
-`workspace` value in the returned list. This lookup is independent of the workspace list scope and search controls in
-the header. When `owner` is omitted, the URI handler sends no workspace lookup query.
+`workspace` value in the returned list. This lookup is independent of the workspace list filtering controls in the
+header. When `owner` is omitted, the URI handler sends no workspace lookup query.
 
 > [!NOTE]
 > If only a single agent is available, specifying an agent name is optional. However, if multiple agents exist, you must
@@ -450,34 +450,42 @@ storage paths. The options can be configured from the plugin's main Workspaces p
 
 ### Workspace list filtering
 
-The expandable header on the Coder Workspaces page contains workspace scope and search controls.
+The expandable header on the Coder Workspaces page mirrors the workspace filtering in the Coder web dashboard. The first
+row is a free-form search field; the second row holds three dropdowns: **Filters** (presets), **Template**, and
+**Status**.
 
-- `My workspaces` is the new default scope. It adds `owner:me`, so Coder returns workspaces owned by the authenticated
-  user unless they choose a broader scope.
-- `All workspaces` does not add an owner filter, so Coder returns every workspace the authenticated user is allowed to
-  read. The scope selection is remembered separately for each Coder deployment hostname.
-- Search text is not remembered between sessions.
-- The search box supports only `owner`, `template`, `name`, and `status`. Unsupported keys and empty values are ignored.
-- If the search box includes `owner`, that owner takes precedence over the selected scope. For example, `owner:bob`
-  still searches Bob's workspaces even when `My workspaces` is selected.
-- Text without a prefix is treated as a workspace name search. For example, `bobiverse` becomes `name:bobiverse`.
-- Values with multiple words for a keyed search must be typed in double quotes, for example `template:"Heaven 3"`.
-  Bare multi-word text is treated as one workspace name search, so `bobiverse alpha` becomes `name:"bobiverse alpha"`.
+- The search field holds
+  a [Coder workspace filter query](https://coder.com/docs/user-guides/workspace-management#workspace-filtering)
+  and is sent to the server verbatim as the `q` parameter. The server parses and validates it.
+- The list defaults to `owner:me` (your own workspaces) on each load. Nothing is persisted between sessions.
+- The dropdowns are shortcuts that edit the search text, exactly like the dashboard:
+    - **Filters** replaces the whole query with the chosen preset: `My workspaces` (`owner:me`), `All workspaces`
+      (empty), `Running workspaces` (`status:running`), `Failed workspaces` (`status:failed`),
+      `Outdated workspaces` (`outdated:true`), `Shared workspaces` (`shared:true`), and `Dormant workspaces`
+      (`dormant:true`). When the search text matches no preset, the dropdown shows `Custom`.
+    - **Template** sets or replaces the `template:` term.
+    - **Status** sets or replaces the `status:` term.
+- The dropdowns and the search text stay in sync: editing the text updates the dropdowns, and selecting a dropdown value
+  updates the text. Because each key appears at most once, the dropdowns never produce a duplicate-key query.
+- If the server rejects the query (for example a duplicate key, or a malformed term), the validation message is shown in
+  a secondary label after the dropdowns.
 
-The final Coder API call uses a single `q` parameter. Examples:
+Examples of what is sent as the `q` parameter:
 
-| Header/Search input                         | Sent as `q`                |
-|---------------------------------------------|----------------------------|
-| `All workspaces`, empty search              | no `q` parameter           |
-| `My workspaces`, empty search               | `owner:me`                 |
-| `My workspaces`, `bobiverse`                | `owner:me name:bobiverse`  |
-| `My workspaces`, `owner:bob name:bobiverse` | `owner:bob name:bobiverse` |
-| `All workspaces`, `template:"Heaven 3"`     | `template:"Heaven 3"`      |
-| `All workspaces`, `status: running`         | `status:running`           |
+| Search field              | Sent as `q`               |
+|---------------------------|---------------------------|
+| empty                     | no `q` parameter          |
+| `owner:me` (default)      | `owner:me`                |
+| `owner:me name:bobiverse` | `owner:me name:bobiverse` |
+| `template:"Heaven 3"`     | `template:"Heaven 3"`     |
+| `status:running`          | `status:running`          |
 
-Changing the scope or search refreshes the workspace list and regenerates SSH configuration from the refreshed
-workspace set. With wildcard SSH enabled, the generated block uses the deployment wildcard host pattern. With wildcard
-SSH disabled, the generated block contains entries for the currently resolved workspace/agent pairs.
+The Template dropdown is populated from the deployment's templates, fetched each time the header becomes visible.
+Changing the search or a dropdown refreshes the workspace list and regenerates SSH configuration from the refreshed
+workspace
+set.
+With wildcard SSH enabled, the generated block uses the deployment wildcard host pattern. With wildcard SSH disabled,
+the generated block contains entries for the currently resolved workspace/agent pairs.
 
 SSH hostnames include the workspace owner so workspaces with the same name owned by different users remain distinct.
 With wildcard SSH enabled, the SSH config contains a deployment-wide `Host coder-jetbrains-toolbox-<host>--*` entry, and

@@ -13,6 +13,7 @@ import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
+import com.jetbrains.toolbox.api.ui.components.UiComponents
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +23,7 @@ import java.net.URL
 @Suppress("UnstableApiUsage")
 data class CoderToolboxContext(
     val ui: ToolboxUi,
+    val uiComponents: UiComponents,
     val envPageManager: EnvironmentUiPageManager,
     val envStateColorPalette: EnvironmentStateColorPalette,
     val remoteIdeOrchestrator: RemoteToolsHelper,

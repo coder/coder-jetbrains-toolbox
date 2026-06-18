@@ -202,8 +202,8 @@ msgstr ""
 msgid "Search workspaces"
 msgstr ""
 
-msgid "All"
+msgid "All templates"
 msgstr ""
 
-msgid "My workspaces"
+msgid "All statuses"
 msgstr ""

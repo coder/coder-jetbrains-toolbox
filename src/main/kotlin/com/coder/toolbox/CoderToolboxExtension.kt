@@ -18,6 +18,7 @@ import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
+import com.jetbrains.toolbox.api.ui.components.UiComponents
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -33,6 +34,7 @@ class CoderToolboxExtension : RemoteDevExtension {
         return CoderRemoteProvider(
             CoderToolboxContext(
                 ui,
+                serviceLocator.getService<UiComponents>(),
                 serviceLocator.getService<EnvironmentUiPageManager>(),
                 serviceLocator.getService<EnvironmentStateColorPalette>(),
                 serviceLocator.getService<RemoteToolsHelper>(),

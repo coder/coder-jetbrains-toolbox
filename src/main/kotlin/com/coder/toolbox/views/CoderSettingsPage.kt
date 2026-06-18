@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
  */
 class CoderSettingsPage(
     private val context: CoderToolboxContext,
-    triggerSshConfig: Channel<Boolean>,
+    sshConfigTrigger: Channel<Boolean>,
     private val onSettingsClosed: () -> Unit
 ) :
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
@@ -206,7 +206,7 @@ class CoderSettingsPage(
 
                     if (sshSettingsChanged) {
                         runCatching {
-                            triggerSshConfig.send(true)
+                            sshConfigTrigger.send(true)
                             context.logger.info("Settings have been modified, ssh config is going to be regenerated...")
                         }
                     }
