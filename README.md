@@ -76,6 +76,7 @@ jetbrains://gateway/com.coder.toolbox
   ?url=http(s)://<your-coder-deployment>
   &token=<auth-token>
   &workspace=<workspace-name>
+  &owner=<workspace-owner>
   &agent_name=<agent-name>
   &ide_product_code=<IDE-code>
   &ide_build_number=<IDE-build>
@@ -94,10 +95,15 @@ jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
 | url              | 	Your Coder deployment URL (encoded)                                                               | Yes       |
 | token            | 	Coder authentication token                                                                        | Yes       |
 | workspace        | 	Name of the Coder workspace to connect to.                                                        | Yes       |
+| owner            | 	Owner username, UUID, or `me` used to disambiguate the workspace lookup.                          | No        |
 | agent_name       | 	The name of the agent with the workspace                                                          | No        |
 | ide_product_code | 	JetBrains IDE product code (e.g., GO for GoLand, RR for Rider)                                    | No        |
 | ide_build_number | 	Specific build number or placeholder (see below) of the JetBrains IDE to install on the workspace | No        |
 | folder           | 	Absolute path to the project folder to open in the remote IDE (URL-encoded)                       | No        |
+
+When `owner` is present, the URI handler sends `owner:<owner>` as the workspace lookup query and then exact-matches the
+`workspace` value in the returned list. This lookup is independent of the workspace list filtering controls in the
+header. When `owner` is omitted, the URI handler sends no workspace lookup query.
 
 > [!NOTE]
 > If only a single agent is available, specifying an agent name is optional. However, if multiple agents exist, you must
@@ -442,6 +448,53 @@ When reporting issues, include HTTP logs to help diagnose:
 The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data
 storage paths. The options can be configured from the plugin's main Workspaces page > deployment action menu > Settings.
 
+### Workspace list filtering
+
+The expandable header on the Coder Workspaces page mirrors the workspace filtering in the Coder web dashboard. The first
+row is a free-form search field; the second row holds three dropdowns: **Filters** (presets), **Template**, and
+**Status**.
+
+- The search field holds
+  a [Coder workspace filter query](https://coder.com/docs/user-guides/workspace-management#workspace-filtering)
+  and is sent to the server verbatim as the `q` parameter. The server parses and validates it.
+- The list defaults to `owner:me` (your own workspaces) on each load. Nothing is persisted between sessions.
+- The dropdowns are shortcuts that edit the search text, exactly like the dashboard:
+    - **Filters** replaces the whole query with the chosen preset: `My workspaces` (`owner:me`), `All workspaces`
+      (empty), `Running workspaces` (`status:running`), `Failed workspaces` (`status:failed`),
+      `Outdated workspaces` (`outdated:true`), `Shared workspaces` (`shared:true`), and `Dormant workspaces`
+      (`dormant:true`). When the search text matches no preset, the dropdown shows `Custom`.
+    - **Template** sets or replaces the `template:` term.
+    - **Status** sets or replaces the `status:` term.
+- The dropdowns and the search text stay in sync: editing the text updates the dropdowns, and selecting a dropdown value
+  updates the text. Because each key appears at most once, the dropdowns never produce a duplicate-key query.
+- If the server rejects the query (for example a duplicate key, or a malformed term), the validation message is shown in
+  a secondary label after the dropdowns.
+
+Examples of what is sent as the `q` parameter:
+
+| Search field              | Sent as `q`               |
+|---------------------------|---------------------------|
+| empty                     | no `q` parameter          |
+| `owner:me` (default)      | `owner:me`                |
+| `owner:me name:bobiverse` | `owner:me name:bobiverse` |
+| `template:"Heaven 3"`     | `template:"Heaven 3"`     |
+| `status:running`          | `status:running`          |
+
+The Template dropdown is populated from the deployment's templates, fetched each time the header becomes visible.
+Changing the search or a dropdown refreshes the workspace list and regenerates SSH configuration from the refreshed
+workspace
+set.
+With wildcard SSH enabled, the generated block uses the deployment wildcard host pattern. With wildcard SSH disabled,
+the generated block contains entries for the currently resolved workspace/agent pairs.
+
+SSH hostnames include the workspace owner so workspaces with the same name owned by different users remain distinct.
+With wildcard SSH enabled, the SSH config contains a deployment-wide `Host coder-jetbrains-toolbox-<host>--*` entry, and
+the plugin connects through hostnames shaped like
+`coder-jetbrains-toolbox-<host>--<owner>--<workspace>.<agent>`. With wildcard SSH disabled, the SSH config writes one
+explicit entry per resolved workspace/agent using
+`Host coder-jetbrains-toolbox--<owner>--<workspace>.<agent>--<host>`, and its proxy command targets
+`<owner>/<workspace>.<agent>`.
+
 ### CLI related settings
 
 - `Binary source` specifies the source URL or relative path from which the Coder CLI should be downloaded.
@@ -549,7 +602,7 @@ support, may trigger regeneration of SSH configurations.
    JetBrains enabled auto-approval for the plugin, so we need to ensure we continue to meet the following requirements:
     - do **not** use Kotlin experimental APIs.
     - do **not** add any lambdas, handlers, or class handles to Java runtime hooks.
-   - do **not** create threads manually (including via libraries). If you must, ensure they are properly cleaned up in
-     the plugin's `CoderRemoteProvider#close()` method.
+    - do **not** create threads manually (including via libraries). If you must, ensure they are properly cleaned up in
+      the plugin's `CoderRemoteProvider#close()` method.
     - do **not** bundle libraries that are already provided by Toolbox.
     - do **not** perform any ill-intentioned actions.

@@ -5,6 +5,7 @@
 ### Added
 
 - support Toolbox 3.5 provider header behavior
+- workspace list filtering that mirrors the Coder web dashboard
 
 ### Fixed
 
@@ -14,7 +15,10 @@
 ### Changed
 
 - skip the Coder TLS alternate hostname when fetching IDE metadata from JetBrains
-- notifications are now persistent popups instead of snackbars, so they survive a hidden window and no longer get dropped
+- notifications are now persistent popups instead of snackbars, so they survive a hidden window and no longer get
+  dropped
+- workspace lists now default to `My workspaces`, so users initially see only workspaces they own. Users can
+  switch to `All workspaces`, and that selection is persisted per Coder deployment hostname.
 
 ## 0.9.0 - 2026-05-14
 

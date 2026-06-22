@@ -73,6 +73,7 @@ class CoderSettingsStoreTest {
     fun `Default CLI and signature for unknown Arch fallback on Linux`() =
         assertBinaryAndSignature("Linux", "mips64", "coder-linux-amd64", "coder-linux-amd64.asc")
 
+
     // --- binPath tests ---
     @Test
     fun `binPath uses dataDir when binaryDestination is null`() {

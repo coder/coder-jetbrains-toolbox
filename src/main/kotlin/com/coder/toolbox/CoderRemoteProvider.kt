@@ -69,8 +69,9 @@ class CoderRemoteProvider(
     private var pollJob: Job? = null
     internal val lastEnvironments = mutableListOf<CoderRemoteEnvironment>()
 
-    private val triggerSshConfig = Channel<Boolean>(Channel.CONFLATED)
-    private val triggerProviderVisible = Channel<Boolean>(Channel.CONFLATED)
+    private val sshConfigTrigger = Channel<Boolean>(Channel.CONFLATED)
+    private val workspaceRefreshTrigger = Channel<Boolean>(Channel.CONFLATED)
+    private val providerVisibleTrigger = Channel<Boolean>(Channel.CONFLATED)
     private val dialogUi = DialogUi(context)
 
     // The REST client, if we are signed in
@@ -82,8 +83,13 @@ class CoderRemoteProvider(
 
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
-    private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
-    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig) {
+    private val coderHeaderPage = NewEnvironmentPage(
+        context,
+        context.i18n.pnotr(context.deploymentUrl.toString()),
+        workspaceRefreshTrigger,
+        templatesProvider = { client?.templates() ?: emptyList() }
+    )
+    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, sshConfigTrigger) {
         client?.let { restClient ->
             if (context.settingsStore.useAppNameAsTitle) {
                 coderHeaderPage.setTitle(context.i18n.pnotr(restClient.appName))
@@ -170,13 +176,18 @@ class CoderRemoteProvider(
                     onTimeout(POLL_INTERVAL) {
                         context.logger.debug("workspace poller waked up by the $POLL_INTERVAL timeout")
                     }
-                    triggerSshConfig.onReceive { shouldTrigger ->
+                    sshConfigTrigger.onReceive { shouldTrigger ->
                         if (shouldTrigger) {
                             context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
                             cli.configSsh(lastEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
                         }
                     }
-                    triggerProviderVisible.onReceive { isCoderProviderVisible ->
+                    workspaceRefreshTrigger.onReceive { shouldTrigger ->
+                        if (shouldTrigger) {
+                            context.logger.debug("workspace poller waked up to fetch workspaces from the latest header settings")
+                        }
+                    }
+                    providerVisibleTrigger.onReceive { isCoderProviderVisible ->
                         if (isCoderProviderVisible) {
                             context.logger.debug("workspace poller waked up by Coder Toolbox which is currently visible, fetching latest workspace statuses")
                         }
@@ -199,7 +210,18 @@ class CoderRemoteProvider(
         client: CoderRestClient,
         cli: CoderCLIManager,
     ): List<CoderRemoteEnvironment> {
-        return client.workspaces().flatMap { ws ->
+        val workspaces = try {
+            client.workspaces(coderHeaderPage.workspaceSearchQuery.value)
+        } catch (ex: APIResponseException) {
+            // Surface invalid search queries on the header instead of failing the whole poll.
+            if (ex.isValidationError) {
+                coderHeaderPage.reportFilterError(ex.validationMessage)
+                return emptyList()
+            }
+            throw ex
+        }
+        coderHeaderPage.reportFilterError(null)
+        return workspaces.flatMap { ws ->
             // Agents are not included in workspaces that are off
             // so fetch them separately.
             val resources = when (ws.latestBuild.status) {
@@ -329,7 +351,7 @@ class CoderRemoteProvider(
     override fun setVisible(visibility: ProviderVisibilityState) {
         if (visibility.providerVisible) {
             context.cs.launch(CoroutineName("Notify Plugin Visibility")) {
-                triggerProviderVisible.send(true)
+                providerVisibleTrigger.send(true)
             }
         }
     }
@@ -356,12 +378,14 @@ class CoderRemoteProvider(
             if (sameUrl(newUrl, client?.url)) {
                 coderHeaderPage.isBusy.update { true }
                 try {
-                    if (context.settingsStore.requiresTokenAuth) {
+                    val activeSession = if (context.settingsStore.requiresTokenAuth) {
                         newToken?.let {
                             refreshSession(newUrl, it)
-                        }
+                        } ?: (this.client!! to this.cli!!)
+                    } else {
+                        this.client!! to this.cli!!
                     }
-                    linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
+                    linkHandler.handle(params, newUrl, activeSession.first, activeSession.second)
                 } finally {
                     coderHeaderPage.isBusy.update { false }
                 }
@@ -507,6 +531,8 @@ class CoderRemoteProvider(
         this.client = newRestClient
         this.cli = newCli
         lastEnvironments.forEach { it.updateClientAndCli(newRestClient, newCli) }
+        coderHeaderPage.resetFilter()
+        context.cs.launch(CoroutineName("Load Templates")) { coderHeaderPage.reloadTemplates() }
         pollJob = poll(newRestClient, newCli)
         context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI")
         return newRestClient to newCli
@@ -627,6 +653,8 @@ class CoderRemoteProvider(
             context.i18n.pnotr(client.me.username)
         }
         accountDropdownField.visibility.update { true }
+        coderHeaderPage.resetFilter()
+        context.cs.launch(CoroutineName("Load Templates")) { coderHeaderPage.reloadTemplates() }
         pollJob = poll(client, cli)
         context.logger.info("Workspace poll job with name ${pollJob.toString()} was created")
     }

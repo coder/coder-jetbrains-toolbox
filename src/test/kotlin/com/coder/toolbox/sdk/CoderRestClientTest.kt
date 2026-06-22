@@ -30,6 +30,7 @@ import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
+import com.jetbrains.toolbox.api.ui.components.UiComponents
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.sun.net.httpserver.HttpExchange
@@ -102,6 +103,7 @@ class CoderRestClientTest {
 
     private val context = CoderToolboxContext(
         mockk<ToolboxUi>(),
+        mockk<UiComponents>(relaxed = true),
         mockk<EnvironmentUiPageManager>(),
         mockk<EnvironmentStateColorPalette>(),
         mockk<RemoteToolsHelper>(),
@@ -273,9 +275,11 @@ class CoderRestClientTest {
         tests.forEach { workspaces ->
             val (srv, url) = mockServer()
             val client = CoderRestClient(context, URL(url), "token")
+            val queries = mutableListOf<String?>()
             srv.createContext(
                 "/api/v2/workspaces",
                 BaseHttpHandler("GET") { exchange ->
+                    queries.add(exchange.requestURI.rawQuery)
                     val response = WorkspacesResponse(workspaces)
                     val body = moshi.adapter(WorkspacesResponse::class.java).toJson(response).toByteArray()
                     exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
@@ -283,8 +287,61 @@ class CoderRestClientTest {
                 },
             )
             assertEquals(workspaces.map { ws -> ws.name }, runBlocking { client.workspaces() }.map { ws -> ws.name })
+            assertEquals(listOf<String?>(null), queries)
             srv.stop(0)
         }
+    }
+
+    @Test
+    fun `workspaces request can use explicit search query override`() {
+        val workspaces = listOf(DataGen.workspace("ws1"))
+        val (srv, url) = mockServer()
+        val client = CoderRestClient(context, URL(url), "token")
+        val queries = mutableListOf<String?>()
+        srv.createContext(
+            "/api/v2/workspaces",
+            BaseHttpHandler("GET") { exchange ->
+                queries.add(exchange.requestURI.rawQuery)
+                val response = WorkspacesResponse(workspaces)
+                val body = moshi.adapter(WorkspacesResponse::class.java).toJson(response).toByteArray()
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
+                exchange.responseBody.write(body)
+            },
+        )
+
+        assertEquals(
+            workspaces.map { ws -> ws.name },
+            runBlocking { client.workspaces("owner:riker name:omicron-eridani") }.map { ws -> ws.name }
+        )
+        assertEquals(listOf<String?>("q=owner%3Ariker%20name%3Aomicron-eridani"), queries)
+
+        srv.stop(0)
+    }
+
+    @Test
+    fun `templates request returns the deployment templates`() {
+        val templates = listOf(
+            DataGen.template(name = "heaven-1", displayName = "Heaven 1"),
+            DataGen.template(name = "heaven-2", displayName = "Heaven 2"),
+        )
+        val (srv, url) = mockServer()
+        val client = CoderRestClient(context, URL(url), "token")
+        srv.createContext(
+            "/api/v2/templates",
+            BaseHttpHandler("GET") { exchange ->
+                val type = Types.newParameterizedType(List::class.java, Template::class.java)
+                val body = moshi.adapter<List<Template>>(type).toJson(templates).toByteArray()
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
+                exchange.responseBody.write(body)
+            },
+        )
+
+        assertEquals(
+            listOf("Heaven 1", "Heaven 2"),
+            runBlocking { client.templates() }.map { it.displayName }
+        )
+
+        srv.stop(0)
     }
 
     @Test

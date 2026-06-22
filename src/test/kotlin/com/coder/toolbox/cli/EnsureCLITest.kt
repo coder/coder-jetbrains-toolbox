@@ -25,6 +25,7 @@ import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
+import com.jetbrains.toolbox.api.ui.components.UiComponents
 import com.sun.net.httpserver.HttpServer
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -61,6 +62,7 @@ internal class EnsureCLITest {
     private val ui = mockk<ToolboxUi>(relaxed = true)
     private val baseContext = CoderToolboxContext(
         ui,
+        mockk<UiComponents>(relaxed = true),
         mockk<EnvironmentUiPageManager>(),
         mockk<EnvironmentStateColorPalette>(),
         mockk<RemoteToolsHelper>(),

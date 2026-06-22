@@ -35,7 +35,7 @@ interface CoderV2RestFacade {
      */
     @GET("api/v2/workspaces")
     suspend fun workspaces(
-        @Query("q") searchParams: String,
+        @Query("q") searchParams: String?,
     ): Response<WorkspacesResponse>
 
     /**
@@ -57,6 +57,12 @@ interface CoderV2RestFacade {
         @Path("workspaceID") workspaceID: UUID,
         @Body createWorkspaceBuildRequest: CreateWorkspaceBuildRequest,
     ): Response<WorkspaceBuild>
+
+    /**
+     * Retrieves all templates the authenticated user can access.
+     */
+    @GET("api/v2/templates")
+    suspend fun templates(): Response<List<Template>>
 
     @GET("api/v2/templates/{templateID}")
     suspend fun template(

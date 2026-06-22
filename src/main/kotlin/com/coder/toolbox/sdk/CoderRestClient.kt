@@ -161,11 +161,13 @@ open class CoderRestClient(
     }
 
     /**
-     * Retrieves the available workspaces created by the user.
+     * Retrieves workspaces matching the provided Coder search query.
      * @throws [APIResponseException].
      */
-    suspend fun workspaces(): List<Workspace> {
-        val workspacesResponse = callWithRetry { retroRestClient.workspaces("owner:me") }
+    suspend fun workspaces(searchQuery: String? = null): List<Workspace> {
+        val workspacesResponse = callWithRetry {
+            retroRestClient.workspaces(searchQuery)
+        }
         if (!workspacesResponse.isSuccessful) {
             throw APIResponseException(
                 "retrieve workspaces",
@@ -238,6 +240,26 @@ open class CoderRestClient(
 
         return requireNotNull(buildInfoResponse.body()) {
             "Successful response returned null body or build info"
+        }
+    }
+
+    /**
+     * Retrieves all templates the authenticated user can access.
+     * @throws [APIResponseException].
+     */
+    suspend fun templates(): List<Template> {
+        val templatesResponse = callWithRetry { retroRestClient.templates() }
+        if (!templatesResponse.isSuccessful) {
+            throw APIResponseException(
+                "retrieve templates",
+                url,
+                templatesResponse.code(),
+                templatesResponse.parseErrorBody(moshi)
+            )
+        }
+
+        return requireNotNull(templatesResponse.body()) {
+            "Successful response returned null body or templates"
         }
     }
 
