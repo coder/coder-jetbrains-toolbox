@@ -288,6 +288,64 @@ class CoderRestClientTest {
     }
 
     @Test
+    fun testMergesOwnedAndSharedWorkspaces() {
+        val owned = DataGen.workspace("owned", ownerName = "me")
+        val shared = DataGen.workspace("shared", ownerName = "coworker")
+        val (srv, url) = mockServer()
+        val client = CoderRestClient(context, URL(url), "token")
+        srv.createContext(
+            "/api/v2/workspaces",
+            BaseHttpHandler("GET") { exchange ->
+                val query = exchange.requestURI.rawQuery.orEmpty()
+                val workspaces = when {
+                    query.contains("owner%3Ame") -> listOf(owned)
+                    query.contains("shared%3Atrue") -> listOf(shared, owned)
+                    else -> emptyList()
+                }
+                val body = moshi.adapter(WorkspacesResponse::class.java)
+                    .toJson(WorkspacesResponse(workspaces))
+                    .toByteArray()
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
+                exchange.responseBody.write(body)
+            },
+        )
+
+        val result = runBlocking { client.workspaces() }
+        assertEquals(listOf("owned", "shared"), result.map { it.name })
+        srv.stop(0)
+    }
+
+    @Test
+    fun testIgnoresFailedSharedQuery() {
+        val owned = DataGen.workspace("owned", ownerName = "me")
+        val (srv, url) = mockServer()
+        val client = CoderRestClient(context, URL(url), "token")
+        srv.createContext(
+            "/api/v2/workspaces",
+            BaseHttpHandler("GET") { exchange ->
+                val query = exchange.requestURI.rawQuery.orEmpty()
+                if (query.contains("shared%3Atrue")) {
+                    val response = Response("Bad request", "shared:true is not supported")
+                    val body = moshi.adapter(Response::class.java).toJson(response).toByteArray()
+                    exchange.sendResponseHeaders(HttpURLConnection.HTTP_BAD_REQUEST, body.size.toLong())
+                    exchange.responseBody.write(body)
+                    return@BaseHttpHandler
+                }
+                val body = moshi.adapter(WorkspacesResponse::class.java)
+                    .toJson(WorkspacesResponse(listOf(owned)))
+                    .toByteArray()
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
+                exchange.responseBody.write(body)
+            },
+        )
+
+        val result = runBlocking { client.workspaces() }
+        assertEquals(listOf("owned"), result.map { it.name })
+        srv.stop(0)
+    }
+
+
+    @Test
     fun testGetsResources() {
         val tests =
             listOf(
