@@ -531,6 +531,8 @@ class CoderRemoteProvider(
         this.client = newRestClient
         this.cli = newCli
         lastEnvironments.forEach { it.updateClientAndCli(newRestClient, newCli) }
+        accountDropdownField.labelState.update { context.i18n.pnotr(newRestClient.me.username) }
+        accountDropdownField.visibility.update { true }
         coderHeaderPage.resetFilter()
         context.cs.launch(CoroutineName("Load Templates")) { coderHeaderPage.reloadTemplates() }
         pollJob = poll(newRestClient, newCli)
