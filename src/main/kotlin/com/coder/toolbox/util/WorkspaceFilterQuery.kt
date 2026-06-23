@@ -74,5 +74,6 @@ val WORKSPACE_FILTER_PRESETS = listOf(
 )
 
 /** The preset name whose query exactly matches this query, or [CUSTOM_WORKSPACE_FILTER_NAME] if none. */
-fun String.presetNameForQuery(): String =
-    WORKSPACE_FILTER_PRESETS.firstOrNull { it.query == trim() }?.name ?: CUSTOM_WORKSPACE_FILTER_NAME
+fun String.presetNameForQuery(): String {
+    return WORKSPACE_FILTER_PRESETS.firstOrNull { it.query == this.trim() }?.name ?: CUSTOM_WORKSPACE_FILTER_NAME
+}
