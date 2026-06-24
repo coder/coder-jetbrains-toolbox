@@ -12,13 +12,14 @@ import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.WizardModel
+import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
+import com.jetbrains.toolbox.api.ui.components.FieldModifier
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.LabelStyleType
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
-import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
 import kotlinx.coroutines.flow.update
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.net.MalformedURLException
@@ -31,7 +32,7 @@ private const val OAUTH2_SCOPE: String =
 
 /**
  * A page with a field for providing the Coder deployment URL.
- *\
+ *
  * Populates with the provided URL, at which point the user can accept or
  * enter their own.
  */
@@ -48,28 +49,20 @@ class DeploymentUrlStep(
         context.i18n.ptrl("Verify binary signature using releases.coder.com when CLI signatures are not available from the deployment")
     )
 
-    private val errorField = ValidationErrorField(context.i18n.pnotr(""))
-
     override val panel: RowGroup
         get() {
             if (!context.settingsStore.disableSignatureVerification) {
                 return RowGroup(
                     RowGroup.RowField(urlField),
                     RowGroup.RowField(emptyLine),
-                    RowGroup.RowField(signatureFallbackStrategyField),
-                    RowGroup.RowField(errorField)
+                    RowGroup.RowField(signatureFallbackStrategyField)
                 )
             }
-            return RowGroup(
-                RowGroup.RowField(urlField),
-                RowGroup.RowField(errorField)
-            )
+            return RowGroup(RowGroup.RowField(urlField))
         }
 
     override fun onVisible() {
-        errorField.textState.update {
-            context.i18n.pnotr("")
-        }
+        resetError()
         urlField.contentState.update {
             context.deploymentUrl.toString()
         }
@@ -83,14 +76,14 @@ class DeploymentUrlStep(
         context.settingsStore.updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
         val rawUrl = urlField.contentState.value
         if (rawUrl.isBlank()) {
-            errorField.textState.update { context.i18n.ptrl("URL is required") }
+            reportError(context.i18n.ptrl("URL is required"))
             return false
         }
 
         try {
             model.url = validateRawUrl(rawUrl)
         } catch (e: MalformedURLException) {
-            context.logAndShowError("Error encountered while setting up Coder", "URL is invalid", e)
+            reportError(context.i18n.pnotr("URL is invalid: ${e.message}"))
             return false
         }
 
@@ -104,11 +97,7 @@ class DeploymentUrlStep(
                 model.oauthSession = handleOAuth2(rawUrl)
                 return false
             } catch (e: Exception) {
-                context.logAndShowError(
-                    "Error encountered while setting up Coder",
-                    "Failed to authenticate with OAuth2: ${e.message}",
-                    e
-                )
+                reportError(context.i18n.pnotr("Failed to authenticate with OAuth2: ${e.message}"))
                 return false
             }
         }
@@ -189,5 +178,18 @@ class DeploymentUrlStep(
 
     override fun onBack() {
         // it's the first step. Can't go anywhere back from here
+    }
+
+    private fun reportError(message: LocalizableString?) {
+        if (message != null) {
+            context.logger.info(message.toString())
+            urlField.modifiers.value = listOf(FieldModifier.LocalizableError(message))
+        } else {
+            resetError()
+        }
+    }
+
+    private fun resetError() {
+        urlField.modifiers.value = emptyList()
     }
 }
