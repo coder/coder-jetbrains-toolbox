@@ -14,12 +14,14 @@ import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.util.TOKEN
 import com.coder.toolbox.util.URL
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
+import com.coder.toolbox.util.owner
 import com.coder.toolbox.util.toQueryParameters
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.token
 import com.coder.toolbox.util.url
 import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.util.withPath
+import com.coder.toolbox.util.workspace
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderDelimiter
 import com.coder.toolbox.views.CoderSettingsPage
@@ -385,7 +387,7 @@ class CoderRemoteProvider(
                     } else {
                         this.client!! to this.cli!!
                     }
-                    linkHandler.handle(params, newUrl, activeSession.first, activeSession.second)
+                    handleLink(params, newUrl, activeSession.first, activeSession.second)
                 } finally {
                     coderHeaderPage.isBusy.update { false }
                 }
@@ -662,10 +664,28 @@ class CoderRemoteProvider(
     }
 
     /**
-     * Returns a [SuspendBiConsumer] that handles the given link parameters.
-     * Runs in a background coroutine so it doesn't block the connect step's
-     * post-connection flow.
+     * Applies the appropriate workspace filter for the URI then delegates to [linkHandler].
+     * Scopes the filter to the target workspace when it is owned by a different user so the poll
+     * fetches and registers it before the IDE launch runs. For own workspaces, resets to the
+     * default filter, clearing any leftover non-owned filter from a previous URI.
      */
+    private suspend fun handleLink(
+        params: Map<String, String>,
+        url: URL,
+        client: CoderRestClient,
+        cli: CoderCLIManager,
+    ) {
+        val uriOwner = params.owner()
+        val uriWorkspace = params.workspace()
+        if (!uriOwner.isNullOrBlank() && !uriWorkspace.isNullOrBlank() && uriOwner != client.me.username) {
+            coderHeaderPage.setFilter("owner:$uriOwner name:$uriWorkspace")
+        } else {
+            coderHeaderPage.resetFilter()
+        }
+        linkHandler.handle(params, url, client, cli)
+    }
+
+    /** Returns a [SuspendBiConsumer] that handles the given link parameters in a background coroutine. */
     private fun deferredLinkHandler(
         params: Map<String, String>,
         deploymentUrl: URL,
@@ -673,7 +693,7 @@ class CoderRemoteProvider(
         context.cs.launch(CoroutineName("Deferred Link Handler")) {
             coderHeaderPage.isBusy.update { true }
             try {
-                linkHandler.handle(params, deploymentUrl, client, cli)
+                handleLink(params, deploymentUrl, client, cli)
             } catch (ex: Exception) {
                 context.logAndShowError(
                     "Error handling deferred link",

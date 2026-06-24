@@ -178,6 +178,17 @@ class NewEnvironmentPage(
     }
 
     /**
+     * Sets the filter to an arbitrary query, e.g. when a URI targets a workspace owned by a
+     * different user. Updates both the visible search field and the backing query so the poll
+     * immediately uses the new value.
+     */
+    fun setFilter(query: String) {
+        workspaceSearchField.contentState.value = query
+        mutableWorkspaceSearchQuery.value = query
+        reportFilterError(null)
+    }
+
+    /**
      * Shows the server's validation [message] under the search bar, or clears it when [message] is
      * null. Called by the provider when a workspace query is rejected or succeeds.
      */
