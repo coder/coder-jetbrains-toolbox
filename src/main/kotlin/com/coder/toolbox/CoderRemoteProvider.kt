@@ -222,7 +222,7 @@ class CoderRemoteProvider(
             }
             throw ex
         }
-        coderHeaderPage.reportFilterError(null)
+        coderHeaderPage.resetError()
         return workspaces.flatMap { ws ->
             // Agents are not included in workspaces that are off
             // so fetch them separately.

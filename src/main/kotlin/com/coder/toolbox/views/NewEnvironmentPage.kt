@@ -10,11 +10,11 @@ import com.coder.toolbox.util.presetNameForQuery
 import com.coder.toolbox.util.withFilterTerm
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField
+import com.jetbrains.toolbox.api.ui.components.FieldModifier
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.UiField
-import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -25,7 +25,6 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -56,9 +55,6 @@ class NewEnvironmentPage(
         weight = 1f,
         placeholder = context.i18n.pnotr("")
     )
-
-    // Shows the server's validation message under the search bar; blank when there is no error.
-    private val errorField = ValidationErrorField(context.i18n.pnotr(""))
 
     // Dropdown selections. An empty string means "no filter for this key" (the leading "All ..." option).
     private val filtersSelection = MutableStateFlow(DEFAULT_WORKSPACE_FILTER_QUERY.presetNameForQuery())
@@ -113,7 +109,7 @@ class NewEnvironmentPage(
     val workspaceSearchQuery: StateFlow<String?> = mutableWorkspaceSearchQuery
 
     override val fields: StateFlow<List<UiField>> =
-        MutableStateFlow(listOf(workspaceSearchField, filterControlsGroup, errorField))
+        MutableStateFlow(listOf(workspaceSearchField, filterControlsGroup))
 
     override fun beforeShow() {
         syncJob?.cancel()
@@ -174,7 +170,7 @@ class NewEnvironmentPage(
     fun resetFilter() {
         workspaceSearchField.contentState.value = DEFAULT_WORKSPACE_FILTER_QUERY
         mutableWorkspaceSearchQuery.value = DEFAULT_WORKSPACE_FILTER_QUERY
-        reportFilterError(null)
+        resetError()
     }
 
     /**
@@ -185,7 +181,7 @@ class NewEnvironmentPage(
     fun setFilter(query: String) {
         workspaceSearchField.contentState.value = query
         mutableWorkspaceSearchQuery.value = query
-        reportFilterError(null)
+        resetError()
     }
 
     /**
@@ -193,7 +189,15 @@ class NewEnvironmentPage(
      * null. Called by the provider when a workspace query is rejected or succeeds.
      */
     fun reportFilterError(message: String?) {
-        errorField.textState.update { context.i18n.pnotr(message ?: "") }
+        if (message != null) {
+            workspaceSearchField.modifiers.value = listOf(FieldModifier.LocalizableError(context.i18n.pnotr(message)))
+        } else {
+            resetError()
+        }
+    }
+
+    fun resetError() {
+        workspaceSearchField.modifiers.value = emptyList()
     }
 
     private fun setQuery(query: String) {
