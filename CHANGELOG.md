@@ -11,6 +11,7 @@
 
 - snackbar dismissal no longer cancels the calling coroutine, so error popups during URI handling don't leave the page
   stuck in a busy state
+- faster workspace list refresh: agents are no longer fetched for stopped workspaces
 
 ### Changed
 
