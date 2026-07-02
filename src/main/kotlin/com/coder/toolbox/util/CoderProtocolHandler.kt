@@ -1,5 +1,6 @@
 package com.coder.toolbox.util
 
+import com.coder.toolbox.CoderRemoteEnvironment
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.feed.IdeFeedManager
@@ -9,11 +10,15 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.jetbrains.toolbox.api.core.util.LoadableState
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.time.withTimeout
 import java.net.URL
@@ -28,6 +33,8 @@ private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
 open class CoderProtocolHandler(
     private val context: CoderToolboxContext,
     private val ideFeedManager: IdeFeedManager,
+    private val workspaceRefreshTrigger: Channel<Boolean>,
+    private val environments: StateFlow<LoadableState<List<CoderRemoteEnvironment>>>,
 ) {
     private val settings = context.settingsStore.readOnly()
 
@@ -60,8 +67,19 @@ open class CoderProtocolHandler(
                 restClient.workspace(workspace.id)
             ) ?: return
             if (!ensureAgentIsReady(workspace, agent)) return
-            delay(2.seconds)
             val environmentId = "${workspace.name}.${agent.name}"
+            // If the workspace was just started, its agent environment (and the SSH
+            // config entry, which is written in the same poll iteration) only exists
+            // after the workspace poller observes the running workspace. Nudge the
+            // poller and wait for the environment to show up before using its id.
+            workspaceRefreshTrigger.trySend(true)
+            if (!waitForEnvironment(environmentId)) {
+                context.logAndShowError(
+                    CAN_T_HANDLE_URI_TITLE,
+                    "The environment $environmentId did not become available on time"
+                )
+                return
+            }
             context.showEnvironmentPage(environmentId)
 
             val productCode = params.ideProductCode()
@@ -410,6 +428,22 @@ open class CoderProtocolHandler(
     private fun launchJBClient(selectedIde: String, environmentId: String, projectFolder: String?) {
         context.logger.info("Launching $selectedIde on $environmentId")
         context.jbClientOrchestrator.connectToIde(environmentId, selectedIde, projectFolder)
+    }
+
+    /**
+     * Waits until an environment with the given id is present in the provider's
+     * environment list, i.e. the workspace poller resolved the agent and wrote
+     * the SSH configuration for it.
+     */
+    private suspend fun waitForEnvironment(environmentId: String, waitTime: Duration = 1.minutes): Boolean = try {
+        withTimeout(waitTime.toJavaDuration()) {
+            environments.first { state ->
+                state is LoadableState.Value && state.value.any { it.id == environmentId }
+            }
+        }
+        true
+    } catch (_: TimeoutCancellationException) {
+        false
     }
 
     private suspend fun CoderRestClient.waitForReady(workspace: Workspace): Boolean {

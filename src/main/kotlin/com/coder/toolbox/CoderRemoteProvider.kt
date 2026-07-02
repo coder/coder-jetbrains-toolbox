@@ -100,12 +100,12 @@ class CoderRemoteProvider(
             }
         }
     }
-    private val linkHandler = CoderProtocolHandler(context, IdeFeedManager(context))
-
     override val loadingEnvironmentsDescription: LocalizableString = context.i18n.ptrl("Loading workspaces...")
     override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
         LoadableState.Loading
     )
+    private val linkHandler =
+        CoderProtocolHandler(context, IdeFeedManager(context), workspaceRefreshTrigger, environments)
     private val accountDropdownField = dropDownFactory(context.i18n.pnotr("")) {
         logout()
         context.envPageManager.showPluginEnvironmentsPage(false)
@@ -133,10 +133,14 @@ class CoderRemoteProvider(
                         return@launch
                     }
 
+                    // Toolbox closes removed environments without firing their
+                    // disconnect hooks, so stop their background work before dropping them.
+                    lastEnvironments.filter { it !in resolvedEnvironments }.forEach { it.dispose() }
+
                     // Reconfigure if environments changed.
                     if (lastEnvironments.size != resolvedEnvironments.size || lastEnvironments != resolvedEnvironments) {
                         context.logger.info("Workspaces have changed, reconfiguring CLI: $resolvedEnvironments")
-                        cli.configSsh(resolvedEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
+                        cli.configSsh(resolvedEnvironments.mapNotNull { it.toWorkspaceAgentPairOrNull() }.toSet())
                     }
 
                     environments.update {
@@ -181,7 +185,7 @@ class CoderRemoteProvider(
                     sshConfigTrigger.onReceive { shouldTrigger ->
                         if (shouldTrigger) {
                             context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
-                            cli.configSsh(lastEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
+                            cli.configSsh(lastEnvironments.mapNotNull { it.toWorkspaceAgentPairOrNull() }.toSet())
                         }
                     }
                     workspaceRefreshTrigger.onReceive { shouldTrigger ->
@@ -203,8 +207,8 @@ class CoderRemoteProvider(
      * Resolves workspace agents into remote environments.
      *
      * For each workspace:
-     * - If running, uses agents from the latest build resources
-     * - If not running, fetches resources separately
+     * - If running, uses agents from the latest build resources.
+     * - If not running, creates a workspace-only environment without resolving agents.
      *
      * @return a sorted list of resolved remote environments
      */
@@ -224,12 +228,15 @@ class CoderRemoteProvider(
         }
         coderHeaderPage.resetError()
         return workspaces.flatMap { ws ->
-            // Agents are not included in workspaces that are off
-            // so fetch them separately.
-            val resources = when (ws.latestBuild.status) {
-                WorkspaceStatus.RUNNING -> ws.latestBuild.resources
-                else -> emptyList()
-            }.ifEmpty {
+            if (ws.latestBuild.status != WorkspaceStatus.RUNNING) {
+                return@flatMap listOf(
+                    lastEnvironments.firstOrNull { it.id == ws.name }
+                        ?.also { it.update(ws, null) }
+                        ?: CoderRemoteEnvironment(context, client, cli, workspaceRefreshTrigger, ws, null)
+                )
+            }
+
+            val resources = ws.latestBuild.resources.ifEmpty {
                 client.resources(ws)
             }
             resources
@@ -240,7 +247,7 @@ class CoderRemoteProvider(
                         ?.also {
                             // If we have an environment already, update that.
                             it.update(ws, agent)
-                        } ?: CoderRemoteEnvironment(context, client, cli, ws, agent)
+                        } ?: CoderRemoteEnvironment(context, client, cli, workspaceRefreshTrigger, ws, agent)
                 }
 
         }.sortedBy { it.id }
@@ -288,6 +295,7 @@ class CoderRemoteProvider(
         softClose()
         client = null
         cli = null
+        lastEnvironments.forEach { it.dispose() }
         lastEnvironments.clear()
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
@@ -590,7 +598,11 @@ class CoderRemoteProvider(
                     onTokenRefreshed = ::onTokenRefreshed,
                 )
             } catch (ex: Exception) {
-                context.logAndShowError("Error encountered while setting up Coder", "Failed to set up Coder", ex)
+                context.logAndShowError(
+                    "Error encountered while setting up Coder",
+                    "Failed to set up Coder: ${ex.message}",
+                    ex
+                )
             } finally {
                 firstRun = false
             }

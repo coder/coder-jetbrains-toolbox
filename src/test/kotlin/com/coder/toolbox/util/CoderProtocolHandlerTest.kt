@@ -8,12 +8,15 @@ import com.coder.toolbox.feed.IdeType
 import com.coder.toolbox.feed.JetBrainsFeedService
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
+import com.jetbrains.toolbox.api.core.util.LoadableState
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -60,7 +63,12 @@ class CoderProtocolHandlerTest {
         every { context.cs } returns CoroutineScope(dispatcher)
         every { context.remoteIdeOrchestrator } returns remoteToolsHelper
 
-        handler = CoderProtocolHandler(context, ideFeedManager)
+        handler = CoderProtocolHandler(
+            context,
+            ideFeedManager,
+            Channel(Channel.CONFLATED),
+            MutableStateFlow(LoadableState.Value(emptyList()))
+        )
     }
 
     @Test
