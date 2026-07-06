@@ -85,7 +85,6 @@ class CoderRemoteProviderTest {
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
-        coEvery { mockClient.resources(any()) } returns emptyList()
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -94,7 +93,6 @@ class CoderRemoteProviderTest {
         assertEquals(2, result.size)
         assertEquals("ws1.agent1", result[0].id)
         assertEquals("ws1.agent2", result[1].id)
-        coVerify(exactly = 0) { mockClient.resources(workspace) }
     }
 
     @Test
@@ -103,7 +101,6 @@ class CoderRemoteProviderTest {
         val workspace = mockWorkspace("ws1", WorkspaceStatus.STOPPED, emptyList())
 
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
-        coEvery { mockClient.resources(any()) } returns emptyList()
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -112,7 +109,6 @@ class CoderRemoteProviderTest {
         assertEquals(1, result.size)
         assertEquals("ws1", result[0].id)
         assertNull(result[0].toWorkspaceAgentPairOrNull())
-        coVerify(exactly = 0) { mockClient.resources(workspace) }
     }
 
     @Test
@@ -121,7 +117,6 @@ class CoderRemoteProviderTest {
         val workspace = mockWorkspace("ws1", WorkspaceStatus.PENDING, emptyList())
 
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
-        coEvery { mockClient.resources(any()) } returns emptyList()
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -129,27 +124,21 @@ class CoderRemoteProviderTest {
         // then
         assertEquals(1, result.size)
         assertEquals("ws1", result[0].id)
-        coVerify(exactly = 0) { mockClient.resources(workspace) }
     }
 
     @Test
-    fun `given a running workspace with empty resources then resources are fetched separately`() = runTest {
+    fun `given a running workspace with empty resources then no environment is returned`() = runTest {
         // given
-        val agent = mockAgent("agent1")
-        val resource = mockResource(agents = listOf(agent))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, emptyList())
 
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
-        coEvery { mockClient.resources(workspace) } returns listOf(resource)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
 
         // then
-        assertEquals(1, result.size)
-        coVerify(exactly = 1) { mockClient.resources(workspace) }
+        assertTrue(result.isEmpty())
     }
-
 
     @Test
     fun `given a running workspace with a resource that has no agents (ie null) then no environment is returned`() =
@@ -165,7 +154,6 @@ class CoderRemoteProviderTest {
 
             // then
             assertTrue(result.isEmpty())
-            coVerify(exactly = 0) { mockClient.resources(workspace) }
         }
 
     @Test
@@ -182,7 +170,6 @@ class CoderRemoteProviderTest {
 
             // then
             assertTrue(result.isEmpty())
-            coVerify(exactly = 0) { mockClient.resources(workspace) }
         }
 
     @Test
@@ -202,7 +189,6 @@ class CoderRemoteProviderTest {
             // then
             assertEquals(1, result.size)
             assertEquals("ws1.agent1", result[0].id)
-            coVerify(exactly = 0) { mockClient.resources(workspace) }
         }
 
     @Test
@@ -223,7 +209,6 @@ class CoderRemoteProviderTest {
             // then
             assertEquals(1, result.size)
             assertEquals("ws1.agent1", result[0].id)
-            coVerify(exactly = 0) { mockClient.resources(workspace) }
         }
 
     @Test
@@ -486,7 +471,6 @@ class CoderRemoteProviderTest {
                 setOf("ws1.agent1", "ws1.agent2", "ws1.agent3", "ws1.agent4"),
                 result.map { it.id }.toSet()
             )
-            coVerify(exactly = 0) { mockClient.resources(workspace) }
         }
 
     @Test

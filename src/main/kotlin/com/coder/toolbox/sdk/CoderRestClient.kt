@@ -21,7 +21,6 @@ import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
-import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.util.ReloadableTlsContext
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
@@ -199,31 +198,6 @@ open class CoderRestClient(
 
         return requireNotNull(workspaceResponse.body()) {
             "Successful response returned null body or workspace"
-        }
-    }
-
-    /**
-     * Retrieves resources for the specified workspace.  The workspaces response
-     * does not include agents when the workspace is off so this can be used to
-     * get them instead, just like `coder config-ssh` does (otherwise we risk
-     * removing hosts from the SSH config when they are off).
-     * @throws [APIResponseException].
-     */
-    suspend fun resources(workspace: Workspace): List<WorkspaceResource> {
-        val resourcesResponse = callWithRetry {
-            retroRestClient.templateVersionResources(workspace.latestBuild.templateVersionID)
-        }
-        if (!resourcesResponse.isSuccessful) {
-            throw APIResponseException(
-                "retrieve resources for ${workspace.name}",
-                url,
-                resourcesResponse.code(),
-                resourcesResponse.parseErrorBody(moshi)
-            )
-        }
-
-        return requireNotNull(resourcesResponse.body()) {
-            "Successful response returned null body or workspace resources"
         }
     }
 

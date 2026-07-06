@@ -236,10 +236,7 @@ class CoderRemoteProvider(
                 )
             }
 
-            val resources = ws.latestBuild.resources.ifEmpty {
-                client.resources(ws)
-            }
-            resources
+            ws.latestBuild.resources
                 .flatMap { it.agents ?: emptyList() }
                 .distinctBy { it.name }
                 .map { agent ->

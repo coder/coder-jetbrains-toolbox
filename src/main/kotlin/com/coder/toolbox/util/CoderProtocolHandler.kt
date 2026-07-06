@@ -76,7 +76,7 @@ open class CoderProtocolHandler(
             if (!waitForEnvironment(environmentId)) {
                 context.logAndShowError(
                     CAN_T_HANDLE_URI_TITLE,
-                    "The environment $environmentId did not become available on time"
+                    "The environment $environmentId did not become available in time"
                 )
                 return
             }
@@ -136,7 +136,7 @@ open class CoderProtocolHandler(
                 if (!restClient.waitForReady(workspace)) {
                     context.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
-                        "${workspace.name} from $url could not be ready on time"
+                        "${workspace.name} from $url could not be ready in time"
                     )
                     return false
                 }
@@ -169,7 +169,7 @@ open class CoderProtocolHandler(
                 if (!restClient.waitForReady(workspace)) {
                     context.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
-                        "${workspace.name} from $url could not be started on time",
+                        "${workspace.name} from $url could not be started in time",
                     )
                     return false
                 }
@@ -306,7 +306,7 @@ open class CoderProtocolHandler(
         } else {
             context.ui.showInfoPopup(
                 context.i18n.pnotr("$selectedIde could not be installed"),
-                context.i18n.pnotr("$selectedIde could not be installed on time. Check the logs for more details"),
+                context.i18n.pnotr("$selectedIde could not be installed in time. Check the logs for more details"),
                 context.i18n.ptrl("OK")
             )
             return null

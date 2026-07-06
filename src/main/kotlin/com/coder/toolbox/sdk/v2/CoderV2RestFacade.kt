@@ -7,7 +7,6 @@ import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
-import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspacesResponse
 import retrofit2.Response
 import retrofit2.http.Body
@@ -69,8 +68,4 @@ interface CoderV2RestFacade {
         @Path("templateID") templateID: UUID,
     ): Response<Template>
 
-    @GET("api/v2/templateversions/{templateID}/resources")
-    suspend fun templateVersionResources(
-        @Path("templateID") templateID: UUID,
-    ): Response<List<WorkspaceResource>>
 }
