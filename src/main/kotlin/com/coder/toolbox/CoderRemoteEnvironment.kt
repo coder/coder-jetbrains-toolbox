@@ -327,7 +327,7 @@ class CoderRemoteEnvironment(
      * have no host to connect to yet, so they get an empty contents view instead.
      */
     override suspend fun getContentsView(): EnvironmentContentsView {
-        val agent = agent ?: run {
+        val envAgent = agent ?: run {
             context.logger.info("No agent is available for $id yet, providing an empty contents view")
             return EmptyWorkspaceContentView
         }
@@ -336,7 +336,7 @@ class CoderRemoteEnvironment(
             client.url,
             cli,
             workspace,
-            agent
+            envAgent
         )
     }
 
