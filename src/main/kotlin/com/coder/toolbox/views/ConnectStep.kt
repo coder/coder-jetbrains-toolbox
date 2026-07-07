@@ -144,11 +144,19 @@ class ConnectStep(
                 // dispose() must cancel without navigating. Treat these control-flow
                 // cancellations separately so we do not run navigateBack() twice.
                 if (ex.message != USER_HIT_THE_BACK_BUTTON && ex.message != WIZARD_WAS_DISPOSED) {
-                    context.logAndShowError("Error encountered while setting up Coder", "Failed to configure $hostName", ex)
+                    context.logAndShowError(
+                        "Error encountered while setting up Coder",
+                        "Failed to configure $hostName. ${ex.message}",
+                        ex
+                    )
                     navigateBack()
                 }
             } catch (ex: Exception) {
-                context.logAndShowError("Error encountered while setting up Coder", "Failed to configure $hostName", ex)
+                context.logAndShowError(
+                    "Error encountered while setting up Coder",
+                    "Failed to configure $hostName. ${ex.message}",
+                    ex
+                )
                 navigateBack()
             }
         }

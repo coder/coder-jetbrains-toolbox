@@ -8,9 +8,7 @@ import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
 import com.coder.toolbox.sdk.v2.models.Response
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
-import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
-import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.sdk.v2.models.WorkspacesResponse
 import com.coder.toolbox.settings.Environment
@@ -126,9 +124,6 @@ class CoderRestClientTest {
             }
         },
     )
-
-
-    data class TestWorkspace(var workspace: Workspace, var resources: List<WorkspaceResource>? = emptyList())
 
     /**
      * Create, start, and return a server.
@@ -342,92 +337,6 @@ class CoderRestClientTest {
         )
 
         srv.stop(0)
-    }
-
-    @Test
-    fun testGetsResources() {
-        val tests =
-            listOf(
-                // Nothing, so no resources.
-                emptyList(),
-                // One workspace with an agent, but no resources.
-                listOf(
-                    TestWorkspace(
-                        DataGen.workspace(
-                            "ws1",
-                            agents = mapOf("agent1" to "3f51da1d-306f-4a40-ac12-62bda5bc5f9a")
-                        )
-                    )
-                ),
-                // One workspace with an agent and resources that do not match the agent.
-                listOf(
-                    TestWorkspace(
-                        workspace = DataGen.workspace(
-                            "ws1",
-                            agents = mapOf("agent1" to "3f51da1d-306f-4a40-ac12-62bda5bc5f9a")
-                        ),
-                        resources =
-                            listOf(
-                                DataGen.resource("agent2", "968eea5e-8787-439d-88cd-5bc440216a34"),
-                                DataGen.resource("agent3", "72fbc97b-952c-40c8-b1e5-7535f4407728"),
-                            ),
-                    ),
-                ),
-                // Multiple workspaces but only one has resources.
-                listOf(
-                    TestWorkspace(
-                        workspace = DataGen.workspace(
-                            "ws1",
-                            agents = mapOf("agent1" to "3f51da1d-306f-4a40-ac12-62bda5bc5f9a")
-                        ),
-                        resources = emptyList(),
-                    ),
-                    TestWorkspace(
-                        workspace = DataGen.workspace("ws2"),
-                        resources =
-                            listOf(
-                                DataGen.resource("agent2", "968eea5e-8787-439d-88cd-5bc440216a34"),
-                                DataGen.resource("agent3", "72fbc97b-952c-40c8-b1e5-7535f4407728"),
-                            ),
-                    ),
-                    TestWorkspace(
-                        workspace = DataGen.workspace("ws3"),
-                        resources = emptyList(),
-                    ),
-                ),
-            )
-
-        val resourceEndpoint = "([^/]+)/resources".toRegex()
-        tests.forEach { workspaces ->
-            val (srv, url) = mockServer()
-            val client = CoderRestClient(context, URL(url), "token")
-            srv.createContext(
-                "/api/v2/templateversions",
-                BaseHttpHandler("GET") { exchange ->
-                    val matches = resourceEndpoint.find(exchange.requestURI.path)
-                    if (matches != null) {
-                        val templateVersionId = UUID.fromString(matches.destructured.toList()[0])
-                        val ws =
-                            workspaces.firstOrNull { it.workspace.latestBuild.templateVersionID == templateVersionId }
-                        if (ws != null) {
-                            val body =
-                                moshi.adapter<List<WorkspaceResource>>(
-                                    Types.newParameterizedType(List::class.java, WorkspaceResource::class.java),
-                                )
-                                    .toJson(ws.resources).toByteArray()
-                            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
-                            exchange.responseBody.write(body)
-                        }
-                    }
-                },
-            )
-
-            workspaces.forEach { ws ->
-                assertEquals(ws.resources, runBlocking { client.resources(ws.workspace) })
-            }
-
-            srv.stop(0)
-        }
     }
 
     @Test

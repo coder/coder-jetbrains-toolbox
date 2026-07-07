@@ -485,7 +485,9 @@ Changing the search or a dropdown refreshes the workspace list and regenerates S
 workspace
 set.
 With wildcard SSH enabled, the generated block uses the deployment wildcard host pattern. With wildcard SSH disabled,
-the generated block contains entries for the currently resolved workspace/agent pairs.
+the generated block contains entries for the currently resolved workspace/agent pairs. Agents are resolved only for
+running workspaces, so stopped workspaces have no SSH entries until they are started and picked up by the next
+workspace refresh.
 
 SSH hostnames include the workspace owner so workspaces with the same name owned by different users remain distinct.
 With wildcard SSH enabled, the SSH config contains a deployment-wide `Host coder-jetbrains-toolbox-<host>--*` entry, and
