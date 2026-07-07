@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.1 - 2026-07-07
+
 ### Added
 
 - support Toolbox 3.5 provider header behavior
