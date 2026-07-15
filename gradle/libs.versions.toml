@@ -17,6 +17,7 @@ plugin-structure = "3.331"
 mockk = "1.14.11"
 detekt = "1.23.8"
 bouncycastle = "1.84"
+jackson = "2.22.1"
 
 [libraries]
 toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "toolbox-plugin-api" }
@@ -38,6 +39,7 @@ mokk = { module = "io.mockk:mockk", version.ref = "mockk" }
 marketplace-client = { module = "org.jetbrains.intellij:plugin-repository-rest-client", version.ref = "marketplace-client" }
 bouncycastle-bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncycastle" }
 bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
 
 [bundles]
 serialization = ["serialization-core", "serialization-json", "serialization-json-okio"]
