@@ -1,6 +1,5 @@
 import com.github.jk1.license.filter.ExcludeTransitiveDependenciesFilter
 import com.github.jk1.license.render.JsonReportRenderer
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin)
@@ -18,6 +17,10 @@ plugins {
 repositories {
     mavenCentral()
     maven("https://packages.jetbrains.team/maven/p/tbx/toolbox-api")
+}
+
+kotlin {
+    jvmToolchain(21)
 }
 
 jvmWrapper {
@@ -68,10 +71,6 @@ licenseReport {
     filters = arrayOf(ExcludeTransitiveDependenciesFilter())
     // jq script to convert to our format:
     // `jq '[.dependencies[] | {name: .moduleName, version: .moduleVersion, url: .moduleUrl, license: .moduleLicense, licenseUrl: .moduleLicenseUrl}]' < build/reports/dependency-license/dependencies.json > src/main/resources/dependencies.json`
-}
-
-tasks.compileKotlin {
-    compilerOptions.jvmTarget.set(JvmTarget.JVM_21)
 }
 
 tasks.test {

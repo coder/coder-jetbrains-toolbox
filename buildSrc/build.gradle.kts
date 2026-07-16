@@ -2,6 +2,10 @@ plugins {
     `kotlin-dsl`
 }
 
+kotlin {
+    jvmToolchain(21)
+}
+
 repositories {
     mavenCentral()
     maven("https://packages.jetbrains.team/maven/p/tbx/toolbox-api")

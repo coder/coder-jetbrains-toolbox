@@ -14,7 +14,7 @@ val extensionJson by tasks.registering(GenerateExtensionJsonTask::class) {
 tasks.named<Jar>("jar") {
     archiveBaseName.set(project.group.toString())
     dependsOn(extensionJson)
-    from(extensionJson.get().outputs)
+    from(extensionJson.flatMap { it.outputFile })
 }
 
 val filteredDependencies = configurations.named("compileClasspath").map {
