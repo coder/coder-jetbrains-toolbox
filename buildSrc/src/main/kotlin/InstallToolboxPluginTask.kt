@@ -5,7 +5,9 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Sync
+import org.gradle.work.DisableCachingByDefault
 
+@DisableCachingByDefault(because = "Writes to a user-managed Toolbox installation (i.e. a location not managed by Gradle) that may have changed since a prior run")
 abstract class InstallToolboxPluginTask : Sync() {
 
     @get:InputFiles
