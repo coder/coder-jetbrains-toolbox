@@ -16,7 +16,7 @@ gettext = "0.7.0"
 plugin-structure = "3.332"
 mockk = "1.14.11"
 detekt = "1.23.8"
-bouncycastle = "1.84"
+bouncycastle = "1.85"
 jackson = "2.22.1"
 
 [libraries]
