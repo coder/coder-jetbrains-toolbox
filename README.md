@@ -26,8 +26,8 @@ Alternatively, you can paste `jetbrains://gateway/com.coder.toolbox` into a brow
 
 ### Manual install
 
-There are two ways Coder Toolbox plugin can be installed. The first option is to manually download the plugin
-artifact from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/26968-coder/versions)
+There are two ways Coder Toolbox plugin can be installed. The first option is to manually download the plugin artifact
+from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/26968-coder/versions)
 or from [Coder's Github Release page](https://github.com/coder/coder-jetbrains-toolbox/releases).
 
 The next step is to copy the zip content to one of the following locations, depending on your OS:
@@ -40,7 +40,7 @@ Alternatively, you can install it using the _Gradle_ tasks included in the proje
 
 ```shell
 
-./gradlew cleanAll build copyPlugin
+./gradlew cleanAll build installPlugin
 ```
 
 Make sure Toolbox is closed before running the command.
@@ -91,7 +91,7 @@ jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
 ```
 
 | Query param      | 	Description                                                                                       | Mandatory |
-|------------------|----------------------------------------------------------------------------------------------------|-----------|
+|------------------|---------------------------------------------------------------------------------------------------|-----------|
 | url              | 	Your Coder deployment URL (encoded)                                                               | Yes       |
 | token            | 	Coder authentication token                                                                        | Yes       |
 | workspace        | 	Name of the Coder workspace to connect to.                                                        | Yes       |
@@ -281,8 +281,8 @@ protecting against supply chain attacks and ensuring binary integrity.
 
 ## Configuring and Testing workspace polling with HTTP & SOCKS5 Proxy
 
-This section explains how to set up a local proxy and verify that
-the plugin’s REST client works correctly when routed through it.
+This section explains how to set up a local proxy and verify that the plugin’s REST client works correctly when routed
+through it.
 
 We’ll use [mitmproxy](https://mitmproxy.org/) for this — it can act as both an HTTP and SOCKS5 proxy with SSL
 interception.
@@ -317,8 +317,8 @@ mitmweb --ssl-insecure --set stream_large_bodies="10m" --mode socks5
 2. From Toolbox hexagonal menu icon go to `Settings -> Proxy`
 3. There are two options, to use system proxy settings or to manually configure the proxy details.
 4. If we go manually, add `127.0.0.1` to the host and port `8080` for HTTP/HTTPS or `1080` for SOCKS5.
-5. Before authenticating to the Coder deployment we need to tell the plugin where can we find mitmproxy
-   certificates. In Coder's Settings page, set the `TLS CA path` to `~/.mitmproxy/mitmproxy-ca-cert.pem`
+5. Before authenticating to the Coder deployment we need to tell the plugin where can we find mitmproxy certificates. In
+   Coder's Settings page, set the `TLS CA path` to `~/.mitmproxy/mitmproxy-ca-cert.pem`
 
 > [!NOTE]
 > Coder Toolbox plugin handles only HTTP/HTTPS proxy authentication.
@@ -330,16 +330,14 @@ in: https://youtrack.jetbrains.com/issue/TBX-14532/Missing-proxy-authentication-
 ### Mitmproxy returns 502 Bad Gateway to the client
 
 When running traffic through mitmproxy, you may encounter 502 Bad Gateway errors that mention HTTP/2 protocol error: *
-*Received header value surrounded by whitespace**.
-This happens because some upstream servers (including dev.coder.com) send back headers such as Content-Security-Policy
-with leading or trailing spaces.
-While browsers and many HTTP clients accept these headers, mitmproxy enforces the stricter HTTP/2 and HTTP/1.1 RFCs,
-which forbid whitespace around header values.
-As a result, mitmproxy rejects the response and surfaces a 502 to the client.
+*Received header value surrounded by whitespace**. This happens because some upstream servers (including dev.coder.com)
+send back headers such as Content-Security-Policy with leading or trailing spaces. While browsers and many HTTP clients
+accept these headers, mitmproxy enforces the stricter HTTP/2 and HTTP/1.1 RFCs, which forbid whitespace around header
+values. As a result, mitmproxy rejects the response and surfaces a 502 to the client.
 
 The workaround is to disable HTTP/2 in mitmproxy and force HTTP/1.1 on both the client and upstream sides. This avoids
-the strict header validation path and allows
-mitmproxy to pass responses through unchanged. You can do this by starting mitmproxy with:
+the strict header validation path and allows mitmproxy to pass responses through unchanged. You can do this by starting
+mitmproxy with:
 
 ```bash
 mitmproxy --set http2=false --set upstream_http_version=HTTP/1.1
@@ -350,17 +348,17 @@ error.
 
 ## Debugging and Reporting issues
 
-Enabling debug logging is essential for diagnosing issues with the Toolbox plugin, especially when SSH
-connections to the remote environment fail — it provides detailed output that includes SSH negotiation
-and command execution, which is not visible at the default log level.
+Enabling debug logging is essential for diagnosing issues with the Toolbox plugin, especially when SSH connections to
+the remote environment fail — it provides detailed output that includes SSH negotiation and command execution, which is
+not visible at the default log level.
 
-If you encounter a problem with Coder's JetBrains Toolbox plugin, follow the steps below to gather more
-information and help us diagnose and resolve it quickly.
+If you encounter a problem with Coder's JetBrains Toolbox plugin, follow the steps below to gather more information and
+help us diagnose and resolve it quickly.
 
 ### Enable Debug Logging
 
-To help with troubleshooting or to gain more insight into the behavior of the plugin and the SSH connection to
-the workspace, you can increase the log level to _DEBUG_.
+To help with troubleshooting or to gain more insight into the behavior of the plugin and the SSH connection to the
+workspace, you can increase the log level to _DEBUG_.
 
 Steps to enable debug logging:
 
@@ -379,17 +377,16 @@ There is no need to restart Toolbox, as it will begin logging at the __DEBUG__ l
 
 #### Viewing the Logs
 
-Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly
-via Toolbox App Menu > About > Show log files.
+Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly via Toolbox App Menu >
+About > Show log files.
 
-Alternatively, you can generate a ZIP file using the Workspace action menu, available either on the main
-Workspaces page in Coder or within the individual workspace view, under the option labeled _Collect logs_.
+Alternatively, you can generate a ZIP file using the Workspace action menu, available either on the main Workspaces page
+in Coder or within the individual workspace view, under the option labeled _Collect logs_.
 
 ### HTTP Request Logging
 
 The Coder Toolbox plugin includes comprehensive HTTP request logging capabilities to help diagnose API communication
-issues with Coder deployments.
-This feature allows you to monitor all HTTP requests and responses made by the plugin.
+issues with Coder deployments. This feature allows you to monitor all HTTP requests and responses made by the plugin.
 
 #### Configuring HTTP Logging
 
@@ -445,8 +442,8 @@ When reporting issues, include HTTP logs to help diagnose:
 
 ## Coder Settings
 
-The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data
-storage paths. The options can be configured from the plugin's main Workspaces page > deployment action menu > Settings.
+The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data storage
+paths. The options can be configured from the plugin's main Workspaces page > deployment action menu > Settings.
 
 ### Workspace list filtering
 
@@ -482,11 +479,9 @@ Examples of what is sent as the `q` parameter:
 
 The Template dropdown is populated from the deployment's templates, fetched each time the header becomes visible.
 Changing the search or a dropdown refreshes the workspace list and regenerates SSH configuration from the refreshed
-workspace
-set.
-With wildcard SSH enabled, the generated block uses the deployment wildcard host pattern. With wildcard SSH disabled,
-the generated block contains entries for the currently resolved workspace/agent pairs. Agents are resolved only for
-running workspaces, so stopped workspaces have no SSH entries until they are started and picked up by the next
+workspace set. With wildcard SSH enabled, the generated block uses the deployment wildcard host pattern. With wildcard
+SSH disabled, the generated block contains entries for the currently resolved workspace/agent pairs. Agents are resolved
+only for running workspaces, so stopped workspaces have no SSH entries until they are started and picked up by the next
 workspace refresh.
 
 SSH hostnames include the workspace owner so workspaces with the same name owned by different users remain distinct.
@@ -499,18 +494,18 @@ explicit entry per resolved workspace/agent using
 
 ### CLI related settings
 
-- `Binary source` specifies the source URL or relative path from which the Coder CLI should be downloaded.
-  If a relative path is provided, it is resolved against the deployment domain.
+- `Binary source` specifies the source URL or relative path from which the Coder CLI should be downloaded. If a relative
+  path is provided, it is resolved against the deployment domain.
 
 - `Enable downloads` allows automatic downloading of the CLI if the current version is missing or outdated. Enabled by
   default.
 
-- `Binary destination` specifies where the CLI binary is placed. This can be a path to an existing
-  executable (used as-is) or a base directory (the CLI is placed under a host-specific subdirectory).
-  If blank, the data directory is used. Supports `~` and `$HOME` expansion.
+- `Binary destination` specifies where the CLI binary is placed. This can be a path to an existing executable (used
+  as-is) or a base directory (the CLI is placed under a host-specific subdirectory). If blank, the data directory is
+  used. Supports `~` and `$HOME` expansion.
 
-- `Data directory` directory where deployment-specific data such as session tokens and CLI binaries
-  are stored. Each deployment gets a host-specific subdirectory (e.g. `coder.example.com`). Supports `~` and `$HOME`
+- `Data directory` directory where deployment-specific data such as session tokens and CLI binaries are stored. Each
+  deployment gets a host-specific subdirectory (e.g. `coder.example.com`). Supports `~` and `$HOME`
   expansion.
 
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
@@ -518,50 +513,50 @@ explicit entry per resolved workspace/agent using
 
 - `lastDeploymentURL` the last Coder deployment URL that Coder Toolbox successfully authenticated to.
 
-- `workspaceViewUrl` specifies the dashboard page full URL where users can view details about a workspace.
-  Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment workspace page.
-  This setting supports `$workspaceOwner` and `$workspaceName` as placeholders.
+- `workspaceViewUrl` specifies the dashboard page full URL where users can view details about a workspace. Helpful for
+  customers that have their own in-house dashboards. Defaults to the Coder deployment workspace page. This setting
+  supports `$workspaceOwner` and `$workspaceName` as placeholders.
 
-- `workspaceCreateUrl` specifies the dashboard page full URL where users can create new workspaces.
-  Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment templates page.
-  This setting supports `$workspaceOwner` as placeholder with the replacing value being the username that logged in.
+- `workspaceCreateUrl` specifies the dashboard page full URL where users can create new workspaces. Helpful for
+  customers that have their own in-house dashboards. Defaults to the Coder deployment templates page. This setting
+  supports `$workspaceOwner` as placeholder with the replacing value being the username that logged in.
 
 #### How CLI resolution works
 
-When connecting to a deployment the plugin ensures a compatible CLI binary is available.
-The binary location is resolved as follows:
+When connecting to a deployment the plugin ensures a compatible CLI binary is available. The binary location is resolved
+as follows:
 
 - If **binary destination** points to an existing executable file, it is used as-is.
-- If **binary destination** is set but is not an executable file, it is treated as a base
-  directory and the CLI is placed under a host-specific subdirectory (e.g.
+- If **binary destination** is set but is not an executable file, it is treated as a base directory and the CLI is
+  placed under a host-specific subdirectory (e.g.
   `<binary destination>/coder.example.com/<default-cli-name>`).
 - If **binary destination** is not set, the data directory is used instead.
 
 Once the binary location is resolved:
 
 1. If a CLI already exists there and its version matches the deployment, it is used immediately.
-2. Otherwise, if **downloads are enabled**, the plugin downloads the matching version to that location.
-   Any download error is reported to the user.
-3. If **downloads are disabled** and the CLI exists but its version does not match, the stale
-   CLI is used with a warning. If no CLI exists at all, an error is raised.
+2. Otherwise, if **downloads are enabled**, the plugin downloads the matching version to that location. Any download
+   error is reported to the user.
+3. If **downloads are disabled** and the CLI exists but its version does not match, the stale CLI is used with a
+   warning. If no CLI exists at all, an error is raised.
 
 ### TLS settings
 
 The following options control the secure communication behavior of the plugin with Coder deployment and its available
 API.
 
-- `TLS cert path` path to a client certificate file for TLS authentication with Coder deployment.
-  The certificate should be in X.509 PEM format.
+- `TLS cert path` path to a client certificate file for TLS authentication with Coder deployment. The certificate should
+  be in X.509 PEM format.
 
-- `TLS key path` path to the private key corresponding to the TLS certificate from above.
-  The certificate should be in X.509 PEM format.
+- `TLS key path` path to the private key corresponding to the TLS certificate from above. The certificate should be in
+  X.509 PEM format.
 
 - `TLS CA path` the path of a file containing certificates for an alternate certificate authority used to verify TLS
   certs returned by the Coder deployment. The file should be in X.509 PEM format. This option can also be used to verify
   proxy certificates.
 
-- `TLS alternate hostname` overrides the hostname used in TLS verification. This is useful when the hostname
-  used to connect to the Coder deployment does not match the hostname in the TLS certificate.
+- `TLS alternate hostname` overrides the hostname used in TLS verification. This is useful when the hostname used to
+  connect to the Coder deployment does not match the hostname in the TLS certificate.
 
 ### SSH settings
 
@@ -570,8 +565,8 @@ The following options control the SSH behavior of the Coder CLI.
 - `Disable autostart` adds the --disable-autostart flag to the SSH proxy command, preventing the CLI from keeping
   workspaces constantly active.
 
-- `Enable SSH wildcard config` enables or disables wildcard entries in the SSH configuration, which allow generic
-  rules for matching multiple workspaces.
+- `Enable SSH wildcard config` enables or disables wildcard entries in the SSH configuration, which allow generic rules
+  for matching multiple workspaces.
 
 - `SSH connnection timeout (seconds)` controls how long the SSH client will wait while trying to establish a TCP
   connection to the remote host before giving up. Defaults to 0 seconds which means it uses the system’s TCP timeout
@@ -581,8 +576,8 @@ The following options control the SSH behavior of the Coder CLI.
 
 - `SSH network metrics directory` directory where network information used by the SSH proxy is stored.
 
-- `Extra SSH options` additional options appended to the SSH configuration. Can be used to customize the behavior of
-  SSH connections.
+- `Extra SSH options` additional options appended to the SSH configuration. Can be used to customize the behavior of SSH
+  connections.
 
 ### Saving Changes
 
