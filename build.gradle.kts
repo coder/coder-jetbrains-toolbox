@@ -1,4 +1,3 @@
-import com.github.jk1.license.filter.ExcludeTransitiveDependenciesFilter
 import com.github.jk1.license.render.JsonReportRenderer
 
 plugins {
@@ -68,9 +67,6 @@ changelog {
 
 licenseReport {
     renderers = arrayOf(JsonReportRenderer("dependencies.json"))
-    filters = arrayOf(ExcludeTransitiveDependenciesFilter())
-    // jq script to convert to our format:
-    // `jq '[.dependencies[] | {name: .moduleName, version: .moduleVersion, url: .moduleUrl, license: .moduleLicense, licenseUrl: .moduleLicenseUrl}]' < build/reports/dependency-license/dependencies.json > src/main/resources/dependencies.json`
 }
 
 tasks.test {

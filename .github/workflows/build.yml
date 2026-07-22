@@ -75,7 +75,7 @@ jobs:
 
       # Run plugin build
       - name: Run Build
-        run: ./gradlew clean pluginZip --info
+        run: ./gradlew clean packagePlugin --info
 
       # Store already-built plugin as an artifact for downloading
       - name: Upload artifact

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- migrated plugin packaging to the new marketplace compatible structure
+
 ## 0.9.1 - 2026-07-07
 
 ### Added
