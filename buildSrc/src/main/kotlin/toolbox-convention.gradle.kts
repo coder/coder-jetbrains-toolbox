@@ -45,14 +45,12 @@ val packagePlugin by tasks.registering(ToolboxPluginZipTask::class) {
     dependenciesFile.set(generatedDependenciesJson.flatMap { it.outputFile })
     runtimeDependencies.from(filteredDependencies)
     resourcesDir.set(layout.projectDirectory.dir("src/main/resources"))
-    pluginDirectory.set(project.group.toString())
-    archiveBaseName.set(project.group.toString())
+    archiveBaseName.set("coder-toolbox")
 }
 
 val validatePluginZip by tasks.registering(ValidateToolboxPluginZipTask::class) {
     dependsOn(packagePlugin)
     pluginFile.set(packagePlugin.flatMap { it.archiveFile })
-    extensionId.set(project.group.toString())
     expectedLibraries.from(tasks.named<Jar>("jar"))
     expectedLibraries.from(filteredDependencies)
     toolboxProvidedDependencyNames.set(TOOLBOX_PROVIDED_DEPENDENCIES)
