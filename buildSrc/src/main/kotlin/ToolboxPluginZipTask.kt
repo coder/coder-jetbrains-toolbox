@@ -1,8 +1,6 @@
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
@@ -25,24 +23,13 @@ abstract class ToolboxPluginZipTask : Zip() {
     @get:InputDirectory
     abstract val resourcesDir: DirectoryProperty
 
-    @get:Input
-    abstract val pluginDirectory: Property<String>
-
     init {
         from(extensionJsonFiles)
-        from(dependenciesFile) {
-            into(pluginDirectory)
-        }
+        from(dependenciesFile)
         from(resourcesDir) {
             include("icon.svg", "pluginIcon.svg")
-            into(pluginDirectory)
         }
-        from(jarFiles) {
-            into(pluginDirectory.map { "$it/lib" })
-        }
-        from(runtimeDependencies) {
-            into(pluginDirectory.map { "$it/lib" })
-        }
-        pluginDirectory.convention("")
+        from(jarFiles)
+        from(runtimeDependencies)
     }
 }
