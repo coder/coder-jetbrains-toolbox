@@ -62,6 +62,7 @@ import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as dropDownF
 private val POLL_INTERVAL = 5.seconds
 private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
 private const val FAILED_TO_HANDLE_OAUTH2_TITLE = "Failed to handle OAuth2 request"
+private const val SSH_CONFIGURATION_WARNING_TITLE = "SSH configuration could not be updated"
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CoderRemoteProvider(
@@ -70,6 +71,7 @@ class CoderRemoteProvider(
     // Current polling job.
     private var pollJob: Job? = null
     internal val lastEnvironments = mutableListOf<CoderRemoteEnvironment>()
+    private var isSshConfigurationWarningShown = false
 
     private val sshConfigTrigger = Channel<Boolean>(Channel.CONFLATED)
     private val workspaceRefreshTrigger = Channel<Boolean>(Channel.CONFLATED)
@@ -120,7 +122,7 @@ class CoderRemoteProvider(
      * workspace is added, reconfigure SSH using the provided cli (including the
      * first time).
      */
-    private fun poll(client: CoderRestClient, cli: CoderCLIManager): Job =
+    internal fun poll(client: CoderRestClient, cli: CoderCLIManager): Job =
         context.cs.launch(CoroutineName("Workspace Poller")) {
             var lastPollTime = TimeSource.Monotonic.markNow()
             while (isActive) {
@@ -140,7 +142,7 @@ class CoderRemoteProvider(
                     // Reconfigure if environments changed.
                     if (lastEnvironments.size != resolvedEnvironments.size || lastEnvironments != resolvedEnvironments) {
                         context.logger.info("Workspaces have changed, reconfiguring CLI: $resolvedEnvironments")
-                        cli.configSsh(resolvedEnvironments.mapNotNull { it.toWorkspaceAgentPairOrNull() }.toSet())
+                        configureSsh(cli, resolvedEnvironments)
                     }
 
                     environments.update {
@@ -185,7 +187,7 @@ class CoderRemoteProvider(
                     sshConfigTrigger.onReceive { shouldTrigger ->
                         if (shouldTrigger) {
                             context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
-                            cli.configSsh(lastEnvironments.mapNotNull { it.toWorkspaceAgentPairOrNull() }.toSet())
+                            configureSsh(cli, lastEnvironments)
                         }
                     }
                     workspaceRefreshTrigger.onReceive { shouldTrigger ->
@@ -202,6 +204,31 @@ class CoderRemoteProvider(
                 lastPollTime = TimeSource.Monotonic.markNow()
             }
         }
+
+    /**
+     * Keep SSH configuration failures separate from workspace discovery.  SSH
+     * configuration is necessary to connect, but a read-only or malformed SSH
+     * config must not prevent Toolbox from showing the workspaces it resolved.
+     */
+    private fun configureSsh(cli: CoderCLIManager, resolvedEnvironments: List<CoderRemoteEnvironment>) {
+        try {
+            cli.configSsh(resolvedEnvironments.mapNotNull { it.toWorkspaceAgentPairOrNull() }.toSet())
+            isSshConfigurationWarningShown = false
+        } catch (ex: Exception) {
+            if (!isSshConfigurationWarningShown) {
+                isSshConfigurationWarningShown = true
+                val reason = ex.message?.takeIf { it.isNotBlank() } ?: ex.javaClass.simpleName
+                context.logAndShowWarning(
+                    SSH_CONFIGURATION_WARNING_TITLE,
+                    "Workspaces remain available, but SSH connections are unavailable: $reason. " +
+                            "Update ${context.settingsStore.sshConfigPath} and try again.",
+                    ex,
+                )
+            } else {
+                context.logger.warn(ex, "Failed to update SSH configuration at ${context.settingsStore.sshConfigPath}")
+            }
+        }
+    }
 
     /**
      * Resolves workspace agents into remote environments.
@@ -294,6 +321,7 @@ class CoderRemoteProvider(
         cli = null
         lastEnvironments.forEach { it.dispose() }
         lastEnvironments.clear()
+        isSshConfigurationWarningShown = false
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
         accountDropdownField.visibility.update { false }

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- keep workspace polling alive when SSH config updates fail
+
 ## 0.9.2-alpha2 - 2026-07-24
 
 ### Changed
