@@ -14,14 +14,21 @@ import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.state.StoredOAuthSession
 import com.coder.toolbox.views.state.WizardStep
+import com.jetbrains.toolbox.api.core.util.LoadableState
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertTrue
+import java.io.FileNotFoundException
 import java.net.URI
 import java.util.UUID
 import kotlin.test.AfterTest
@@ -64,6 +71,40 @@ class CoderRemoteProviderTest {
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
         // then
         assertTrue(result.isEmpty())
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `SSH configuration failure does not prevent resolved workspaces from being published`() = runTest {
+        // given
+        every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
+        every { mockContext.settingsStore.sshConfigPath } returns "/Users/test/.ssh/config"
+        val agent = mockAgent("agent1")
+        val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
+        every { mockCli.configSsh(any(), any()) } throws FileNotFoundException("Permission denied")
+
+        // when
+        val pollJob = remoteProvider.poll(mockClient, mockCli)
+        runCurrent()
+
+        // then
+        val environments = remoteProvider.environments.value
+        when (environments) {
+            is LoadableState.Value -> assertEquals("ws1.agent1", environments.value.single().id)
+            else -> error("Expected resolved workspaces to be published, but got $environments")
+        }
+        val warningText = slot<String>()
+        verify(exactly = 1) {
+            mockContext.logAndShowWarning(
+                "SSH configuration could not be updated",
+                capture(warningText),
+                any(),
+            )
+        }
+        assertTrue(warningText.captured.contains("Permission denied"))
+
+        pollJob.cancel()
     }
 
     @Test

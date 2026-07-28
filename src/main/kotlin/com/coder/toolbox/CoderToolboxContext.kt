@@ -69,6 +69,11 @@ data class CoderToolboxContext(
         showInfoPopup(title, warning)
     }
 
+    fun logAndShowWarning(title: String, warning: String, exception: Exception) {
+        logger.warn(exception, warning)
+        showInfoPopup(title, warning)
+    }
+
     fun logAndShowInfo(title: String, info: String) {
         logger.info(info)
         showInfoPopup(title, info)
