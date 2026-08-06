@@ -1,5 +1,6 @@
 package com.coder.toolbox.cli
 
+import com.coder.toolbox.util.IgnoreOnWindows
 import com.coder.toolbox.util.OS
 import java.nio.file.Files
 import kotlin.test.Test
@@ -45,6 +46,7 @@ internal class ProxyCommandBuilderTest {
     }
 
     @Test
+    @IgnoreOnWindows
     fun `rendered POSIX command does not execute command substitutions`() {
         val sentinel = Files.createTempDirectory("proxy-command-test").resolve("executed")
         val payload = "\$(touch${'$'}{IFS}$sentinel)"
