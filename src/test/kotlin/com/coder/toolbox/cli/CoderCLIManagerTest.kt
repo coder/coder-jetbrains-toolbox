@@ -682,6 +682,12 @@ internal class CoderCLIManagerTest {
                         "/tmp/coder-toolbox/ssh-network-metrics",
                         ProxyCommandBuilder().argument(networkMetricsPath.toString()).render(),
                     )
+                    .replace(
+                        "/tmp/coder-toolbox/test.coder.invalid/url",
+                        ProxyCommandBuilder()
+                            .argument((it.url ?: URI.create("https://test.coder.invalid").toURL()).toString())
+                            .render(),
+                    )
                     .let { conf ->
                         if (it.sshLogDirectory != null) {
                             conf.replace(
