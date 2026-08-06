@@ -684,7 +684,10 @@ internal class CoderCLIManagerTest {
                     )
                     .let { conf ->
                         if (it.sshLogDirectory != null) {
-                            conf.replace("/tmp/coder-toolbox/test.coder.invalid/logs", it.sshLogDirectory.toString())
+                            conf.replace(
+                                "/tmp/coder-toolbox/test.coder.invalid/logs",
+                                ProxyCommandBuilder().argument(it.sshLogDirectory.toString()).render(),
+                            )
                         } else {
                             conf
                         }
