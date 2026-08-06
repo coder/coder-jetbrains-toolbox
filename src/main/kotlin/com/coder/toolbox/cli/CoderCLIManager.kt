@@ -13,13 +13,9 @@ import com.coder.toolbox.cli.gpg.VerificationResult
 import com.coder.toolbox.cli.gpg.VerificationResult.Failed
 import com.coder.toolbox.cli.gpg.VerificationResult.Invalid
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
-import com.coder.toolbox.sdk.v2.models.Workspace
-import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.settings.SignatureFallbackStrategy.ALLOW
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.SemVer
-import com.coder.toolbox.util.escape
-import com.coder.toolbox.util.escapeSubcommand
 import com.coder.toolbox.util.safeHost
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -277,18 +273,19 @@ class CoderCLIManager(
     /**
      * Start a workspace. Throws if the command execution fails.
      */
-    fun startWorkspace(workspaceOwner: String, workspaceName: String, feats: Features = features): String {
+    internal fun startWorkspace(wsAddress: WorkspaceAddress, feats: Features = features): String {
         val args = mutableListOf(
             "--global-config",
             coderConfigPath.toString(),
             "start",
             "--yes",
-            "$workspaceOwner/$workspaceName"
         )
 
         if (feats.buildReason) {
             args.addAll(listOf("--reason", "jetbrains_connection"))
         }
+        args.add("--")
+        args.add(wsAddress.ownerAndWsName)
 
         return exec(*args.toTypedArray())
     }
@@ -298,12 +295,12 @@ class CoderCLIManager(
      *
      * This can take supported features for testing purposes only.
      */
-    fun configSsh(
-        wsWithAgents: Set<Pair<Workspace, WorkspaceAgent>>,
+    internal fun configSsh(
+        workspaceAddresses: Set<WorkspaceAddress>,
         feats: Features = features,
     ) {
         context.logger.info("Configuring SSH config at ${context.settingsStore.sshConfigPath}")
-        writeSSHConfig(modifySSHConfig(readSSHConfig(), wsWithAgents, feats))
+        writeSSHConfig(modifySSHConfig(readSSHConfig(), workspaceAddresses, feats))
         context.logger.info("Finished configuring SSH config")
     }
 
@@ -326,34 +323,40 @@ class CoderCLIManager(
      */
     private fun modifySSHConfig(
         contents: String?,
-        wsWithAgents: Set<Pair<Workspace, WorkspaceAgent>>,
+        workspaceAddresses: Set<WorkspaceAddress>,
         feats: Features,
     ): String? {
         val host = deploymentURL.safeHost()
         val startBlock = "# --- START CODER JETBRAINS TOOLBOX $host"
         val endBlock = "# --- END CODER JETBRAINS TOOLBOX $host"
-        val isRemoving = wsWithAgents.isEmpty()
+        val isRemoving = workspaceAddresses.isEmpty()
         val baseArgs =
             listOfNotNull(
-                escape(localBinaryPath.toString()),
+                localBinaryPath.toString(),
                 "--global-config",
-                escape(coderConfigPath.toString()),
+                coderConfigPath.toString(),
                 // CODER_URL might be set, and it will override the URL file in
                 // the config directory, so override that here to make sure we
                 // always use the correct URL.
                 "--url",
-                escape(deploymentURL.toString()),
+                deploymentURL.toString(),
                 context.settingsStore.headerCommand?.takeIf { it.isNotBlank() }?.let { "--header-command" },
-                context.settingsStore.headerCommand?.takeIf { it.isNotBlank() }?.let { escapeSubcommand(it) },
+                context.settingsStore.headerCommand?.takeIf { it.isNotBlank() },
                 "ssh",
                 "--stdio",
                 if (context.settingsStore.disableAutostart && feats.disableAutostart) "--disable-autostart" else null,
-                "--network-info-dir ${escape(context.settingsStore.networkInfoDir)}"
+                "--network-info-dir",
+                context.settingsStore.networkInfoDir,
             )
-        val proxyArgs = baseArgs + listOfNotNull(
-            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let { "--log-dir ${escape(it)} -v" },
-            if (feats.reportWorkspaceUsage) "--usage-app=jetbrains" else null,
-        )
+        val proxyArgs = buildList {
+            addAll(baseArgs)
+            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let {
+                add("--log-dir")
+                add(it)
+                add("-v")
+            }
+            if (feats.reportWorkspaceUsage) add("--usage-app=jetbrains")
+        }
         val extraConfig = context.settingsStore.sshConfigOptions
             ?.takeIf { it.isNotBlank() }
             ?.let { "\n" + it.prependIndent("  ") }
@@ -367,10 +370,18 @@ class CoderCLIManager(
         """.trimIndent()
 
         val blockContent = if (context.settingsStore.isSshWildcardConfigEnabled && feats.wildcardSsh) {
+            val hostnamePrefix = WorkspaceAddress.wildcardSshHostPrefix(deploymentURL.safeHost())
+            val proxyCommand = ProxyCommandBuilder()
+                .arguments(proxyArgs)
+                .argument("--ssh-host-prefix")
+                .argument("$hostnamePrefix--")
+                .argument("--")
+                .sshToken("%h")
+                .render()
             startBlock + System.lineSeparator() +
                     """
-                    Host ${getHostnamePrefix(deploymentURL)}--*
-                      ProxyCommand ${proxyArgs.joinToString(" ")} --ssh-host-prefix ${getHostnamePrefix(deploymentURL)}-- %h
+                    Host $hostnamePrefix--*
+                      ProxyCommand $proxyCommand
                     """.trimIndent()
                         .plus("\n" + options.prependIndent("  "))
                         .plus(extraConfig)
@@ -378,14 +389,19 @@ class CoderCLIManager(
                         .replace("\n", System.lineSeparator()) +
                     System.lineSeparator() + endBlock
         } else {
-            wsWithAgents.joinToString(
+            workspaceAddresses.joinToString(
                 System.lineSeparator(),
                 startBlock + System.lineSeparator(),
                 System.lineSeparator() + endBlock,
-                transform = {
+                transform = { workspaceAddress ->
+                    val proxyCommand = ProxyCommandBuilder()
+                        .arguments(proxyArgs)
+                        .argument("--")
+                        .argument(workspaceAddress.ownerWsAndAgentName)
+                        .render()
                     """
-                    Host ${getHostname(deploymentURL, it.workspace(), it.agent())}
-                      ProxyCommand ${proxyArgs.joinToString(" ")} ${getWsByOwner(it.workspace(), it.agent())}
+                    Host ${getHostname(deploymentURL, workspaceAddress)}
+                      ProxyCommand $proxyCommand
                     """.trimIndent()
                         .plus("\n" + options.prependIndent("  "))
                         .plus(extraConfig)
@@ -400,15 +416,14 @@ class CoderCLIManager(
             return blockContent + System.lineSeparator()
         }
 
-        val start = "(\\s*)$startBlock".toRegex().find(contents)
-        val end = "$endBlock(\\s*)".toRegex().find(contents)
+        val managedBlock = findManagedBlock(contents, startBlock, endBlock)
 
-        if (start == null && end == null && isRemoving) {
+        if (managedBlock == null && isRemoving) {
             context.logger.info("No workspaces and no existing config blocks to remove")
             return null
         }
 
-        if (start == null && end == null) {
+        if (managedBlock == null) {
             context.logger.info("Appending config block")
             val toAppend =
                 if (contents.isEmpty()) {
@@ -422,15 +437,7 @@ class CoderCLIManager(
             return toAppend + System.lineSeparator()
         }
 
-        if (start == null) {
-            throw SSHConfigFormatException("End block exists but no start block")
-        }
-        if (end == null) {
-            throw SSHConfigFormatException("Start block exists but no end block")
-        }
-        if (start.range.first > end.range.first) {
-            throw SSHConfigFormatException("Start block found after end block")
-        }
+        val (start, end) = managedBlock
 
         if (isRemoving) {
             context.logger.info("No workspaces; removing config block")
@@ -452,6 +459,26 @@ class CoderCLIManager(
             end.groupValues[1], // Trailing newline(s).
             contents.substring(end.range.last + 1),
         ).joinToString("")
+    }
+
+    /**
+     * Locate a managed block, using the final end marker so a rewrite also
+     * removes content following an end marker injected by a vulnerable version.
+     */
+    private fun findManagedBlock(contents: String, startMarker: String, endMarker: String): ManagedBlock? {
+        val start = "(\\s*)${Regex.escape(startMarker)}".toRegex().find(contents)
+        val allEnds = "${Regex.escape(endMarker)}(\\s*)".toRegex().findAll(contents).toList()
+
+        if (start == null && allEnds.isEmpty()) return null
+        if (start == null) throw SSHConfigFormatException("End block exists but no start block")
+
+        val end = allEnds.lastOrNull { it.range.first > start.range.first }
+            ?: if (allEnds.isEmpty()) {
+                throw SSHConfigFormatException("Start block exists but no end block")
+            } else {
+                throw SSHConfigFormatException("Start block found after end block")
+            }
+        return ManagedBlock(start, end)
     }
 
     /**
@@ -563,24 +590,17 @@ class CoderCLIManager(
             }
         }
 
-    fun getHostname(url: URL, ws: Workspace, agent: WorkspaceAgent): String {
+    internal fun getHostname(url: URL, workspaceAddress: WorkspaceAddress): String {
         return if (context.settingsStore.isSshWildcardConfigEnabled && features.wildcardSsh) {
-            "${getHostnamePrefix(url)}--${ws.ownerName}--${ws.name}.${agent.name}"
+            workspaceAddress.wildcardSshHostAlias(url.safeHost())
         } else {
-            "coder-jetbrains-toolbox--${ws.ownerName}--${ws.name}.${agent.name}--${url.safeHost()}"
+            workspaceAddress.sshHostAlias(url.safeHost())
         }
     }
 
     companion object {
+        private data class ManagedBlock(val start: MatchResult, val end: MatchResult)
+
         private val tokenRegex = "--token [^ ]+".toRegex()
-
-        private fun getHostnamePrefix(url: URL): String = "coder-jetbrains-toolbox-${url.safeHost()}"
-
-        private fun getWsByOwner(ws: Workspace, agent: WorkspaceAgent): String =
-            "${ws.ownerName}/${ws.name}.${agent.name}"
-
-        private fun Pair<Workspace, WorkspaceAgent>.workspace() = this.first
-
-        private fun Pair<Workspace, WorkspaceAgent>.agent() = this.second
     }
 }

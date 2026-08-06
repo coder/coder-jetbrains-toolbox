@@ -74,11 +74,11 @@ class CoderSettingsStore(
     override val sshConfigPath: String
         get() = store[SSH_CONFIG_PATH].takeUnless { it.isNullOrEmpty() }
             ?: Path.of(System.getProperty("user.home")).resolve(".ssh/config").normalize().toString()
-    override val sshLogDirectory: String? get() = store[SSH_LOG_DIR]
+    override val sshLogDirectory: String? get() = store[SSH_LOG_DIR]?.takeIf { it.isNotBlank() }?.let { expand(it) }
     override val sshConfigOptions: String?
         get() = store[SSH_CONFIG_OPTIONS].takeUnless { it.isNullOrEmpty() } ?: env.get(CODER_SSH_CONFIG_OPTIONS)
     override val networkInfoDir: String
-        get() = store[NETWORK_INFO_DIR].takeUnless { it.isNullOrEmpty() } ?: getDefaultGlobalDataDir()
+        get() = store[NETWORK_INFO_DIR]?.takeIf { it.isNotBlank() }?.let { expand(it) } ?: getDefaultGlobalDataDir()
             .resolve("ssh-network-metrics")
             .normalize()
             .toString()

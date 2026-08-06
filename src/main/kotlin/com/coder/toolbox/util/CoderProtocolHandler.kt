@@ -3,6 +3,7 @@ package com.coder.toolbox.util
 import com.coder.toolbox.CoderRemoteEnvironment
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.cli.WorkspaceAddress
 import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.feed.IdeType
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
@@ -155,7 +156,7 @@ open class CoderProtocolHandler(
                     if (workspace.outdated) {
                         restClient.updateWorkspace(workspace)
                     } else {
-                        cli.startWorkspace(workspace.ownerName, workspace.name)
+                        cli.startWorkspace(WorkspaceAddress.from(workspace))
                     }
                 } catch (e: Exception) {
                     context.logAndShowError(

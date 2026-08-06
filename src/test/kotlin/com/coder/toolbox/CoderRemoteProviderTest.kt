@@ -3,6 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
@@ -108,6 +109,31 @@ class CoderRemoteProviderTest {
     }
 
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `identifier failures from SSH rendering are not treated as writable config errors`() = runTest {
+        every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
+        val agent = mockAgent("agent1")
+        val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
+        every { mockCli.configSsh(any(), any()) } throws
+                InvalidCoderIdentifierException("The deployment returned an invalid workspace name")
+
+        val pollJob = remoteProvider.poll(mockClient, mockCli)
+        runCurrent()
+
+        assertTrue(remoteProvider.environments.value is LoadableState.Loading)
+        verify(exactly = 0) {
+            mockContext.logAndShowWarning(
+                "SSH configuration could not be updated",
+                any(),
+                any(),
+            )
+        }
+
+        pollJob.cancel()
+    }
+
+    @Test
     fun `workspace resolution passes the default owner filter query`() = runTest {
         coEvery { mockClient.workspaces("owner:me") } returns emptyList()
 
@@ -149,7 +175,7 @@ class CoderRemoteProviderTest {
         // then
         assertEquals(1, result.size)
         assertEquals("ws1", result[0].id)
-        assertNull(result[0].toWorkspaceAgentPairOrNull())
+        assertNull(result[0].toWorkspaceAddressOrNull())
     }
 
     @Test
@@ -581,6 +607,7 @@ class CoderRemoteProviderTest {
         }
         return mockk {
             every { this@mockk.name } returns name
+            every { this@mockk.ownerName } returns "owner"
             every { this@mockk.latestBuild } returns latestBuild
             every { this@mockk.templateDisplayName } returns name
             every { this@mockk.outdated } returns false

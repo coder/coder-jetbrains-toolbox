@@ -15,7 +15,9 @@ import com.coder.toolbox.sdk.v2.CoderV2RestFacade
 import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
 import com.coder.toolbox.sdk.v2.models.Appearance
 import com.coder.toolbox.sdk.v2.models.BuildInfo
+import com.coder.toolbox.sdk.v2.models.CoderIdentifierPolicy
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
+import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
@@ -39,6 +41,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 
+private const val INVALID_DEPLOYMENT_DATA_WARNING_TITLE = "Coder returned unsafe workspace data"
+private const val INVALID_DEPLOYMENT_DATA_WARNING =
+    "The deployment returned an invalid workspace, owner, or agent name. " +
+            "Unsafe entries were ignored and will not be available for SSH connections."
+
 /**
  * An HTTP client that can make requests to the Coder API.
  *
@@ -58,6 +65,7 @@ open class CoderRestClient(
     private lateinit var retroRestClient: CoderV2RestFacade
 
     private val refreshMutex = Mutex()
+    private var isInvalidDeploymentDataWarningShown = false
 
     lateinit var me: User
     lateinit var buildVersion: String
@@ -114,6 +122,7 @@ open class CoderRestClient(
      * @throws [APIResponseException].
      */
     suspend fun initializeSession(): User {
+        isInvalidDeploymentDataWarningShown = false
         me = me()
         buildVersion = buildInfo().version
         appName = appearance().applicationName
@@ -178,6 +187,13 @@ open class CoderRestClient(
 
         return requireNotNull(workspacesResponse.body()?.workspaces) {
             "Successful response returned null body or workspaces"
+        }.mapNotNull { workspace ->
+            try {
+                workspace.withSafeIdentifiers()
+            } catch (ex: InvalidCoderIdentifierException) {
+                reportInvalidDeploymentData(ex)
+                null
+            }
         }
     }
 
@@ -198,7 +214,7 @@ open class CoderRestClient(
 
         return requireNotNull(workspaceResponse.body()) {
             "Successful response returned null body or workspace"
-        }
+        }.withSafeIdentifiers()
     }
 
     suspend fun buildInfo(): BuildInfo {
@@ -279,7 +295,7 @@ open class CoderRestClient(
 
         return requireNotNull(buildResponse.body()) {
             "Successful response returned null body or workspace build"
-        }
+        }.withoutUnsafeAgents()
     }
 
     /**
@@ -298,7 +314,7 @@ open class CoderRestClient(
 
         return requireNotNull(buildResponse.body()) {
             "Successful response returned null body or workspace build"
-        }
+        }.withoutUnsafeAgents()
     }
 
     /**
@@ -343,7 +359,53 @@ open class CoderRestClient(
 
         return requireNotNull(buildResponse.body()) {
             "Successful response returned null body or workspace build"
+        }.withoutUnsafeAgents()
+    }
+
+    private fun Workspace.withSafeIdentifiers(): Workspace {
+        CoderIdentifierPolicy.requireOwner(ownerName)
+        CoderIdentifierPolicy.requireWorkspace(name)
+
+        val safeBuild = latestBuild.withoutUnsafeAgents()
+        return if (safeBuild === latestBuild) this else copy(latestBuild = safeBuild)
+    }
+
+    private fun WorkspaceBuild.withoutUnsafeAgents(): WorkspaceBuild {
+        var changed = false
+        val safeResources = resources.map { resource ->
+            val agents = resource.agents ?: return@map resource
+            val safeAgents = agents.filter { agent ->
+                try {
+                    CoderIdentifierPolicy.requireAgent(agent.name)
+                    true
+                } catch (ex: InvalidCoderIdentifierException) {
+                    reportInvalidDeploymentData(ex)
+                    false
+                }
+            }
+            if (safeAgents.size == agents.size) {
+                resource
+            } else {
+                changed = true
+                resource.copy(agents = safeAgents)
+            }
         }
+
+        return if (changed) copy(resources = safeResources) else this
+    }
+
+    private fun reportInvalidDeploymentData(ex: InvalidCoderIdentifierException) {
+        if (isInvalidDeploymentDataWarningShown) {
+            context.logger.warn(ex, "Ignoring invalid deployment-controlled identifiers")
+            return
+        }
+
+        isInvalidDeploymentDataWarningShown = true
+        context.logAndShowWarning(
+            INVALID_DEPLOYMENT_DATA_WARNING_TITLE,
+            INVALID_DEPLOYMENT_DATA_WARNING,
+            ex,
+        )
     }
 
     /**

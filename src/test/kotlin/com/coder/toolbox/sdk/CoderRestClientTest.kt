@@ -4,10 +4,14 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.convertors.InstantConverter
 import com.coder.toolbox.sdk.convertors.UUIDConverter
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.sdk.v2.models.Appearance
+import com.coder.toolbox.sdk.v2.models.BuildInfo
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
+import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
 import com.coder.toolbox.sdk.v2.models.Response
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
+import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.sdk.v2.models.WorkspacesResponse
@@ -20,6 +24,7 @@ import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.util.sslContextFromPEMs
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
+import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.ClientHelper
 import com.jetbrains.toolbox.api.remoteDev.connection.ProxyAuth
@@ -36,8 +41,10 @@ import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
 import com.sun.net.httpserver.HttpsConfigurator
 import com.sun.net.httpserver.HttpsServer
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import okio.buffer
 import okio.source
@@ -93,6 +100,8 @@ internal class BaseHttpHandler(
 }
 
 class CoderRestClientTest {
+    private val ui = mockk<ToolboxUi>(relaxed = true)
+    private val logger = mockk<Logger>(relaxed = true)
     private val moshi =
         Moshi.Builder()
             .add(InstantConverter())
@@ -100,17 +109,17 @@ class CoderRestClientTest {
             .build()
 
     private val context = CoderToolboxContext(
-        mockk<ToolboxUi>(),
+        ui,
         mockk<UiComponents>(relaxed = true),
         mockk<EnvironmentUiPageManager>(),
         mockk<EnvironmentStateColorPalette>(),
         mockk<RemoteToolsHelper>(),
         mockk<ClientHelper>(),
         mockk<LocalDesktopManager>(),
-        mockk<CoroutineScope>(),
-        mockk<Logger>(relaxed = true),
-        mockk<LocalizableStringFactory>(),
-        CoderSettingsStore(pluginTestSettingsStore(), Environment(), mockk<Logger>(relaxed = true)),
+        CoroutineScope(Dispatchers.Unconfined),
+        logger,
+        mockk<LocalizableStringFactory>(relaxed = true),
+        CoderSettingsStore(pluginTestSettingsStore(), Environment(), logger),
         mockk<CoderSecretsStore>(),
         object : ToolboxProxySettings {
             override fun getProxy(): Proxy? = null
@@ -133,6 +142,9 @@ class CoderRestClientTest {
         srv.start()
         return Pair(srv, "http://localhost:" + srv.address.port)
     }
+
+    private fun WorkspaceBuild.agentNames(): List<String> =
+        resources.flatMap { it.agents.orEmpty() }.map { it.name }
 
     private fun mockTLSServer(certName: String): Pair<HttpServer, String> {
         val srv = HttpsServer.create(InetSocketAddress(0), 0)
@@ -288,8 +300,212 @@ class CoderRestClientTest {
     }
 
     @Test
-    fun `workspaces request can use explicit search query override`() {
-        val workspaces = listOf(DataGen.workspace("ws1"))
+    fun `workspaces response sanitizes unsafe identifiers without hiding valid entries`() {
+        val response = WorkspacesResponse(
+            listOf(
+                DataGen.workspace("safe-one"),
+                DataGen.workspace(
+                    "workspace-with-filtered-agent",
+                    agents = mapOf(
+                        "safe-agent" to UUID.randomUUID().toString(),
+                        "agent$(touch pwned)" to UUID.randomUUID().toString(),
+                    ),
+                ),
+                DataGen.workspace("unsafe\nHost *"),
+                DataGen.workspace("safe-two"),
+            ),
+        )
+        val body = moshi.adapter(WorkspacesResponse::class.java)
+            .toJson(response)
+            .toByteArray()
+        val (srv, url) = mockServer()
+        val client = CoderRestClient(context, URL(url), "token")
+        srv.createContext(
+            "/api/v2/workspaces",
+            BaseHttpHandler("GET") { exchange ->
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
+                exchange.responseBody.write(body)
+            },
+        )
+
+        val workspaces = runBlocking { client.workspaces() }
+
+        assertEquals(listOf("safe-one", "workspace-with-filtered-agent", "safe-two"), workspaces.map { it.name })
+        // The workspace and its valid agent remain usable, but the rejected agent does not escape the REST boundary.
+        assertEquals(listOf("safe-agent"), workspaces[1].latestBuild.agentNames())
+        coVerify(exactly = 1) {
+            ui.showInfoPopup(
+                any<LocalizableString>(),
+                any<LocalizableString>(),
+                any<LocalizableString>(),
+            )
+        }
+
+        srv.stop(0)
+    }
+
+    @Test
+    fun `unsafe identifier warning is shown once between REST client session initializations`() {
+        val response = WorkspacesResponse(listOf(DataGen.workspace("unsafe\nHost *")))
+        val body = moshi.adapter(WorkspacesResponse::class.java)
+            .toJson(response)
+            .toByteArray()
+        val (srv, url) = mockServer()
+        srv.createContext(
+            "/api/v2/workspaces",
+            BaseHttpHandler("GET") { exchange ->
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
+                exchange.responseBody.write(body)
+            },
+        )
+
+        val firstClient = CoderRestClient(context, URL(url), "token")
+        runBlocking {
+            firstClient.workspaces()
+            firstClient.workspaces()
+        }
+        coVerify(exactly = 1) {
+            ui.showInfoPopup(
+                any<LocalizableString>(),
+                any<LocalizableString>(),
+                any<LocalizableString>(),
+            )
+        }
+
+        val sessionBodies = mapOf(
+            "/api/v2/users/me" to moshi.adapter(User::class.java).toJson(DataGen.user()).toByteArray(),
+            "/api/v2/buildinfo" to moshi.adapter(BuildInfo::class.java)
+                .toJson(BuildInfo("https://coder.example.com", "v1.0.0"))
+                .toByteArray(),
+            "/api/v2/appearance" to moshi.adapter(Appearance::class.java)
+                .toJson(Appearance("Coder"))
+                .toByteArray(),
+        )
+        sessionBodies.forEach { (path, responseBody) ->
+            srv.createContext(
+                path,
+                BaseHttpHandler("GET") { exchange ->
+                    exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, responseBody.size.toLong())
+                    exchange.responseBody.write(responseBody)
+                },
+            )
+        }
+
+        runBlocking {
+            firstClient.initializeSession()
+            firstClient.workspaces()
+        }
+        coVerify(exactly = 2) {
+            ui.showInfoPopup(
+                any<LocalizableString>(),
+                any<LocalizableString>(),
+                any<LocalizableString>(),
+            )
+        }
+
+        srv.stop(0)
+    }
+
+    @Test
+    fun `workspace request validates the workspace and filters unsafe agents`() {
+        val workspaceWithFilteredAgent = DataGen.workspace(
+            "workspace-with-filtered-agent",
+            agents = mapOf(
+                "safe-agent" to UUID.randomUUID().toString(),
+                "agent$(touch pwned)" to UUID.randomUUID().toString(),
+            ),
+        )
+        val unsafeWorkspace = DataGen.workspace("unsafe\nHost *")
+        val workspaceAdapter = moshi.adapter(Workspace::class.java)
+        val (srv, url) = mockServer()
+        val client = CoderRestClient(context, URL(url), "token")
+
+        listOf(workspaceWithFilteredAgent, unsafeWorkspace).forEach { workspace ->
+            val body = workspaceAdapter.toJson(workspace).toByteArray()
+            srv.createContext(
+                "/api/v2/workspaces/${workspace.id}",
+                BaseHttpHandler("GET") { exchange ->
+                    exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
+                    exchange.responseBody.write(body)
+                },
+            )
+        }
+
+        val returnedWorkspace = runBlocking { client.workspace(workspaceWithFilteredAgent.id) }
+        assertEquals("workspace-with-filtered-agent", returnedWorkspace.name)
+        // The valid agent is retained, but the rejected agent does not escape the REST boundary.
+        assertEquals(listOf("safe-agent"), returnedWorkspace.latestBuild.agentNames())
+        assertFailsWith<InvalidCoderIdentifierException> {
+            runBlocking { client.workspace(unsafeWorkspace.id) }
+        }
+
+        srv.stop(0)
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `workspace build operations filter unsafe agents`() {
+        val template = DataGen.template()
+        val workspace = DataGen.workspace("safe-workspace", templateID = template.id)
+        val build = DataGen.build(
+            resources = listOf(
+                DataGen.resource("safe-agent", UUID.randomUUID().toString()),
+                DataGen.resource("agent$(touch pwned)", UUID.randomUUID().toString()),
+            ),
+        )
+        val templateBody = moshi.adapter(Template::class.java).toJson(template).toByteArray()
+        val buildBody = moshi.adapter(WorkspaceBuild::class.java).toJson(build).toByteArray()
+        val (srv, url) = mockServer()
+        val client = CoderRestClient(context, URL(url), "token")
+        srv.createContext(
+            "/api/v2/templates/${template.id}",
+            BaseHttpHandler("GET") { exchange ->
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, templateBody.size.toLong())
+                exchange.responseBody.write(templateBody)
+            },
+        )
+        srv.createContext(
+            "/api/v2/workspaces/${workspace.id}/builds",
+            BaseHttpHandler("POST") { exchange ->
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_CREATED, buildBody.size.toLong())
+                exchange.responseBody.write(buildBody)
+            },
+        )
+
+        val buildsByOperation = runBlocking {
+            mapOf(
+                "startWorkspace" to client.startWorkspace(workspace),
+                "stopWorkspace" to client.stopWorkspace(workspace),
+                "updateWorkspace" to client.updateWorkspace(workspace),
+            )
+        }
+
+        buildsByOperation.forEach { (operation, returnedBuild) ->
+            assertEquals(
+                listOf("safe-agent"),
+                returnedBuild.agentNames(),
+                "$operation returned an unsafe agent",
+            )
+        }
+
+        srv.stop(0)
+    }
+
+    @Test
+    fun `filtered workspaces request sanitizes identifiers and sends the query`() {
+        val response = WorkspacesResponse(
+            listOf(
+                DataGen.workspace("safe-workspace"),
+                DataGen.workspace("unsafe\nHost *"),
+                DataGen.workspace(
+                    "workspace-with-filtered-agent",
+                    agents = mapOf(
+                        "safe-agent" to UUID.randomUUID().toString(),
+                        "agent$(touch pwned)" to UUID.randomUUID().toString(),
+                    ),
+                ),
+            ),
+        )
         val (srv, url) = mockServer()
         val client = CoderRestClient(context, URL(url), "token")
         val queries = mutableListOf<String?>()
@@ -297,17 +513,16 @@ class CoderRestClientTest {
             "/api/v2/workspaces",
             BaseHttpHandler("GET") { exchange ->
                 queries.add(exchange.requestURI.rawQuery)
-                val response = WorkspacesResponse(workspaces)
                 val body = moshi.adapter(WorkspacesResponse::class.java).toJson(response).toByteArray()
                 exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
                 exchange.responseBody.write(body)
             },
         )
 
-        assertEquals(
-            workspaces.map { ws -> ws.name },
-            runBlocking { client.workspaces("owner:riker name:omicron-eridani") }.map { ws -> ws.name }
-        )
+        val workspaces = runBlocking { client.workspaces("owner:riker name:omicron-eridani") }
+
+        assertEquals(listOf("safe-workspace", "workspace-with-filtered-agent"), workspaces.map { it.name })
+        assertEquals(listOf("safe-agent"), workspaces[1].latestBuild.agentNames())
         assertEquals(listOf<String?>("q=owner%3Ariker%20name%3Aomicron-eridani"), queries)
 
         srv.stop(0)

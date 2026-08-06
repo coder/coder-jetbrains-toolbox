@@ -8,6 +8,7 @@ import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.ex.OAuthTokenResponseException
+import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
@@ -212,9 +213,13 @@ class CoderRemoteProvider(
      */
     private fun configureSsh(cli: CoderCLIManager, resolvedEnvironments: List<CoderRemoteEnvironment>) {
         try {
-            cli.configSsh(resolvedEnvironments.mapNotNull { it.toWorkspaceAgentPairOrNull() }.toSet())
+            cli.configSsh(resolvedEnvironments.mapNotNull { it.toWorkspaceAddressOrNull() }.toSet())
             isSshConfigurationWarningShown = false
         } catch (ex: Exception) {
+            // Identifier failures are security boundary violations, not recoverable file-system errors.
+            // Let the outer poll handler reject the response before it publishes the environments.
+            if (ex.hasInvalidCoderIdentifierCause()) throw ex
+
             if (!isSshConfigurationWarningShown) {
                 isSshConfigurationWarningShown = true
                 val reason = ex.message?.takeIf { it.isNotBlank() } ?: ex.javaClass.simpleName
@@ -748,3 +753,6 @@ class CoderRemoteProvider(
         }
     }
 }
+
+private fun Throwable.hasInvalidCoderIdentifierCause(): Boolean =
+    this is InvalidCoderIdentifierException || cause is InvalidCoderIdentifierException

@@ -5,7 +5,9 @@ import com.coder.toolbox.cli.ex.MissingVersionException
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.cli.ex.SSHConfigFormatException
 import com.coder.toolbox.sdk.DataGen.Companion.workspace
+import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
 import com.coder.toolbox.sdk.v2.models.Workspace
+import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.BINARY_DESTINATION
 import com.coder.toolbox.store.BINARY_DIRECTORY
@@ -25,7 +27,6 @@ import com.coder.toolbox.store.SSH_LOG_DIR
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
-import com.coder.toolbox.util.escape
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.util.sha1
@@ -44,6 +45,7 @@ import com.jetbrains.toolbox.api.ui.components.UiComponents
 import com.squareup.moshi.JsonEncodingException
 import com.sun.net.httpserver.HttpServer
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
@@ -668,14 +670,17 @@ internal class CoderCLIManagerTest {
             val expectedConf =
                 Path.of("src/test/resources/fixtures/outputs/").resolve(it.output + ".conf").toFile().readText()
                     .replace(newlineRe, System.lineSeparator())
-                    .replace("/tmp/coder-toolbox/test.coder.invalid/config", escape(coderConfigPath.toString()))
+                    .replace(
+                        "/tmp/coder-toolbox/test.coder.invalid/config",
+                        ProxyCommandBuilder().argument(coderConfigPath.toString()).render(),
+                    )
                     .replace(
                         "/tmp/coder-toolbox/test.coder.invalid/coder-linux-amd64",
-                        escape(ccm.localBinaryPath.toString())
+                        ProxyCommandBuilder().argument(ccm.localBinaryPath.toString()).render(),
                     )
                     .replace(
                         "/tmp/coder-toolbox/ssh-network-metrics",
-                        escape(networkMetricsPath.toString())
+                        ProxyCommandBuilder().argument(networkMetricsPath.toString()).render(),
                     )
                     .let { conf ->
                         if (it.sshLogDirectory != null) {
@@ -689,7 +694,7 @@ internal class CoderCLIManagerTest {
             ccm.configSsh(
                 it.workspaces.flatMap { ws ->
                     ws.latestBuild.resources.filter { r -> r.agents != null }.flatMap { r -> r.agents!! }.map { a ->
-                        ws to a
+                        WorkspaceAddress.from(ws, a)
                     }
                 }.toSet(),
                 it.features,
@@ -761,7 +766,7 @@ internal class CoderCLIManagerTest {
             agents = mapOf("agentid1" to UUID.randomUUID().toString(), "agentid2" to UUID.randomUUID().toString())
         )
         val withAgents = workspace.latestBuild.resources.filter { it.agents != null }.flatMap { it.agents!! }.map {
-            workspace to it
+            WorkspaceAddress.from(workspace, it)
         }
 
         tests.forEach {
@@ -783,6 +788,72 @@ internal class CoderCLIManagerTest {
                 block = { ccm.configSsh(withAgents.toSet()) },
             )
         }
+    }
+
+    @Test
+    fun `unsafe identifiers are rejected before SSH config is written`() {
+        val sshConfigPath = tmpdir.resolve("unsafe-identifiers.conf")
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(SSH_CONFIG_PATH to sshConfigPath.toString()),
+            Environment(),
+            context.logger,
+        )
+        val ccm = CoderCLIManager(context.copy(settingsStore = settings), URI("https://test.coder.invalid").toURL())
+        val workspace = mockk<Workspace> {
+            every { ownerName } returns "owner"
+            every { name } returns "workspace\nHost *"
+        }
+        val agent = mockk<WorkspaceAgent> {
+            every { name } returns "agent"
+        }
+
+        assertFailsWith<InvalidCoderIdentifierException> {
+            ccm.configSsh(setOf(WorkspaceAddress.from(workspace, agent)), Features())
+        }
+        assertFalse(sshConfigPath.toFile().exists())
+
+        val unsafeOwnerWorkspace = mockk<Workspace> {
+            every { ownerName } returns "--header-command=unsafe"
+            every { name } returns "workspace"
+        }
+        assertFailsWith<InvalidCoderIdentifierException> {
+            ccm.startWorkspace(WorkspaceAddress.from(unsafeOwnerWorkspace), Features())
+        }
+    }
+
+    @Test
+    fun `managed block cleanup removes content after an injected early end marker`() {
+        val sshConfigPath = tmpdir.resolve("legacy-injected-end.conf")
+        sshConfigPath.toFile().apply {
+            parentFile.mkdirs()
+            writeText(
+                """
+                # --- START CODER JETBRAINS TOOLBOX test.coder.invalid
+                Host coder-old
+                # --- END CODER JETBRAINS TOOLBOX test.coder.invalid
+                Host *
+                  ProxyCommand unsafe-command
+                # --- END CODER JETBRAINS TOOLBOX test.coder.invalid
+                Host unrelated
+                  Port 22
+                """.trimIndent() + System.lineSeparator()
+            )
+        }
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(SSH_CONFIG_PATH to sshConfigPath.toString()),
+            Environment(),
+            context.logger,
+        )
+        val ccm = CoderCLIManager(context.copy(settingsStore = settings), URI("https://test.coder.invalid").toURL())
+        val workspace = workspace("safe", agents = mapOf("agent" to UUID.randomUUID().toString()))
+        val withAgent = workspace.latestBuild.resources.single().agents!!.single()
+
+        ccm.configSsh(setOf(WorkspaceAddress.from(workspace, withAgent)), Features())
+
+        val updatedConfig = sshConfigPath.toFile().readText()
+        assertFalse(updatedConfig.contains("unsafe-command"))
+        assertContains(updatedConfig, "# --- START CODER JETBRAINS TOOLBOX test.coder.invalid")
+        assertContains(updatedConfig, "Host unrelated")
     }
 
     /**

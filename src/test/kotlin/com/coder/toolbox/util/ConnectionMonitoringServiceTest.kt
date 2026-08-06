@@ -144,7 +144,7 @@ class ConnectionMonitoringServiceTest {
                 status = status
             ),
             outdated = false,
-            name = "workspace-${UUID.randomUUID()}",
+            name = "workspace-${UUID.randomUUID().toString().take(8)}",
             ownerName = "owner"
         )
     }

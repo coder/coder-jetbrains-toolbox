@@ -3,6 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.SshCommandProcessHandle
+import com.coder.toolbox.cli.WorkspaceAddress
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
@@ -85,7 +86,7 @@ class CoderRemoteEnvironment(
         refreshAvailableActions()
     }
 
-    fun toWorkspaceAgentPairOrNull(): Pair<Workspace, WorkspaceAgent>? = agent?.let { Pair(workspace, it) }
+    internal fun toWorkspaceAddressOrNull(): WorkspaceAddress? = agent?.let { WorkspaceAddress.from(workspace, it) }
 
     private fun refreshAvailableActions() {
         val actions = mutableListOf<ActionDescription>()
@@ -135,7 +136,7 @@ class CoderRemoteEnvironment(
                     context.logger.debug("Starting $id... ")
                     context.cs
                         .launch(CoroutineName("Start Workspace Action CLI Runner") + Dispatchers.IO) {
-                            cli.startWorkspace(workspace.ownerName, workspace.name)
+                            cli.startWorkspace(WorkspaceAddress.from(workspace))
                             workspaceRefreshTrigger.trySend(true)
                         }
                     // cli takes 15 seconds to move the workspace in queueing/starting state
