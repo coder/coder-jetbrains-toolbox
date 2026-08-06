@@ -2,12 +2,18 @@
 
 ## Unreleased
 
+## 0.9.2 - 2026-08-06
+
 ### Fixed
 
 - keep workspace polling alive when SSH config updates fail
 - improved validation and handling of workspace connection data
 - expand `~` and `$HOME` in the SSH log directory and network info directory settings, consistent with how the data
   and binary directories are already resolved
+
+### Changed
+
+- migrated plugin packaging to the new marketplace compatible structure
 
 ## 0.9.2-alpha2 - 2026-07-24
 
