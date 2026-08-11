@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.3 - 2026-08-11
+
 ### Changed
 
 - deployment target OS is now derived from the workspace agent's reported OS, falling back to automatic detection when
