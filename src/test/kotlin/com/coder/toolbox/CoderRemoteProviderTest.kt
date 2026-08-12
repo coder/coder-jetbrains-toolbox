@@ -83,7 +83,7 @@ class CoderRemoteProviderTest {
         val agent = mockAgent("agent1")
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
-        every { mockCli.configSsh(any(), any()) } throws FileNotFoundException("Permission denied")
+        every { mockCli.configSsh(any(), any(), any()) } throws FileNotFoundException("Permission denied")
 
         // when
         val pollJob = remoteProvider.poll(mockClient, mockCli)
@@ -115,7 +115,7 @@ class CoderRemoteProviderTest {
         val agent = mockAgent("agent1")
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
-        every { mockCli.configSsh(any(), any()) } throws
+        every { mockCli.configSsh(any(), any(), any()) } throws
                 InvalidCoderIdentifierException("The deployment returned an invalid workspace name")
 
         val pollJob = remoteProvider.poll(mockClient, mockCli)

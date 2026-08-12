@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- support for configuring the SSH config path, letting Toolbox manage a separate SSH config file instead of always
+  writing to `~/.ssh/config`
+
 ## 0.9.3 - 2026-08-11
 
 ### Changed

@@ -113,6 +113,51 @@ class CoderSettingsStoreTest {
     }
 
     @Test
+    fun `ssh config path uses the configured value`() {
+        val configuredPath = "/tmp/coder-toolbox-test/config"
+
+        store.updateSshConfigPath(configuredPath)
+
+        assertEquals(configuredPath, store.sshConfigPath)
+    }
+
+    @Test
+    fun `ssh config path defaults to ~-ssh-config when unset`() {
+        val home = Path.of(System.getProperty("user.home"))
+
+        assertEquals(home.resolve(".ssh/config").normalize().toString(), store.sshConfigPath)
+    }
+
+    @Test
+    fun `ssh config path falls back to the default when the configured value is blank`() {
+        val home = Path.of(System.getProperty("user.home"))
+
+        store.updateSshConfigPath("   ")
+
+        assertEquals(home.resolve(".ssh/config").normalize().toString(), store.sshConfigPath)
+    }
+
+    @Test
+    fun `ssh config path expands tilde in the configured value`() {
+        // Don't override OS — tilde expansion depends on the real File.separator.
+        val home = Path.of(System.getProperty("user.home"))
+
+        val settings = storeWith(SSH_CONFIG_PATH to "~/coder-ssh/config")
+
+        assertEquals(home.resolve("coder-ssh/config").toString(), settings.sshConfigPath)
+    }
+
+    @Test
+    fun `ssh config path expands HOME in the configured value`() {
+        // Don't override OS — $HOME expansion depends on the real File.separator.
+        val home = Path.of(System.getProperty("user.home"))
+
+        val settings = storeWith(SSH_CONFIG_PATH to "\$HOME/coder-ssh/config")
+
+        assertEquals(home.resolve("coder-ssh/config").toString(), settings.sshConfigPath)
+    }
+
+    @Test
     fun `binPath expands tilde in binaryDestination when it points to an existing executable`() {
         // Don't override OS — tilde expansion depends on the real File.separator.
         val home = Path.of(System.getProperty("user.home"))

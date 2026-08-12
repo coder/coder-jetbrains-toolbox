@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
  */
 class CoderSettingsPage(
     private val context: CoderToolboxContext,
-    sshConfigTrigger: Channel<Boolean>,
+    sshConfigTrigger: Channel<String?>,
     private val onSettingsClosed: () -> Unit
 ) :
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
@@ -108,6 +108,12 @@ class CoderSettingsPage(
         TextType.Integer
     )
 
+    private val sshConfigPathField = TextField(
+        context.i18n.ptrl("SSH config path"),
+        settings.sshConfigPath,
+        TextType.General
+    )
+
     private val sshExtraArgs = TextField(
         context.i18n.ptrl("Extra SSH options"),
         settings.sshConfigOptions ?: "",
@@ -166,6 +172,7 @@ class CoderSettingsPage(
                 false,
                 listOf(
                     enableSshWildCardConfig,
+                    sshConfigPathField,
                     sshConnectionTimeoutField,
                     sshLogDirField,
                     networkInfoDirField,
@@ -197,16 +204,21 @@ class CoderSettingsPage(
 
                     val sshWildcardEnabled = enableSshWildCardConfig.checkedState.value
                     val sshTimeout = sshConnectionTimeoutField.contentState.value.toInt()
+                    val sshConfigPath = sshConfigPathField.contentState.value
+                    val previousSshConfigPath = settings.sshConfigPath
 
                     val sshSettingsChanged = sshWildcardEnabled != settings.isSshWildcardConfigEnabled ||
-                            sshTimeout != settings.sshConnectionTimeoutInSeconds
+                            sshTimeout != settings.sshConnectionTimeoutInSeconds ||
+                            sshConfigPath != previousSshConfigPath
 
                     updateEnableSshWildcardConfig(sshWildcardEnabled)
                     updateSshConnectionTimeoutInSeconds(sshTimeout)
+                    updateSshConfigPath(sshConfigPath)
 
                     if (sshSettingsChanged) {
+                        val staleSshConfigPath = previousSshConfigPath.takeIf { it != settings.sshConfigPath }
                         runCatching {
-                            sshConfigTrigger.send(true)
+                            sshConfigTrigger.send(staleSshConfigPath)
                             context.logger.info("Settings have been modified, ssh config is going to be regenerated...")
                         }
                     }
@@ -274,6 +286,10 @@ class CoderSettingsPage(
 
         sshConnectionTimeoutField.contentState.update {
             settings.sshConnectionTimeoutInSeconds.toString()
+        }
+
+        sshConfigPathField.contentState.update {
+            settings.sshConfigPath
         }
 
         sshExtraArgs.contentState.update {

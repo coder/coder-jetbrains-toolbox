@@ -51,6 +51,12 @@ private class WorkspaceSshConnectionInfo(
      */
     override val userName: String? = null
 
+    /**
+     * Use the config managed by this plugin rather than Toolbox's default SSH
+     * config, which may be a separate read-only user-managed file.
+     */
+    override val sshConfigPath: String = context.settingsStore.sshConfigPath
+
     override val connectionTimeoutMillis: Long
         get() = context.settingsStore.sshConnectionTimeoutInSeconds.seconds.inWholeMilliseconds
 
@@ -64,6 +70,7 @@ private class WorkspaceSshConnectionInfo(
         if (workspace.name != other.workspace.name) return false
         if (agent.name != other.agent.name) return false
         if (host != other.host) return false
+        if (sshConfigPath != other.sshConfigPath) return false
 
         return true
     }
@@ -73,6 +80,7 @@ private class WorkspaceSshConnectionInfo(
         result = 31 * result + workspace.name.hashCode()
         result = 31 * result + agent.name.hashCode()
         result = 31 * result + host.hashCode()
+        result = 31 * result + sshConfigPath.hashCode()
         return result
     }
 
