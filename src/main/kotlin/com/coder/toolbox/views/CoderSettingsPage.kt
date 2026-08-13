@@ -5,14 +5,20 @@ import com.coder.toolbox.settings.HttpLoggingVerbosity.BASIC
 import com.coder.toolbox.settings.HttpLoggingVerbosity.BODY
 import com.coder.toolbox.settings.HttpLoggingVerbosity.HEADERS
 import com.coder.toolbox.settings.HttpLoggingVerbosity.NONE
+import com.coder.toolbox.util.canCreateDirectory
+import com.coder.toolbox.util.expand
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField.LabelledValue
+import com.jetbrains.toolbox.api.ui.components.FieldModifier
 import com.jetbrains.toolbox.api.ui.components.SectionField
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.UiField
+import com.jetbrains.toolbox.api.ui.components.ValidatableField
+import com.jetbrains.toolbox.api.ui.components.ValidationResult
+import com.jetbrains.toolbox.api.ui.components.validate
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -20,6 +26,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * A page for modifying Coder settings.
@@ -111,7 +119,8 @@ class CoderSettingsPage(
     private val sshConfigPathField = TextField(
         context.i18n.ptrl("SSH config path"),
         settings.sshConfigPath,
-        TextType.General
+        TextType.General,
+        validator = ::validateSshConfigPath
     )
 
     private val sshExtraArgs = TextField(
@@ -130,6 +139,47 @@ class CoderSettingsPage(
         settings.networkInfoDir,
         TextType.General
     )
+
+    /**
+     * Toolbox does not validate fields on its own; a page's action is
+     * responsible for validating and reporting whether everything came back
+     * clean. `UiPage.runValidations()` only looks at the top-level fields
+     * list, but ours are nested inside `SectionField`s, so fields have to be
+     * flattened out of their sections before each is validated.
+     */
+    private fun validateFields(): Boolean = fields.value.allFieldsValid()
+
+    private fun List<UiField>.allFieldsValid(): Boolean = all { field ->
+        when (field) {
+            is SectionField -> field.contentState.value.allFieldsValid()
+            is ValidatableField<*> -> {
+                field.validate()
+                field.modifiers.value.none { it is FieldModifier.LocalizableError || it is FieldModifier.Error }
+            }
+
+            else -> true
+        }
+    }
+
+    private fun validateSshConfigPath(rawPath: String): ValidationResult {
+        val expandedPath = expand(rawPath)
+        if (expandedPath.isBlank()) {
+            return ValidationResult.Invalid(context.i18n.ptrl("SSH config path must not be empty"))
+        }
+        val configPath = Path.of(expandedPath)
+        if (Files.exists(configPath)) {
+            return if (Files.isRegularFile(configPath) && Files.isWritable(configPath)) {
+                ValidationResult.Valid
+            } else {
+                ValidationResult.Invalid(context.i18n.ptrl("SSH config path must point to a writable file"))
+            }
+        }
+        return if (configPath.parent?.canCreateDirectory() == true) {
+            ValidationResult.Valid
+        } else {
+            ValidationResult.Invalid(context.i18n.ptrl("SSH config path's parent directory must be writable"))
+        }
+    }
 
     private lateinit var visibilityUpdateJob: Job
     override val fields: StateFlow<List<UiField>> = MutableStateFlow(
@@ -184,7 +234,7 @@ class CoderSettingsPage(
 
     override val actionButtons: StateFlow<List<RunnableActionDescription>> = MutableStateFlow(
         listOf(
-            Action(context, "Save", closesPage = true) {
+            Action(context, "Save", closesPage = true, validateBlock = ::validateFields) {
                 with(context.settingsStore) {
                     updateBinarySource(binarySourceField.contentState.value)
                     updateBinaryDestination(binaryDestinationField.contentState.value)
