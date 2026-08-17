@@ -1,5 +1,6 @@
 package com.coder.toolbox.settings
 
+import com.coder.toolbox.store.CODER_HEADER_COMMAND
 import com.coder.toolbox.store.CODER_SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.DISABLE_AUTOSTART
@@ -234,6 +235,30 @@ internal class CoderSettingsTest {
         expected.resolve("session").toFile().delete()
         got = CoderSettingsStore(pluginTestSettingsStore(), Environment(), logger).readOnly().readConfig(expected)
         assertEquals(Pair("http://test.toolbox.coder.com$expected", null), got)
+    }
+
+    @Test
+    fun testHeaderCommand() {
+        var settings = CoderSettingsStore(
+            pluginTestSettingsStore(HEADER_COMMAND to "header command from state"),
+            Environment(), logger
+        )
+        assertEquals("header command from state", settings.readOnly().headerCommand)
+
+        settings = CoderSettingsStore(
+            pluginTestSettingsStore(),
+            env = Environment(mapOf(CODER_HEADER_COMMAND to "header command from env")),
+            logger
+        )
+        assertEquals("header command from env", settings.readOnly().headerCommand)
+
+        // State has precedence.
+        settings = CoderSettingsStore(
+            pluginTestSettingsStore(HEADER_COMMAND to "header command from state"),
+            env = Environment(mapOf(CODER_HEADER_COMMAND to "header command from env")),
+            logger
+        )
+        assertEquals("header command from state", settings.readOnly().headerCommand)
     }
 
     @Test

@@ -54,7 +54,9 @@ class CoderSettingsStore(
     override val globalDataDirectory: String get() = getDefaultGlobalDataDir().normalize().toString()
     override val globalConfigDir: String get() = getDefaultGlobalConfigDir().normalize().toString()
     override val enableDownloads: Boolean get() = store[ENABLE_DOWNLOADS]?.toBooleanStrictOrNull() ?: true
-    override val headerCommand: String? get() = store[HEADER_COMMAND]
+    override val headerCommand: String?
+        get() = store[HEADER_COMMAND].takeUnless { it.isNullOrEmpty() }
+            ?: env.get(CODER_HEADER_COMMAND).takeUnless { it.isEmpty() }
     override val tls: ReadOnlyTLSSettings
         get() = TLSSettings(
             certPath = store[TLS_CERT_PATH],
