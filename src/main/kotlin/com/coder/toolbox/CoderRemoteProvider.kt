@@ -55,6 +55,7 @@ import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.net.URI
 import java.net.URL
+import java.nio.file.Path
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -74,7 +75,7 @@ class CoderRemoteProvider(
     internal val lastEnvironments = mutableListOf<CoderRemoteEnvironment>()
     private var isSshConfigurationWarningShown = false
 
-    private val sshConfigTrigger = Channel<Boolean>(Channel.CONFLATED)
+    private val sshConfigTrigger = Channel<String?>(Channel.CONFLATED)
     private val workspaceRefreshTrigger = Channel<Boolean>(Channel.CONFLATED)
     private val providerVisibleTrigger = Channel<Boolean>(Channel.CONFLATED)
     private val dialogUi = DialogUi(context)
@@ -185,11 +186,9 @@ class CoderRemoteProvider(
                     onTimeout(POLL_INTERVAL) {
                         context.logger.debug("workspace poller waked up by the $POLL_INTERVAL timeout")
                     }
-                    sshConfigTrigger.onReceive { shouldTrigger ->
-                        if (shouldTrigger) {
-                            context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
-                            configureSsh(cli, lastEnvironments)
-                        }
+                    sshConfigTrigger.onReceive { staleSshConfigPath ->
+                        context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
+                        configureSsh(cli, lastEnvironments, staleSshConfigPath)
                     }
                     workspaceRefreshTrigger.onReceive { shouldTrigger ->
                         if (shouldTrigger) {
@@ -211,10 +210,30 @@ class CoderRemoteProvider(
      * configuration is necessary to connect, but a read-only or malformed SSH
      * config must not prevent Toolbox from showing the workspaces it resolved.
      */
-    private fun configureSsh(cli: CoderCLIManager, resolvedEnvironments: List<CoderRemoteEnvironment>) {
+    private fun configureSsh(
+        cli: CoderCLIManager,
+        resolvedEnvironments: List<CoderRemoteEnvironment>,
+        staleSshConfigPath: String? = null,
+    ) {
         try {
-            cli.configSsh(resolvedEnvironments.mapNotNull { it.toWorkspaceAddressOrNull() }.toSet())
+            cli.configSsh(
+                resolvedEnvironments.mapNotNull { it.toWorkspaceAddressOrNull() }.toSet(),
+                sshConfigPath = context.settingsStore.sshConfigPath,
+            )
             isSshConfigurationWarningShown = false
+
+            // Only attempt cleanup if the previous file actually exists; configSsh would
+            // otherwise create a stray file there just to hold an empty managed block.
+            if (staleSshConfigPath != null && Path.of(staleSshConfigPath).toFile().exists()) {
+                runCatching {
+                    cli.configSsh(emptySet(), sshConfigPath = staleSshConfigPath)
+                }.onFailure { ex ->
+                    context.logger.warn(
+                        ex,
+                        "Failed to remove the managed SSH config block from the previous location: $staleSshConfigPath"
+                    )
+                }
+            }
         } catch (ex: Exception) {
             // Identifier failures are security boundary violations, not recoverable file-system errors.
             // Let the outer poll handler reject the response before it publishes the environments.
