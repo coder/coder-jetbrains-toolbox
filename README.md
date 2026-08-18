@@ -509,8 +509,7 @@ explicit entry per resolved workspace/agent using
   expansion.
 
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
-  The environment variable CODER_URL will be available to the command process. If left blank, the
-  `CODER_HEADER_COMMAND` environment variable is used, if set.
+  When this setting is left blank, the `CODER_HEADER_COMMAND` environment variable is used instead, if set.
 
 - `lastDeploymentURL` the last Coder deployment URL that Coder Toolbox successfully authenticated to.
 
