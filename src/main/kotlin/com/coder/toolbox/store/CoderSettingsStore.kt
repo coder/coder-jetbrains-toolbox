@@ -74,7 +74,7 @@ class CoderSettingsStore(
     override val isSshWildcardConfigEnabled: Boolean
         get() = store[ENABLE_SSH_WILDCARD_CONFIG]?.toBooleanStrictOrNull() ?: true
     override val sshConfigPath: String
-        get() = store[SSH_CONFIG_PATH].takeUnless { it.isNullOrEmpty() }
+        get() = store[SSH_CONFIG_PATH]?.takeIf { it.isNotBlank() }?.let { expand(it) }
             ?: Path.of(System.getProperty("user.home")).resolve(".ssh/config").normalize().toString()
     override val sshLogDirectory: String? get() = store[SSH_LOG_DIR]?.takeIf { it.isNotBlank() }?.let { expand(it) }
     override val sshConfigOptions: String?
@@ -242,6 +242,10 @@ class CoderSettingsStore(
 
     fun updateEnableSshWildcardConfig(enable: Boolean) {
         store[ENABLE_SSH_WILDCARD_CONFIG] = enable.toString()
+    }
+
+    fun updateSshConfigPath(path: String) {
+        store[SSH_CONFIG_PATH] = path
     }
 
     fun updateSshLogDir(path: String) {

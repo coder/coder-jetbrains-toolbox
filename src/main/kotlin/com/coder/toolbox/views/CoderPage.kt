@@ -60,12 +60,20 @@ class Action(
     closesPage: Boolean = false,
     highlightInRed: Boolean = false,
     enabled: () -> Boolean = { true },
+    private val validateBlock: () -> Boolean = { true },
     private val actionBlock: suspend () -> Unit,
 ) : RunnableActionDescription {
     override val label: LocalizableString = context.i18n.ptrl(description)
     override val shouldClosePage: Boolean = closesPage
     override val isEnabled: Boolean = enabled()
     override val isDangerous: Boolean = highlightInRed
+
+    /**
+     * Toolbox calls this before [run], and only calls [run] (and closes the
+     * page, if [shouldClosePage]) when this returns true.
+     */
+    override fun validate(): Boolean = validateBlock()
+
     override fun run() {
         context.cs.launch(CoroutineName("$description Action")) {
             try {

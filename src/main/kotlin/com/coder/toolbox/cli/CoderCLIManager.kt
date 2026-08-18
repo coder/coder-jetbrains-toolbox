@@ -298,17 +298,18 @@ class CoderCLIManager(
     internal fun configSsh(
         workspaceAddresses: Set<WorkspaceAddress>,
         feats: Features = features,
+        sshConfigPath: String = context.settingsStore.sshConfigPath,
     ) {
-        context.logger.info("Configuring SSH config at ${context.settingsStore.sshConfigPath}")
-        writeSSHConfig(modifySSHConfig(readSSHConfig(), workspaceAddresses, feats))
+        context.logger.info("Configuring SSH config at $sshConfigPath")
+        writeSSHConfig(modifySSHConfig(readSSHConfig(sshConfigPath), workspaceAddresses, feats), sshConfigPath)
         context.logger.info("Finished configuring SSH config")
     }
 
     /**
      * Return the contents of the SSH config or null if it does not exist.
      */
-    private fun readSSHConfig(): String? = try {
-        Path.of(context.settingsStore.sshConfigPath).toFile().readText()
+    private fun readSSHConfig(sshConfigPath: String): String? = try {
+        Path.of(sshConfigPath).toFile().readText()
     } catch (_: FileNotFoundException) {
         null
     }
@@ -484,11 +485,11 @@ class CoderCLIManager(
     /**
      * Write the provided SSH config or do nothing if null.
      */
-    private fun writeSSHConfig(contents: String?) {
+    private fun writeSSHConfig(contents: String?, sshConfigPath: String) {
         if (contents != null) {
-            if (context.settingsStore.sshConfigPath.isNotBlank()) {
-                val sshConfPath = Path.of(context.settingsStore.sshConfigPath)
-                sshConfPath.parent.toFile().mkdirs()
+            if (sshConfigPath.isNotBlank()) {
+                val sshConfPath = Path.of(sshConfigPath)
+                sshConfPath.parent?.toFile()?.mkdirs()
                 sshConfPath.toFile().writeText(contents)
             }
             // The Coder cli will *not* create the log directory.
