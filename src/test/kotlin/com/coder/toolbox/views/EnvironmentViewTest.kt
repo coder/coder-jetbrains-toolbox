@@ -6,6 +6,8 @@ import com.coder.toolbox.cli.WorkspaceAddress
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.store.CoderSettingsStore
+import com.coder.toolbox.util.OS
+import com.jetbrains.toolbox.api.remoteDev.deploy.DeploymentTarget
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
@@ -14,6 +16,30 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class EnvironmentViewTest {
+    @Test
+    fun `deployment target follows the workspace agent operating system`() {
+        val context = mockk<CoderToolboxContext>(relaxed = true)
+        val cli = mockk<CoderCLIManager>()
+        val workspace = mockk<Workspace>()
+        val url = URL("https://coder.example.com")
+        val cases = listOf(
+            OS.LINUX to DeploymentTarget.LINUX,
+            OS.MAC to DeploymentTarget.MACOS,
+            OS.WINDOWS to DeploymentTarget.WINDOWS,
+            null to DeploymentTarget.AUTO,
+        )
+
+        cases.forEach { (operatingSystem, expectedTarget) ->
+            val agent = mockk<WorkspaceAgent> {
+                every { this@mockk.operatingSystem } returns operatingSystem
+            }
+
+            val deploymentSettings = EnvironmentView(context, url, cli, workspace, agent).deploymentSettings
+
+            assertEquals(expectedTarget, deploymentSettings.deploymentTarget)
+        }
+    }
+
     @Test
     fun `connection info passes the configured SSH config path to Toolbox`() = runBlocking {
         val context = mockk<CoderToolboxContext>(relaxed = true)

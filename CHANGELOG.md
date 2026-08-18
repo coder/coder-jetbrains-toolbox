@@ -7,6 +7,10 @@
 - support for configuring the SSH config path, letting Toolbox manage a separate SSH config file instead of always
   writing to `~/.ssh/config`
 
+### Fixed
+
+- pass the workspace agent's operating system to Toolbox before it deploys the remote agent
+
 ## 0.9.3 - 2026-08-11
 
 ### Changed
@@ -20,8 +24,8 @@
 
 - keep workspace polling alive when SSH config updates fail
 - improved validation and handling of workspace connection data
-- expand `~` and `$HOME` in the SSH log directory and network info directory settings, consistent with how the data
-  and binary directories are already resolved
+- expand `~` and `$HOME` in the SSH log directory and network info directory settings, consistent with how the data and
+  binary directories are already resolved
 
 ### Changed
 
@@ -57,8 +61,8 @@
 - skip the Coder TLS alternate hostname when fetching IDE metadata from JetBrains
 - notifications are now persistent popups instead of snackbars, so they survive a hidden window and no longer get
   dropped
-- workspace lists now default to `My workspaces`, so users initially see only workspaces they own. Users can
-  switch to `All workspaces`, and that selection is persisted per Coder deployment hostname.
+- workspace lists now default to `My workspaces`, so users initially see only workspaces they own. Users can switch to
+  `All workspaces`, and that selection is persisted per Coder deployment hostname.
 
 ## 0.9.0 - 2026-05-14
 
@@ -281,8 +285,8 @@
 
 ### Changed
 
-- the plugin will now remember the SSH connection state for each workspace, and it will try to automatically
-  establish it after an expired token was refreshed.
+- the plugin will now remember the SSH connection state for each workspace, and it will try to automatically establish
+  it after an expired token was refreshed.
 
 ### Fixed
 
