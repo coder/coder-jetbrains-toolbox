@@ -93,8 +93,8 @@ interface ReadOnlyCoderSettings {
     /**
      * An external command that outputs additional HTTP headers added to all
      * requests. The command must output each header as `key=value` on its own
-     * line. The following environment variables will be available to the
-     * process: CODER_URL.
+     * line. When this setting is blank, the CODER_HEADER_COMMAND environment
+     * variable (the same variable the Coder CLI reads) is used instead, if set.
      */
     val headerCommand: String?
 
