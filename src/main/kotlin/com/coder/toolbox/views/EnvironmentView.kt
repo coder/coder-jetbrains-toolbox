@@ -5,10 +5,20 @@ import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.WorkspaceAddress
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.util.OS
+import com.jetbrains.toolbox.api.remoteDev.deploy.DeploymentSettings
+import com.jetbrains.toolbox.api.remoteDev.deploy.DeploymentTarget
 import com.jetbrains.toolbox.api.remoteDev.environments.SshEnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.ssh.SshConnectionInfo
 import java.net.URL
 import kotlin.time.Duration.Companion.seconds
+
+private fun OS?.toDeploymentTarget(): DeploymentTarget = when (this) {
+    OS.LINUX -> DeploymentTarget.LINUX
+    OS.MAC -> DeploymentTarget.MACOS
+    OS.WINDOWS -> DeploymentTarget.WINDOWS
+    else -> DeploymentTarget.AUTO
+}
 
 /**
  * A view for a single environment.  It displays the projects and IDEs.
@@ -25,6 +35,14 @@ class EnvironmentView(
     private val workspace: Workspace,
     private val agent: WorkspaceAgent,
 ) : SshEnvironmentContentsView {
+
+    /**
+     * Derives the deployment target from the agent's reported OS, falling back to
+     * AUTO (automatic remote OS detection) when its OS is unknown.
+     */
+    override val deploymentSettings: DeploymentSettings
+        get() = DeploymentSettings.Default.copy(deploymentTarget = agent.operatingSystem.toDeploymentTarget())
+
     override suspend fun getConnectionInfo(): SshConnectionInfo =
         WorkspaceSshConnectionInfo(context, url, cli, workspace, agent)
 }
