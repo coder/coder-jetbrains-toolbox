@@ -23,10 +23,10 @@ import kotlin.jvm.optionals.getOrNull
  * This manager handles fetching IDE information from JetBrains data services,
  * caching the results locally, and supporting offline mode.
  *
- * Cache files are stored in platform-specific locations:
- * - macOS: ~/Library/Application Support/JetBrains/Toolbox/plugins/com.coder.toolbox/
- * - Linux: ~/.local/share/JetBrains/Toolbox/plugins/com.coder.toolbox/
- * - Windows: %LOCALAPPDATA%/JetBrains/Toolbox/plugins/com.coder.toolbox/
+ * Cache files are stored in the Coder Toolbox data directory:
+ * - macOS: ~/Library/Application Support/coder-toolbox/
+ * - Linux: ${XDG_DATA_HOME:-~/.local/share}/coder-toolbox/
+ * - Windows: %LOCALAPPDATA%/coder-toolbox/
  */
 class IdeFeedManager(
     private val context: CoderToolboxContext,
