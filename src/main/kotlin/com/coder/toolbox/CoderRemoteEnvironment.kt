@@ -22,10 +22,7 @@ import com.jetbrains.toolbox.api.remoteDev.AfterDisconnectHook
 import com.jetbrains.toolbox.api.remoteDev.BeforeConnectionHook
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
-import com.jetbrains.toolbox.api.remoteDev.deploy.DeploymentSettings
-import com.jetbrains.toolbox.api.remoteDev.deploy.DeploymentTarget
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
-import com.jetbrains.toolbox.api.remoteDev.environments.WithDeploymentSettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
 import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
 import com.jetbrains.toolbox.api.ui.actions.ActionDescription
@@ -52,11 +49,11 @@ private val POLL_INTERVAL = 5.seconds
 private fun environmentId(workspace: Workspace, agent: WorkspaceAgent?): String =
     agent?.let { "${workspace.name}.${it.name}" } ?: workspace.name
 
-private fun OS?.toDeploymentTarget(): DeploymentTarget = when (this) {
-    OS.LINUX -> DeploymentTarget.LINUX
-    OS.MAC -> DeploymentTarget.MACOS
-    OS.WINDOWS -> DeploymentTarget.WINDOWS
-    else -> DeploymentTarget.AUTO
+private fun OS?.displayName(): String = when (this) {
+    OS.LINUX -> "Linux"
+    OS.WINDOWS -> "Windows"
+    OS.MAC -> "macOS"
+    null -> "unknown-OS"
 }
 
 /**
@@ -71,8 +68,7 @@ class CoderRemoteEnvironment(
     private val workspaceRefreshTrigger: Channel<Boolean>,
     private var workspace: Workspace,
     private var agent: WorkspaceAgent?,
-) : RemoteProviderEnvironment(environmentId(workspace, agent)), BeforeConnectionHook, AfterDisconnectHook,
-    WithDeploymentSettings {
+) : RemoteProviderEnvironment(environmentId(workspace, agent)), BeforeConnectionHook, AfterDisconnectHook {
     private var environmentStatus = WorkspaceAndAgentStatus.from(workspace, agent)
 
     override var name: String = environmentId(workspace, agent)
@@ -85,13 +81,6 @@ class CoderRemoteEnvironment(
         MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
     override val additionalEnvironmentInformation: MutableMap<LocalizableString, String> = mutableMapOf()
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(emptyList())
-
-    /**
-     * Derives the deployment target from the agent's reported OS, falling back to
-     * AUTO (automatic remote OS detection) when the agent or its OS is unknown.
-     */
-    override val deploymentSettings: DeploymentSettings
-        get() = DeploymentSettings.Default.copy(deploymentTarget = agent?.operatingSystem.toDeploymentTarget())
 
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
     private val proxyCommandHandle = SshCommandProcessHandle(context)
@@ -236,7 +225,9 @@ class CoderRemoteEnvironment(
         if (agent == null) {
             return
         }
-        context.logger.info("Connecting to $id...")
+        context.logger.info(
+            "Launching SSH connection to $id on a ${agent?.operatingSystem.displayName()} machine"
+        )
         isConnected.update { true }
         context.settingsStore.updateAutoConnect(this.id, true)
         pollJob = pollNetworkMetrics()
@@ -378,7 +369,6 @@ class CoderRemoteEnvironment(
             connectionRequest.update {
                 true
             }
-            context.logger.info("Workspace status is ready and there is no existing connection, resuming SSH connection to $id")
         }
     }
 
