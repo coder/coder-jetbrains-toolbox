@@ -8,16 +8,29 @@ import kotlin.io.path.div
  * Resolves the Toolbox plugin install directory for the current OS.
  */
 fun getPluginInstallDir(extensionId: String): Path {
-    val userHome = System.getProperty("user.home").let { Path.of(it) }
-    val pluginsDir = when (OS.current()) {
-        OS.WINDOWS -> System.getenv("LOCALAPPDATA")?.let { Path.of(it) } ?: (userHome / "AppData" / "Local")
-        // currently this is the location that TBA uses on Linux
-        OS.LINUX -> System.getenv("XDG_DATA_HOME")?.let { Path.of(it) } ?: (userHome / ".local" / "share")
-        OS.MAC -> userHome / "Library" / "Caches"
-        else -> error("Unknown os")
-    } / "JetBrains" / "Toolbox" / "plugins"
+    val userHome = Path.of(System.getProperty("user.home"))
+    val toolboxDir = when (OS.current()) {
+        OS.WINDOWS -> {
+            val localAppData = System.getenv("LOCALAPPDATA")
+                ?.takeIf { it.isNotBlank() }
+                ?.let { Path.of(it) }
+                ?: (userHome / "AppData" / "Local")
+            localAppData / "JetBrains" / "Toolbox" / "cache"
+        }
 
-    return pluginsDir / extensionId
+        OS.LINUX -> {
+            val dataHome = System.getenv("XDG_DATA_HOME")
+                ?.takeIf { it.isNotBlank() }
+                ?.let { Path.of(it) }
+                ?: (userHome / ".local" / "share")
+            dataHome / "JetBrains" / "Toolbox"
+        }
+
+        OS.MAC -> userHome / "Library" / "Caches" / "JetBrains" / "Toolbox"
+        else -> error("Unknown os")
+    }
+
+    return toolboxDir / "plugins" / extensionId
 }
 
 /**
