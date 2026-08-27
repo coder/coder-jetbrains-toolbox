@@ -171,7 +171,7 @@ class CoderRemoteProvider(
                         if ((ex is APIResponseException && ex.isTokenExpired) || ex is OAuthTokenResponseException) {
                             close()
                             context.envPageManager.showPluginEnvironmentsPage(false)
-                            context.logAndShowError(
+                            context.logger.logAndShowError(
                                 "Error encountered while setting up Coder",
                                 "Your Coder session has expired. Please re-authenticate and try again.",
                                 ex
@@ -242,7 +242,7 @@ class CoderRemoteProvider(
             if (!isSshConfigurationWarningShown) {
                 isSshConfigurationWarningShown = true
                 val reason = ex.message?.takeIf { it.isNotBlank() } ?: ex.javaClass.simpleName
-                context.logAndShowWarning(
+                context.logger.logAndShowWarning(
                     SSH_CONFIGURATION_WARNING_TITLE,
                     "Workspaces remain available, but SSH connections are unavailable: $reason. " +
                             "Update ${context.settingsStore.sshConfigPath} and try again.",
@@ -428,7 +428,7 @@ class CoderRemoteProvider(
             val params = uri.toQueryParameters()
             if (params.isEmpty()) {
                 // probably a plugin installation scenario
-                context.logAndShowInfo("URI will not be handled", "No query parameters were provided")
+                context.logger.logAndShowInfo("URI will not be handled", "No query parameters were provided")
                 return
             }
             context.logger.info("Handling $uri...")
@@ -469,7 +469,7 @@ class CoderRemoteProvider(
                     ex.reason
                 } else ex.message
             } else ex.message
-            context.logAndShowError(
+            context.logger.logAndShowError(
                 "Error encountered while handling Coder URI",
                 textError ?: ""
             )
@@ -487,35 +487,35 @@ class CoderRemoteProvider(
         val error = params["error"]
         if (error != null) {
             val description = params["error_description"]?.let { " - $it" } ?: ""
-            return context.logAndShowError(
+            return context.logger.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "OAuth2 authorization error: $error$description"
             )
         }
 
         if (!router.hasActiveWizard) {
-            return context.logAndShowError(
+            return context.logger.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "OAuth2 callback arrived but the setup wizard is no longer active"
             )
         }
-        val pendingOAuthConnection = router.pendingOAuthConnection ?: return context.logAndShowError(
+        val pendingOAuthConnection = router.pendingOAuthConnection ?: return context.logger.logAndShowError(
             FAILED_TO_HANDLE_OAUTH2_TITLE,
             "OAuth2 callback arrived but no OAuth session was started"
         )
         params["state"]?.takeIf { it == pendingOAuthConnection.session.state }
-            ?: return context.logAndShowError(
+            ?: return context.logger.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "Server responded back with an invalid state that does not match the initial authorization state sent to the server"
             )
 
-        val code = params["code"] ?: return context.logAndShowError(
+        val code = params["code"] ?: return context.logger.logAndShowError(
             FAILED_TO_HANDLE_OAUTH2_TITLE,
             "OAuth2 server did not respond back with an access token"
         )
         // before going forward we check to make sure OAuth is not disabled in the meantime
         if (!context.settingsStore.preferOAuth2IfAvailable) {
-            context.logAndShowError(
+            context.logger.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "OAuth based authentication is not enabled for Coder plugin in Toolbox. Please enable it in plugin settings or use the API token instead."
             )
@@ -545,19 +545,19 @@ class CoderRemoteProvider(
             context.envPageManager.showPluginEnvironmentsPage(false)
             context.ui.showUiPage(wizard)
         } catch (e: Exception) {
-            context.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
+            context.logger.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
         }
     }
 
     private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
         val deploymentURL = params.url() ?: askUrl()
         if (deploymentURL.isNullOrBlank()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"${URL}\" is missing from URI")
+            context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"${URL}\" is missing from URI")
             return null
         }
         val validationResult = deploymentURL.validateStrictWebUrl()
         if (validationResult is Invalid) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
+            context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
             return null
         }
         return deploymentURL
@@ -566,7 +566,7 @@ class CoderRemoteProvider(
     private suspend fun resolveToken(params: Map<String, String>): String? {
         val token = params.token()
         if (token.isNullOrBlank()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")
+            context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")
             return null
         }
         return token
@@ -647,7 +647,7 @@ class CoderRemoteProvider(
                     onTokenRefreshed = ::onTokenRefreshed,
                 )
             } catch (ex: Exception) {
-                context.logAndShowError(
+                context.logger.logAndShowError(
                     "Error encountered while setting up Coder",
                     "Failed to set up Coder: ${ex.message}",
                     ex
@@ -756,7 +756,7 @@ class CoderRemoteProvider(
             try {
                 handleLink(params, deploymentUrl, client, cli)
             } catch (ex: Exception) {
-                context.logAndShowError(
+                context.logger.logAndShowError(
                     "Error handling deferred link",
                     ex.message ?: ""
                 )

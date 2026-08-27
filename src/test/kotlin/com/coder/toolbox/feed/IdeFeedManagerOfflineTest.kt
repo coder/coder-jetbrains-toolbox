@@ -1,8 +1,8 @@
 package com.coder.toolbox.feed
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.store.CoderSettingsStore
-import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import io.mockk.every
@@ -21,7 +21,7 @@ import kotlin.io.path.writeText
 class IdeFeedManagerOfflineTest {
     private lateinit var context: CoderToolboxContext
     private lateinit var settingsStore: CoderSettingsStore
-    private lateinit var logger: Logger
+    private lateinit var logger: CoderLogger
     private lateinit var ideFeedManager: IdeFeedManager
 
     private val moshi = Moshi.Builder()

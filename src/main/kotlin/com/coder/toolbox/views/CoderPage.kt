@@ -84,7 +84,7 @@ class Action(
                         ex.reason
                     } else ex.message
                 } else ex.message
-                context.logAndShowError("Error while running `$description`", textError ?: "", ex)
+                context.logger.logAndShowError("Error while running `$description`", textError ?: "", ex)
             }
         }
     }

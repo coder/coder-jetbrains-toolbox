@@ -75,7 +75,7 @@ open class CoderProtocolHandler(
             // poller and wait for the environment to show up before using its id.
             workspaceRefreshTrigger.trySend(true)
             if (!waitForEnvironment(environmentId)) {
-                context.logAndShowError(
+                context.logger.logAndShowError(
                     CAN_T_HANDLE_URI_TITLE,
                     "The environment $environmentId did not become available in time"
                 )
@@ -96,7 +96,7 @@ open class CoderProtocolHandler(
     private fun resolveWorkspaceName(params: Map<String, String>): String? {
         val workspace = params.workspace()
         if (workspace.isNullOrBlank()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$WORKSPACE\" is missing from URI")
+            context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$WORKSPACE\" is missing from URI")
             return null
         }
         return workspace
@@ -117,7 +117,7 @@ open class CoderProtocolHandler(
         }
         if (workspace == null) {
             val workspaceLabel = if (ownerName == null) workspaceName else "$ownerName/$workspaceName"
-            context.logAndShowError(
+            context.logger.logAndShowError(
                 CAN_T_HANDLE_URI_TITLE,
                 "There is no workspace with name $workspaceLabel on $deploymentURL"
             )
@@ -135,7 +135,7 @@ open class CoderProtocolHandler(
         when (workspace.latestBuild.status) {
             WorkspaceStatus.PENDING, WorkspaceStatus.STARTING ->
                 if (!restClient.waitForReady(workspace)) {
-                    context.logAndShowError(
+                    context.logger.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
                         "${workspace.name} from $url could not be ready in time"
                     )
@@ -145,7 +145,7 @@ open class CoderProtocolHandler(
             WorkspaceStatus.STOPPING, WorkspaceStatus.STOPPED,
             WorkspaceStatus.CANCELING, WorkspaceStatus.CANCELED -> {
                 if (settings.disableAutostart) {
-                    context.logAndShowWarning(
+                    context.logger.logAndShowWarning(
                         CAN_T_HANDLE_URI_TITLE,
                         "${workspace.name} from $url is not running and autostart is disabled"
                     )
@@ -159,7 +159,7 @@ open class CoderProtocolHandler(
                         cli.startWorkspace(WorkspaceAddress.from(workspace))
                     }
                 } catch (e: Exception) {
-                    context.logAndShowError(
+                    context.logger.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
                         "${workspace.name} from $url could not be started",
                         e
@@ -168,7 +168,7 @@ open class CoderProtocolHandler(
                 }
 
                 if (!restClient.waitForReady(workspace)) {
-                    context.logAndShowError(
+                    context.logger.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
                         "${workspace.name} from $url could not be started in time",
                     )
@@ -177,7 +177,7 @@ open class CoderProtocolHandler(
             }
 
             WorkspaceStatus.FAILED, WorkspaceStatus.DELETING, WorkspaceStatus.DELETED -> {
-                context.logAndShowError(
+                context.logger.logAndShowError(
                     CAN_T_HANDLE_URI_TITLE,
                     "Unable to connect to ${workspace.name} from $url"
                 )
@@ -196,7 +196,7 @@ open class CoderProtocolHandler(
         try {
             return getMatchingAgent(params, workspace)
         } catch (e: IllegalArgumentException) {
-            context.logAndShowError(
+            context.logger.logAndShowError(
                 CAN_T_HANDLE_URI_TITLE,
                 "Can't resolve an agent for workspace ${workspace.name}",
                 e
@@ -219,7 +219,7 @@ open class CoderProtocolHandler(
             .flatten()
 
         if (agents.isEmpty()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "The workspace \"${workspace.name}\" has no agents")
+            context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "The workspace \"${workspace.name}\" has no agents")
             return null
         }
 
@@ -234,13 +234,13 @@ open class CoderProtocolHandler(
 
         if (agent == null) {
             if (!parameters.agentName().isNullOrBlank()) {
-                context.logAndShowError(
+                context.logger.logAndShowError(
                     CAN_T_HANDLE_URI_TITLE,
                     "The workspace \"${workspace.name}\" does not have an agent with name \"${parameters.agentName()}\""
                 )
                 return null
             } else {
-                context.logAndShowError(
+                context.logger.logAndShowError(
                     CAN_T_HANDLE_URI_TITLE,
                     "Unable to determine which agent to connect to; \"$AGENT_NAME\" must be set because the workspace \"${workspace.name}\" has more than one agent"
                 )
@@ -257,7 +257,7 @@ open class CoderProtocolHandler(
         val status = WorkspaceAndAgentStatus.from(workspace, agent)
 
         if (!status.ready()) {
-            context.logAndShowError(
+            context.logger.logAndShowError(
                 CAN_T_HANDLE_URI_TITLE,
                 "Agent ${agent.name} for workspace ${workspace.name} is not ready"
             )
@@ -344,7 +344,7 @@ open class CoderProtocolHandler(
                     bestEap.build
                 } else {
                     if (availableBuilds.isEmpty()) {
-                        context.logAndShowError(
+                        context.logger.logAndShowError(
                             CAN_T_HANDLE_URI_TITLE,
                             "Can't launch EAP for $productCode because no version is available on $environmentId"
                         )
@@ -368,7 +368,7 @@ open class CoderProtocolHandler(
                     bestRelease.build
                 } else {
                     if (availableBuilds.isEmpty()) {
-                        context.logAndShowError(
+                        context.logger.logAndShowError(
                             CAN_T_HANDLE_URI_TITLE,
                             "Can't launch Release for $productCode because no version is available on $environmentId"
                         )
@@ -384,7 +384,7 @@ open class CoderProtocolHandler(
                 if (installed.isNotEmpty()) {
                     installed.maxByOrNull { it }
                 } else if (availableBuilds.isEmpty()) {
-                    context.logAndShowError(
+                    context.logger.logAndShowError(
                         CAN_T_HANDLE_URI_TITLE,
                         "Can't launch latest installed version for $productCode because there is no version installed nor available for install on $environmentId"
                     )
@@ -408,7 +408,7 @@ open class CoderProtocolHandler(
                     if (availableMatch != null) {
                         availableMatch
                     } else {
-                        context.logAndShowError(
+                        context.logger.logAndShowError(
                             CAN_T_HANDLE_URI_TITLE,
                             "Can't launch $productCode-$buildNumberHint because there is no matching version installed nor available for install on $environmentId"
                         )

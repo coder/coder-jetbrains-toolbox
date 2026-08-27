@@ -1,6 +1,7 @@
 package com.coder.toolbox.util
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
@@ -8,6 +9,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import io.mockk.clearMocks
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import java.util.UUID
@@ -16,6 +18,11 @@ import kotlin.test.Test
 class ConnectionMonitoringServiceTest {
 
     private val context = mockk<CoderToolboxContext>(relaxed = true)
+    private val logger = mockk<CoderLogger>(relaxed = true)
+
+    init {
+        every { context.logger } returns logger
+    }
 
     @Test
     fun `given a running workspace with a timed out agent and a ready lifecycle then expect a connection unstable notification`() {
@@ -25,7 +32,7 @@ class ConnectionMonitoringServiceTest {
 
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 1) { context.logAndShowWarning(any(), any()) }
+        verify(exactly = 1) { logger.logAndShowWarning(any(), any()) }
     }
 
     @Test
@@ -36,7 +43,7 @@ class ConnectionMonitoringServiceTest {
 
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 1) { context.logAndShowWarning(any(), any()) }
+        verify(exactly = 1) { logger.logAndShowWarning(any(), any()) }
     }
 
     @Test
@@ -47,7 +54,7 @@ class ConnectionMonitoringServiceTest {
 
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 0) { context.logAndShowWarning(any(), any()) }
+        verify(exactly = 0) { logger.logAndShowWarning(any(), any()) }
     }
 
     @Test
@@ -58,7 +65,7 @@ class ConnectionMonitoringServiceTest {
 
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 0) { context.logAndShowWarning(any(), any()) }
+        verify(exactly = 0) { logger.logAndShowWarning(any(), any()) }
     }
 
     @Test
@@ -71,12 +78,12 @@ class ConnectionMonitoringServiceTest {
         service.checkConnectionStatus(workspace, agent)
 
         // Reset mocks to verify subsequent calls
-        clearMocks(context, answers = false)
+        clearMocks(context, logger, answers = false)
 
         // Second call should not trigger notification
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 0) { context.logAndShowWarning(any(), any()) }
+        verify(exactly = 0) { logger.logAndShowWarning(any(), any()) }
     }
 
     @Test
@@ -91,7 +98,7 @@ class ConnectionMonitoringServiceTest {
         // Second call should not trigger notification
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 1) { context.logAndShowWarning(any(), any()) }
+        verify(exactly = 1) { logger.logAndShowWarning(any(), any()) }
     }
 
     @Test
@@ -108,7 +115,7 @@ class ConnectionMonitoringServiceTest {
         // Second call should not trigger notification
         service.checkConnectionStatus(ws2, agent2)
 
-        verify(exactly = 1) { context.logAndShowWarning(any(), any()) }
+        verify(exactly = 1) { logger.logAndShowWarning(any(), any()) }
     }
 
     @Test
@@ -125,7 +132,7 @@ class ConnectionMonitoringServiceTest {
         // Second call should not trigger notification
         service.checkConnectionStatus(ws2, agent2)
 
-        verify(exactly = 1) { context.logAndShowWarning(any(), any()) }
+        verify(exactly = 1) { logger.logAndShowWarning(any(), any()) }
     }
 
 

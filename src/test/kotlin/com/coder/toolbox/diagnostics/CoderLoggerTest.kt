@@ -2,14 +2,21 @@ package com.coder.toolbox.diagnostics
 
 import com.coder.toolbox.session.SessionId
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.localization.LocalizableString
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
+import com.jetbrains.toolbox.api.ui.ToolboxUi
+import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlin.test.Test
 
 class CoderLoggerTest {
     private val delegate = mockk<Logger>(relaxed = true)
-    private val showInfoPopup = mockk<(String, String) -> Unit>(relaxed = true)
-    private val logger = CoderLogger(delegate, showInfoPopup)
+    private val ui = mockk<ToolboxUi>(relaxed = true)
+    private val i18n = mockk<LocalizableStringFactory>(relaxed = true)
+    private val logger = CoderLogger(delegate, ui, CoroutineScope(Dispatchers.Unconfined), i18n)
     private val sessionId = SessionId.generate()
     private val prefix = "client_session_id=$sessionId"
 
@@ -42,7 +49,15 @@ class CoderLoggerTest {
         logger.logAndShowInfo("Connection ready", "Connected to the workspace")
 
         verify(exactly = 1) { delegate.info("Connected to the workspace") }
-        verify(exactly = 1) { showInfoPopup("Connection ready", "Connected to the workspace") }
+        verify(exactly = 1) { i18n.pnotr("Connection ready") }
+        verify(exactly = 1) { i18n.pnotr("Connected to the workspace") }
+        coVerify(exactly = 1) {
+            ui.showInfoPopup(
+                any<LocalizableString>(),
+                any<LocalizableString>(),
+                any<LocalizableString>(),
+            )
+        }
     }
 
     @Test
@@ -52,6 +67,12 @@ class CoderLoggerTest {
         logger.logAndShowError("Connection failed", "Could not connect", exception)
 
         verify(exactly = 1) { delegate.error(exception, "Could not connect") }
-        verify(exactly = 1) { showInfoPopup("Connection failed", "Could not connect") }
+        coVerify(exactly = 1) {
+            ui.showInfoPopup(
+                any<LocalizableString>(),
+                any<LocalizableString>(),
+                any<LocalizableString>(),
+            )
+        }
     }
 }

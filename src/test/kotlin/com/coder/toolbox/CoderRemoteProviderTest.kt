@@ -1,6 +1,7 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
@@ -46,6 +47,7 @@ class CoderRemoteProviderTest {
     private lateinit var mockClient: CoderRestClient
     private lateinit var mockCli: CoderCLIManager
     private lateinit var mockContext: CoderToolboxContext
+    private lateinit var mockLogger: CoderLogger
     private lateinit var remoteProvider: CoderRemoteProvider
 
     @BeforeTest
@@ -53,8 +55,10 @@ class CoderRemoteProviderTest {
         mockClient = mockk(relaxed = true)
         mockCli = mockk(relaxed = true)
         mockContext = mockk(relaxed = true)
+        mockLogger = mockk(relaxed = true)
         val settingsStore = mockk<CoderSettingsStore>(relaxed = true)
         every { mockContext.settingsStore } returns settingsStore
+        every { mockContext.logger } returns mockLogger
         every { mockClient.url } returns URI("https://coder.example.com").toURL()
         remoteProvider = CoderRemoteProvider(mockContext)
     }
@@ -97,7 +101,7 @@ class CoderRemoteProviderTest {
         }
         val warningText = slot<String>()
         verify(exactly = 1) {
-            mockContext.logAndShowWarning(
+            mockLogger.logAndShowWarning(
                 "SSH configuration could not be updated",
                 capture(warningText),
                 any(),
@@ -123,7 +127,7 @@ class CoderRemoteProviderTest {
 
         assertTrue(remoteProvider.environments.value is LoadableState.Loading)
         verify(exactly = 0) {
-            mockContext.logAndShowWarning(
+            mockLogger.logAndShowWarning(
                 "SSH configuration could not be updated",
                 any(),
                 any(),
