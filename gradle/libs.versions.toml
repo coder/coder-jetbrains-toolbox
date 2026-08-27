@@ -1,5 +1,5 @@
 [versions]
-toolbox-plugin-api = "1.10.76281"
+toolbox-plugin-api = "1.13.87111"
 kotlin = "2.3.10"
 coroutines = "1.10.2"
 serialization = "1.9.0"
