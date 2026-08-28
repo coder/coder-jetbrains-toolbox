@@ -401,7 +401,7 @@ open class CoderRestClient(
         }
 
         isInvalidDeploymentDataWarningShown = true
-        context.logAndShowWarning(
+        context.logger.logAndShowWarning(
             INVALID_DEPLOYMENT_DATA_WARNING_TITLE,
             INVALID_DEPLOYMENT_DATA_WARNING,
             ex,

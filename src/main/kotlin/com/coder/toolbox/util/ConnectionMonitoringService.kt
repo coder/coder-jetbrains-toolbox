@@ -26,7 +26,7 @@ class ConnectionMonitoringService(
 
         when {
             isWorkspaceRunning && isAgentReady && hasConnectionIssue -> {
-                context.logAndShowWarning(
+                context.logger.logAndShowWarning(
                     "Unstable connection detected",
                     "Unstable connection between Coder server and workspace detected. Your active sessions may disconnect"
                 )

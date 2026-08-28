@@ -1,7 +1,7 @@
 package com.coder.toolbox.feed
 
 import com.coder.toolbox.CoderToolboxContext
-import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.coder.toolbox.diagnostics.CoderLogger
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -17,7 +17,7 @@ import java.nio.file.Path
 
 class IdeFeedManagerTest {
     private lateinit var context: CoderToolboxContext
-    private lateinit var logger: Logger
+    private lateinit var logger: CoderLogger
     private lateinit var feedService: JetBrainsFeedService
     private lateinit var ideFeedManager: IdeFeedManager
 
