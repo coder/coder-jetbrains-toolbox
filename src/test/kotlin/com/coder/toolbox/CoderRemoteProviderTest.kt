@@ -12,6 +12,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.state.StoredOAuthSession
@@ -87,7 +88,7 @@ class CoderRemoteProviderTest {
         val agent = mockAgent("agent1")
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
-        every { mockCli.configSsh(any(), any(), any()) } throws FileNotFoundException("Permission denied")
+        every { mockCli.configSsh(any(), any(), any(), any()) } throws FileNotFoundException("Permission denied")
 
         // when
         val pollJob = remoteProvider.poll(mockClient, mockCli)
@@ -102,6 +103,7 @@ class CoderRemoteProviderTest {
         val warningText = slot<String>()
         verify(exactly = 1) {
             mockLogger.logAndShowWarning(
+                emptySet(),
                 "SSH configuration could not be updated",
                 capture(warningText),
                 any(),
@@ -114,12 +116,113 @@ class CoderRemoteProviderTest {
 
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
+    fun `workspace change refreshes sessions after the workspace request`() = runTest {
+        every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
+        val firstSessionId = SessionId.generate()
+        val secondSessionId = SessionId.generate()
+        var sessionsStarted = false
+        val firstEnvironment = mockk<CoderRemoteEnvironment>(relaxed = true) {
+            every { id } returns "ws1.agent1"
+            every { currentSessionId() } answers { firstSessionId.takeIf { sessionsStarted } }
+        }
+        val secondEnvironment = mockk<CoderRemoteEnvironment>(relaxed = true) {
+            every { id } returns "ws1.agent2"
+            every { currentSessionId() } answers { secondSessionId.takeIf { sessionsStarted } }
+        }
+        remoteProvider.lastEnvironments.addAll(listOf(secondEnvironment, firstEnvironment))
+        val workspace = mockWorkspace(
+            "ws1",
+            WorkspaceStatus.RUNNING,
+            listOf(mockResource(listOf(mockAgent("agent1"), mockAgent("agent2")))),
+        )
+        coEvery { mockClient.workspaces(any()) } answers {
+            sessionsStarted = true
+            listOf(workspace)
+        }
+
+        val pollJob = remoteProvider.poll(mockClient, mockCli)
+        runCurrent()
+
+        verify(exactly = 1) {
+            mockLogger.info(
+                setOf(firstSessionId, secondSessionId),
+                match { it.startsWith("Workspaces have changed, reconfiguring CLI:") },
+            )
+        }
+
+        pollJob.cancel()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `workspace poll failure is emitted for every current Toolbox SSH session`() = runTest {
+        every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
+        val firstSessionId = SessionId.generate()
+        val secondSessionId = SessionId.generate()
+        remoteProvider.lastEnvironments.addAll(
+            listOf(
+                mockk<CoderRemoteEnvironment>(relaxed = true) {
+                    every { currentSessionId() } returns firstSessionId
+                },
+                mockk<CoderRemoteEnvironment>(relaxed = true) {
+                    every { currentSessionId() } returns secondSessionId
+                },
+            )
+        )
+        val failure = IllegalStateException("poll failed")
+        coEvery { mockClient.workspaces(any()) } throws failure
+
+        val pollJob = remoteProvider.poll(mockClient, mockCli)
+        runCurrent()
+
+        verify(exactly = 1) {
+            mockLogger.error(
+                setOf(firstSessionId, secondSessionId),
+                failure,
+                "workspace polling error encountered",
+            )
+        }
+
+        pollJob.cancel()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `removed environment session is retained for its final shared configuration logs`() = runTest {
+        every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
+        val sessionId = SessionId.generate()
+        var disposed = false
+        val existingEnvironment = mockk<CoderRemoteEnvironment>(relaxed = true) {
+            every { id } returns "ws1.agent1"
+            every { currentSessionId() } answers { sessionId.takeUnless { disposed } }
+            every { dispose() } answers { disposed = true }
+        }
+        remoteProvider.lastEnvironments.add(existingEnvironment)
+        val stoppedWorkspace = mockWorkspace("ws1", WorkspaceStatus.STOPPED, emptyList())
+        coEvery { mockClient.workspaces(any()) } returns listOf(stoppedWorkspace)
+
+        val pollJob = remoteProvider.poll(mockClient, mockCli)
+        runCurrent()
+
+        verify(exactly = 1) { existingEnvironment.dispose() }
+        verify(exactly = 1) {
+            mockLogger.info(setOf(sessionId), match { it.startsWith("Workspaces have changed, reconfiguring CLI:") })
+        }
+        verify(exactly = 1) {
+            mockCli.configSsh(any(), setOf(sessionId), any(), any())
+        }
+
+        pollJob.cancel()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun `identifier failures from SSH rendering are not treated as writable config errors`() = runTest {
         every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
         val agent = mockAgent("agent1")
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
-        every { mockCli.configSsh(any(), any(), any()) } throws
+        every { mockCli.configSsh(any(), any(), any(), any()) } throws
                 InvalidCoderIdentifierException("The deployment returned an invalid workspace name")
 
         val pollJob = remoteProvider.poll(mockClient, mockCli)

@@ -11,14 +11,14 @@ import kotlinx.coroutines.launch
 
 private const val CLIENT_SESSION_ID_LOG_KEY = "client_session_id"
 
-private fun withSessionId(sessionId: SessionId, message: String): String =
-    "$CLIENT_SESSION_ID_LOG_KEY=$sessionId $message"
+private fun withSessionId(sessionId: SessionId?, message: String): String =
+    sessionId?.let { "$CLIENT_SESSION_ID_LOG_KEY=$it $message" } ?: message
 
 /**
  * The plugin's single logging entry point.
  *
- * Calls without a [SessionId] are delegated unchanged. Calls with a session ID add the correlation
- * field to the log message.
+ * A null [SessionId] leaves the message unchanged. A non-null ID adds the correlation field, while
+ * a set of IDs emits one log for each session (or one unchanged log when the set is empty).
  */
 class CoderLogger(
     private val delegate: Logger,
@@ -26,24 +26,53 @@ class CoderLogger(
     private val cs: CoroutineScope,
     private val i18n: LocalizableStringFactory,
 ) : Logger by delegate {
-    fun error(sessionId: SessionId, message: String) {
+    fun error(sessionId: SessionId? = null, message: String) {
         delegate.error(withSessionId(sessionId, message))
     }
 
-    fun warn(sessionId: SessionId, message: String) {
+    fun error(sessionId: SessionId? = null, exception: Throwable, message: String) {
+        delegate.error(exception, withSessionId(sessionId, message))
+    }
+
+    fun error(sessionIds: Set<SessionId>, exception: Throwable, message: String) {
+        sessionIds.onceOrForEach { error(it, exception, message) }
+    }
+
+    fun warn(sessionId: SessionId? = null, message: String) {
         delegate.warn(withSessionId(sessionId, message))
     }
 
-    fun debug(sessionId: SessionId, message: String) {
+    fun warn(sessionId: SessionId? = null, exception: Throwable, message: String) {
+        delegate.warn(exception, withSessionId(sessionId, message))
+    }
+
+    fun warn(sessionIds: Set<SessionId>, exception: Throwable, message: String) {
+        sessionIds.onceOrForEach { warn(it, exception, message) }
+    }
+
+    fun debug(sessionId: SessionId? = null, message: String) {
         delegate.debug(withSessionId(sessionId, message))
     }
 
-    fun info(sessionId: SessionId, message: String) {
+    fun debug(sessionIds: Set<SessionId>, message: String) {
+        sessionIds.onceOrForEach { debug(it, message) }
+    }
+
+    fun info(sessionId: SessionId? = null, message: String) {
         delegate.info(withSessionId(sessionId, message))
+    }
+
+    fun info(sessionIds: Set<SessionId>, message: String) {
+        sessionIds.onceOrForEach { info(it, message) }
     }
 
     fun logAndShowError(title: String, error: String) {
         error(error)
+        showInfoPopup(title, error)
+    }
+
+    fun logAndShowError(sessionId: SessionId? = null, title: String, error: String) {
+        error(sessionId, error)
         showInfoPopup(title, error)
     }
 
@@ -52,8 +81,43 @@ class CoderLogger(
         showInfoPopup(title, error)
     }
 
+    fun logAndShowError(sessionId: SessionId? = null, title: String, error: String, exception: Throwable) {
+        error(sessionId, exception, error)
+        showInfoPopup(title, error)
+    }
+
+    fun logAndShowError(
+        sessionIds: Set<SessionId>,
+        title: String,
+        error: String,
+        exception: Throwable,
+    ) {
+        sessionIds.onceOrForEach { this.error(it, exception, error) }
+        showInfoPopup(title, error)
+    }
+
     fun logAndShowWarning(title: String, warning: String) {
         warn(warning)
+        showInfoPopup(title, warning)
+    }
+
+    fun logAndShowWarning(sessionId: SessionId? = null, title: String, warning: String) {
+        warn(sessionId, warning)
+        showInfoPopup(title, warning)
+    }
+
+    fun logAndShowWarning(sessionId: SessionId? = null, title: String, warning: String, exception: Throwable) {
+        warn(sessionId, exception, warning)
+        showInfoPopup(title, warning)
+    }
+
+    fun logAndShowWarning(
+        sessionIds: Set<SessionId>,
+        title: String,
+        warning: String,
+        exception: Throwable,
+    ) {
+        sessionIds.onceOrForEach { warn(it, exception, warning) }
         showInfoPopup(title, warning)
     }
 
@@ -92,6 +156,14 @@ class CoderLogger(
             } catch (ex: Exception) {
                 error(ex, "Failed to display popup with title '$title'")
             }
+        }
+    }
+
+    private inline fun Set<SessionId>.onceOrForEach(action: (SessionId?) -> Unit) {
+        if (isEmpty()) {
+            action(null)
+        } else {
+            forEach(action)
         }
     }
 }

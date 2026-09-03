@@ -3,6 +3,7 @@ package com.coder.toolbox.cli
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.session.SessionIdRegistry
 import kotlin.jvm.optionals.getOrNull
 
 /**
@@ -20,13 +21,17 @@ class SshCommandProcessHandle(private val ctx: CoderToolboxContext) {
      * as a separate command which in turns spawns another child for the proxy command.
      */
     fun findByWorkspaceAndAgent(ws: Workspace, agent: WorkspaceAgent): Long? {
+        val sessionId = SessionIdRegistry.findSession(ws.name, agent.name)
         val stack = ArrayDeque<ProcessHandle>(ProcessHandle.current().children().toList())
         while (stack.isNotEmpty()) {
             val processHandle = stack.removeLast()
             val cmdLine = processHandle.info().commandLine().getOrNull()
-            ctx.logger.debug("SSH command PID: ${processHandle.pid()} Command: $cmdLine")
+            ctx.logger.debug(sessionId, "SSH command PID: ${processHandle.pid()} Command: $cmdLine")
             if (cmdLine != null && cmdLine.isSshCommandFor(ws, agent)) {
-                ctx.logger.debug("SSH command with PID: ${processHandle.pid()} and Command: $cmdLine matches ${ws.name}.${agent.name}")
+                ctx.logger.debug(
+                    sessionId,
+                    "SSH command with PID: ${processHandle.pid()} and Command: $cmdLine matches ${ws.name}.${agent.name}"
+                )
                 return processHandle.pid()
             } else {
                 stack.addAll(processHandle.children().toList())
