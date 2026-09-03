@@ -6,6 +6,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.session.SessionIdRegistry
 
 class ConnectionMonitoringService(
     private val context: CoderToolboxContext
@@ -27,6 +28,7 @@ class ConnectionMonitoringService(
         when {
             isWorkspaceRunning && isAgentReady && hasConnectionIssue -> {
                 context.logger.logAndShowWarning(
+                    SessionIdRegistry.findSession(ws.name, agent.name),
                     "Unstable connection detected",
                     "Unstable connection between Coder server and workspace detected. Your active sessions may disconnect"
                 )

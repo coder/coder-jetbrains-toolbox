@@ -5,6 +5,7 @@ import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.WorkspaceAddress
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.session.SessionIdRegistry
 import com.coder.toolbox.util.OS
 import com.jetbrains.toolbox.api.remoteDev.deploy.DeploymentSettings
 import com.jetbrains.toolbox.api.remoteDev.deploy.DeploymentTarget
@@ -12,6 +13,8 @@ import com.jetbrains.toolbox.api.remoteDev.environments.SshEnvironmentContentsVi
 import com.jetbrains.toolbox.api.remoteDev.ssh.SshConnectionInfo
 import java.net.URL
 import kotlin.time.Duration.Companion.seconds
+
+private const val CODER_TRACE_SESSION_ID = "CODER_TRACE_SESSION_ID"
 
 private fun OS?.toDeploymentTarget(): DeploymentTarget = when (this) {
     OS.LINUX -> DeploymentTarget.LINUX
@@ -59,6 +62,10 @@ private class WorkspaceSshConnectionInfo(
      */
     override val host: String = cli.getHostname(url, WorkspaceAddress.from(workspace, agent))
 
+    /** Makes the Toolbox session authoritative for the coder ssh child process. */
+    override val environment: Map<String, String>? = SessionIdRegistry.findSession(workspace.name, agent.name)
+        ?.let { mapOf(CODER_TRACE_SESSION_ID to it.value) }
+
     /**
      * The port is ignored by the Coder proxy command.
      */
@@ -89,6 +96,7 @@ private class WorkspaceSshConnectionInfo(
         if (agent.name != other.agent.name) return false
         if (host != other.host) return false
         if (sshConfigPath != other.sshConfigPath) return false
+        if (environment != other.environment) return false
 
         return true
     }
@@ -99,6 +107,7 @@ private class WorkspaceSshConnectionInfo(
         result = 31 * result + agent.name.hashCode()
         result = 31 * result + host.hashCode()
         result = 31 * result + sshConfigPath.hashCode()
+        result = 31 * result + environment.hashCode()
         return result
     }
 

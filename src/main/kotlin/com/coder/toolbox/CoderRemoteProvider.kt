@@ -10,6 +10,7 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.ex.OAuthTokenResponseException
 import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.util.TOKEN
@@ -65,6 +66,9 @@ private val POLL_INTERVAL = 5.seconds
 private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
 private const val FAILED_TO_HANDLE_OAUTH2_TITLE = "Failed to handle OAuth2 request"
 private const val SSH_CONFIGURATION_WARNING_TITLE = "SSH configuration could not be updated"
+
+private fun List<CoderRemoteEnvironment>.currentSessionIds(): Set<SessionId> =
+    mapNotNull(CoderRemoteEnvironment::currentSessionId).toSet()
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CoderRemoteProvider(
@@ -128,8 +132,9 @@ class CoderRemoteProvider(
         context.cs.launch(CoroutineName("Workspace Poller")) {
             var lastPollTime = TimeSource.Monotonic.markNow()
             while (isActive) {
+                var sessionIds = lastEnvironments.currentSessionIds()
                 try {
-                    context.logger.debug("Fetching workspace agents from ${client.url}")
+                    context.logger.debug(sessionIds, "Fetching workspace agents from ${client.url}")
                     val resolvedEnvironments = resolveWorkspaceEnvironments(client, cli)
 
                     // In case we logged out while running the query.
@@ -137,15 +142,25 @@ class CoderRemoteProvider(
                         return@launch
                     }
 
-                    // Toolbox closes removed environments without firing their
-                    // disconnect hooks, so stop their background work before dropping them.
-                    lastEnvironments.filter { it !in resolvedEnvironments }.forEach { it.dispose() }
+                    // Sessions can start while the workspace request is in flight. Refresh the
+                    // snapshot before disposal so it includes those sessions and retains the IDs
+                    // of environments removed by this result.
+                    sessionIds = lastEnvironments.currentSessionIds()
+
+                    val removedEnvironments = lastEnvironments.filter { it !in resolvedEnvironments }
 
                     // Reconfigure if environments changed.
                     if (lastEnvironments.size != resolvedEnvironments.size || lastEnvironments != resolvedEnvironments) {
-                        context.logger.info("Workspaces have changed, reconfiguring CLI: $resolvedEnvironments")
+                        context.logger.info(
+                            sessionIds,
+                            "Workspaces have changed, reconfiguring CLI: $resolvedEnvironments",
+                        )
                         configureSsh(cli, resolvedEnvironments)
                     }
+
+                    // Toolbox closes removed environments without firing their disconnect hooks.
+                    // Dispose them after SSH configuration has captured their session IDs.
+                    removedEnvironments.forEach { it.dispose() }
 
                     environments.update {
                         LoadableState.Value(resolvedEnvironments)
@@ -161,43 +176,61 @@ class CoderRemoteProvider(
                         addAll(resolvedEnvironments)
                     }
                 } catch (_: CancellationException) {
-                    context.logger.debug("${client.url} polling loop canceled")
+                    context.logger.debug(sessionIds, "${client.url} polling loop canceled")
                     break
                 } catch (ex: Exception) {
                     val elapsed = lastPollTime.elapsedNow()
                     if (elapsed > POLL_INTERVAL * 2) {
-                        context.logger.info("wake-up from an OS sleep was detected")
+                        context.logger.info(sessionIds, "wake-up from an OS sleep was detected")
                     } else {
                         if ((ex is APIResponseException && ex.isTokenExpired) || ex is OAuthTokenResponseException) {
                             close()
                             context.envPageManager.showPluginEnvironmentsPage(false)
                             context.logger.logAndShowError(
+                                sessionIds,
                                 "Error encountered while setting up Coder",
                                 "Your Coder session has expired. Please re-authenticate and try again.",
                                 ex
                             )
                             break
                         }
-                        context.logger.error(ex, "workspace polling error encountered")
+                        context.logger.error(sessionIds, ex, "workspace polling error encountered")
                     }
                 }
 
                 select {
                     onTimeout(POLL_INTERVAL) {
-                        context.logger.debug("workspace poller waked up by the $POLL_INTERVAL timeout")
+                        context.logger.debug(
+                            lastEnvironments.currentSessionIds(),
+                            "workspace poller waked up by the $POLL_INTERVAL timeout",
+                        )
                     }
                     sshConfigTrigger.onReceive { staleSshConfigPath ->
-                        context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
-                        configureSsh(cli, lastEnvironments, staleSshConfigPath)
+                        val currentSessionIds = lastEnvironments.currentSessionIds()
+                        context.logger.debug(
+                            currentSessionIds,
+                            "workspace poller waked up because it should reconfigure the ssh configurations",
+                        )
+                        configureSsh(
+                            cli,
+                            lastEnvironments,
+                            staleSshConfigPath,
+                        )
                     }
                     workspaceRefreshTrigger.onReceive { shouldTrigger ->
                         if (shouldTrigger) {
-                            context.logger.debug("workspace poller waked up to fetch workspaces from the latest header settings")
+                            context.logger.debug(
+                                lastEnvironments.currentSessionIds(),
+                                "workspace poller waked up to fetch workspaces from the latest header settings",
+                            )
                         }
                     }
                     providerVisibleTrigger.onReceive { isCoderProviderVisible ->
                         if (isCoderProviderVisible) {
-                            context.logger.debug("workspace poller waked up by Coder Toolbox which is currently visible, fetching latest workspace statuses")
+                            context.logger.debug(
+                                lastEnvironments.currentSessionIds(),
+                                "workspace poller waked up by Coder Toolbox which is currently visible, fetching latest workspace statuses",
+                            )
                         }
                     }
                 }
@@ -209,15 +242,21 @@ class CoderRemoteProvider(
      * Keep SSH configuration failures separate from workspace discovery.  SSH
      * configuration is necessary to connect, but a read-only or malformed SSH
      * config must not prevent Toolbox from showing the workspaces it resolved.
+     *
+     * The affected sessions are captured from [lastEnvironments] before removed environments are
+     * disposed. They cannot be reconstructed from [resolvedEnvironments], which no longer contains
+     * those environments.
      */
     private fun configureSsh(
         cli: CoderCLIManager,
         resolvedEnvironments: List<CoderRemoteEnvironment>,
         staleSshConfigPath: String? = null,
     ) {
+        val sessionIds = lastEnvironments.currentSessionIds()
         try {
             cli.configSsh(
                 resolvedEnvironments.mapNotNull { it.toWorkspaceAddressOrNull() }.toSet(),
+                sessionIds = sessionIds,
                 sshConfigPath = context.settingsStore.sshConfigPath,
             )
             isSshConfigurationWarningShown = false
@@ -226,9 +265,14 @@ class CoderRemoteProvider(
             // otherwise create a stray file there just to hold an empty managed block.
             if (staleSshConfigPath != null && Path.of(staleSshConfigPath).toFile().exists()) {
                 runCatching {
-                    cli.configSsh(emptySet(), sshConfigPath = staleSshConfigPath)
+                    cli.configSsh(
+                        emptySet(),
+                        sessionIds = sessionIds,
+                        sshConfigPath = staleSshConfigPath,
+                    )
                 }.onFailure { ex ->
                     context.logger.warn(
+                        sessionIds,
                         ex,
                         "Failed to remove the managed SSH config block from the previous location: $staleSshConfigPath"
                     )
@@ -243,13 +287,18 @@ class CoderRemoteProvider(
                 isSshConfigurationWarningShown = true
                 val reason = ex.message?.takeIf { it.isNotBlank() } ?: ex.javaClass.simpleName
                 context.logger.logAndShowWarning(
+                    sessionIds,
                     SSH_CONFIGURATION_WARNING_TITLE,
                     "Workspaces remain available, but SSH connections are unavailable: $reason. " +
                             "Update ${context.settingsStore.sshConfigPath} and try again.",
                     ex,
                 )
             } else {
-                context.logger.warn(ex, "Failed to update SSH configuration at ${context.settingsStore.sshConfigPath}")
+                context.logger.warn(
+                    sessionIds,
+                    ex,
+                    "Failed to update SSH configuration at ${context.settingsStore.sshConfigPath}"
+                )
             }
         }
     }
@@ -306,9 +355,10 @@ class CoderRemoteProvider(
      * first page.
      */
     private fun logout() {
-        context.logger.info("Logging out ${client?.me?.username}...")
+        val sessionIds = lastEnvironments.currentSessionIds()
+        context.logger.info(sessionIds, "Logging out ${client?.me?.username}...")
         close()
-        context.logger.info("User ${client?.me?.username} logged out successfully")
+        context.logger.info(sessionIds, "User ${client?.me?.username} logged out successfully")
     }
 
     /**
@@ -340,6 +390,7 @@ class CoderRemoteProvider(
      * Also called as part of our own logout.
      */
     override fun close() {
+        val sessionIds = lastEnvironments.currentSessionIds()
         softClose()
         client = null
         cli = null
@@ -350,18 +401,19 @@ class CoderRemoteProvider(
         isInitialized.update { false }
         accountDropdownField.visibility.update { false }
         router.clear()
-        context.logger.info("Coder plugin is now closed")
+        context.logger.info(sessionIds, "Coder plugin is now closed")
     }
 
     private fun softClose() {
+        val sessionIds = lastEnvironments.currentSessionIds()
         pollJob?.let {
             it.cancel()
-            context.logger.info("Cancelled workspace poll job ${pollJob.toString()}")
+            context.logger.info(sessionIds, "Cancelled workspace poll job ${pollJob.toString()}")
         }
         pollJob = null
         client?.let {
             it.close()
-            context.logger.info("REST API client closed and resources released")
+            context.logger.info(sessionIds, "REST API client closed and resources released")
         }
     }
 
@@ -575,7 +627,10 @@ class CoderRemoteProvider(
     private fun sameUrl(first: URL, second: URL?): Boolean = first.toURI().normalize() == second?.toURI()?.normalize()
 
     private suspend fun refreshSession(url: URL, token: String): Pair<CoderRestClient, CoderCLIManager> {
-        context.logger.info("Stopping workspace polling and re-initializing the http client and cli with a new token")
+        context.logger.info(
+            lastEnvironments.currentSessionIds(),
+            "Stopping workspace polling and re-initializing the http client and cli with a new token",
+        )
         softClose()
         val newRestClient = CoderRestClient(
             context,
@@ -595,7 +650,10 @@ class CoderRemoteProvider(
         coderHeaderPage.resetFilter()
         context.cs.launch(CoroutineName("Load Templates")) { coderHeaderPage.reloadTemplates() }
         pollJob = poll(newRestClient, newCli)
-        context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI")
+        context.logger.info(
+            lastEnvironments.currentSessionIds(),
+            "Workspace poll job with name ${pollJob.toString()} was created while handling URI",
+        )
         return newRestClient to newCli
     }
 
