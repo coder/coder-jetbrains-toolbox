@@ -26,11 +26,7 @@ class CoderLogger(
     private val cs: CoroutineScope,
     private val i18n: LocalizableStringFactory,
 ) : Logger by delegate {
-    fun error(sessionId: SessionId? = null, message: String) {
-        delegate.error(withSessionId(sessionId, message))
-    }
-
-    fun error(sessionId: SessionId? = null, exception: Throwable, message: String) {
+    fun error(sessionId: SessionId?, exception: Throwable, message: String) {
         delegate.error(exception, withSessionId(sessionId, message))
     }
 
@@ -38,19 +34,15 @@ class CoderLogger(
         sessionIds.onceOrForEach { error(it, exception, message) }
     }
 
-    fun warn(sessionId: SessionId? = null, message: String) {
+    fun warn(sessionId: SessionId?, message: String) {
         delegate.warn(withSessionId(sessionId, message))
     }
 
-    fun warn(sessionId: SessionId? = null, exception: Throwable, message: String) {
-        delegate.warn(exception, withSessionId(sessionId, message))
-    }
-
     fun warn(sessionIds: Set<SessionId>, exception: Throwable, message: String) {
-        sessionIds.onceOrForEach { warn(it, exception, message) }
+        sessionIds.onceOrForEach { delegate.warn(exception, withSessionId(it, message)) }
     }
 
-    fun debug(sessionId: SessionId? = null, message: String) {
+    fun debug(sessionId: SessionId?, message: String) {
         delegate.debug(withSessionId(sessionId, message))
     }
 
@@ -58,7 +50,7 @@ class CoderLogger(
         sessionIds.onceOrForEach { debug(it, message) }
     }
 
-    fun info(sessionId: SessionId? = null, message: String) {
+    fun info(sessionId: SessionId?, message: String) {
         delegate.info(withSessionId(sessionId, message))
     }
 
@@ -71,8 +63,8 @@ class CoderLogger(
         showInfoPopup(title, error)
     }
 
-    fun logAndShowError(sessionId: SessionId? = null, title: String, error: String) {
-        error(sessionId, error)
+    fun logAndShowError(sessionId: SessionId?, title: String, error: String) {
+        delegate.error(withSessionId(sessionId, error))
         showInfoPopup(title, error)
     }
 
@@ -81,7 +73,7 @@ class CoderLogger(
         showInfoPopup(title, error)
     }
 
-    fun logAndShowError(sessionId: SessionId? = null, title: String, error: String, exception: Throwable) {
+    fun logAndShowError(sessionId: SessionId?, title: String, error: String, exception: Throwable) {
         error(sessionId, exception, error)
         showInfoPopup(title, error)
     }
@@ -101,13 +93,8 @@ class CoderLogger(
         showInfoPopup(title, warning)
     }
 
-    fun logAndShowWarning(sessionId: SessionId? = null, title: String, warning: String) {
+    fun logAndShowWarning(sessionId: SessionId?, title: String, warning: String) {
         warn(sessionId, warning)
-        showInfoPopup(title, warning)
-    }
-
-    fun logAndShowWarning(sessionId: SessionId? = null, title: String, warning: String, exception: Throwable) {
-        warn(sessionId, exception, warning)
         showInfoPopup(title, warning)
     }
 
@@ -117,7 +104,7 @@ class CoderLogger(
         warning: String,
         exception: Throwable,
     ) {
-        sessionIds.onceOrForEach { warn(it, exception, warning) }
+        sessionIds.onceOrForEach { delegate.warn(exception, withSessionId(it, warning)) }
         showInfoPopup(title, warning)
     }
 

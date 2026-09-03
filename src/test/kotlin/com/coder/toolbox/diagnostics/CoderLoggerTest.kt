@@ -35,19 +35,15 @@ class CoderLoggerTest {
     fun `nullable session logs are delegated unchanged when the id is null`() {
         val exception = IllegalStateException("failed")
 
-        logger.error(null, "error")
         logger.error(null, exception, "exception")
         logger.warn(null, "warning")
-        logger.warn(null, exception, "warning exception")
         logger.debug(null, "debug")
         logger.info(null, "info")
         logger.info(message = "named info")
         logger.error(exception = exception, message = "named exception")
 
-        verify(exactly = 1) { delegate.error("error") }
         verify(exactly = 1) { delegate.error(exception, "exception") }
         verify(exactly = 1) { delegate.warn("warning") }
-        verify(exactly = 1) { delegate.warn(exception, "warning exception") }
         verify(exactly = 1) { delegate.debug("debug") }
         verify(exactly = 1) { delegate.info("info") }
         verify(exactly = 1) { delegate.info("named info") }
@@ -58,17 +54,13 @@ class CoderLoggerTest {
     fun `session-aware logs include the client session id`() {
         val exception = IllegalStateException("failed")
 
-        logger.error(sessionId, "error")
         logger.error(sessionId, exception, "exception")
         logger.warn(sessionId, "warning")
-        logger.warn(sessionId, exception, "warning exception")
         logger.debug(sessionId, "debug")
         logger.info(sessionId, "info")
 
-        verify(exactly = 1) { delegate.error("$prefix error") }
         verify(exactly = 1) { delegate.error(exception, "$prefix exception") }
         verify(exactly = 1) { delegate.warn("$prefix warning") }
-        verify(exactly = 1) { delegate.warn(exception, "$prefix warning exception") }
         verify(exactly = 1) { delegate.debug("$prefix debug") }
         verify(exactly = 1) { delegate.info("$prefix info") }
     }
@@ -130,17 +122,14 @@ class CoderLoggerTest {
         logger.logAndShowError(sessionId, "Connection failed", "Could not connect")
         logger.logAndShowError(sessionId, "Connection crashed", "The connection crashed", exception)
         logger.logAndShowWarning(sessionId, "Connection unstable", "The connection is unstable")
-        logger.logAndShowWarning(sessionId, "Connection failed", "The connection failed", exception)
 
         verify(exactly = 1) { delegate.error("$prefix Could not connect") }
         verify(exactly = 1) { delegate.error(exception, "$prefix The connection crashed") }
         verify(exactly = 1) { delegate.warn("$prefix The connection is unstable") }
-        verify(exactly = 1) { delegate.warn(exception, "$prefix The connection failed") }
         verify(exactly = 1) { i18n.pnotr("Could not connect") }
         verify(exactly = 1) { i18n.pnotr("The connection crashed") }
         verify(exactly = 1) { i18n.pnotr("The connection is unstable") }
-        verify(exactly = 1) { i18n.pnotr("The connection failed") }
-        coVerify(exactly = 4) {
+        coVerify(exactly = 3) {
             ui.showInfoPopup(
                 any<LocalizableString>(),
                 any<LocalizableString>(),
