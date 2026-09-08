@@ -8,6 +8,7 @@ import com.coder.toolbox.sdk.DataGen.Companion.workspace
 import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.BINARY_DESTINATION
 import com.coder.toolbox.store.BINARY_DIRECTORY
@@ -47,6 +48,7 @@ import com.sun.net.httpserver.HttpServer
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeAll
@@ -76,6 +78,7 @@ private val noOpTextProgress: (String) -> Unit = { _ -> }
 
 internal class CoderCLIManagerTest {
     private val ui = mockk<ToolboxUi>(relaxed = true)
+    private val underlyingLogger = mockk<Logger>(relaxed = true)
     private val context = CoderToolboxContext(
         ui,
         mockk<UiComponents>(relaxed = true),
@@ -85,7 +88,7 @@ internal class CoderCLIManagerTest {
         mockk<ClientHelper>(),
         mockk<LocalDesktopManager>(),
         mockk<CoroutineScope>(),
-        mockk<Logger>(relaxed = true),
+        underlyingLogger,
         mockk<LocalizableStringFactory>(relaxed = true),
         CoderSettingsStore(
             pluginTestSettingsStore(),
@@ -706,7 +709,7 @@ internal class CoderCLIManagerTest {
                         WorkspaceAddress.from(ws, a)
                     }
                 }.toSet(),
-                it.features,
+                feats = it.features,
             )
 
             assertEquals(expectedConf, sshConfigPath.toFile().readText())
@@ -717,7 +720,7 @@ internal class CoderCLIManagerTest {
             }
 
             // Remove configuration.
-            ccm.configSsh(emptySet(), it.features)
+            ccm.configSsh(emptySet(), feats = it.features)
 
             // Remove is the configuration we expect after removing.
             assertEquals(
@@ -726,6 +729,92 @@ internal class CoderCLIManagerTest {
                     .readText().replace(newlineRe, System.lineSeparator()),
             )
         }
+    }
+
+    @Test
+    fun `SSH setup keeps feature detection sessionless and correlates configuration logs`() {
+        val testDirectory = tmpdir.resolve("session-correlated-config-${UUID.randomUUID()}")
+        val binaryPath = if (getOS() == OS.WINDOWS) {
+            testDirectory.resolve("coder.bat")
+        } else {
+            testDirectory.resolve("coder")
+        }
+        binaryPath.parent.toFile().mkdirs()
+        binaryPath.toFile().writeText(mkbinVersion("2.25.0"))
+        if (getOS() != OS.WINDOWS) {
+            binaryPath.toFile().setExecutable(true)
+        }
+        val sshConfigPath = testDirectory.resolve("ssh.conf")
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryPath.toString(),
+                ENABLE_DOWNLOADS to "false",
+                SSH_CONFIG_PATH to sshConfigPath.toString(),
+            ),
+            Environment(),
+            context.logger,
+        )
+        val ccm = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            URI("https://test.coder.invalid").toURL(),
+        )
+        val sessionId = SessionId.generate()
+        val sessionPrefix = "client_session_id=$sessionId"
+        val workspace = workspace("foo", agents = mapOf("agent" to UUID.randomUUID().toString()))
+        val agent = workspace.latestBuild.resources.single().agents!!.single()
+
+        ccm.configSsh(
+            setOf(WorkspaceAddress.from(workspace, agent)),
+            sessionIds = setOf(sessionId),
+            sshConfigPath = sshConfigPath.toString(),
+        )
+        ccm.getHostname(
+            URI("https://test.coder.invalid").toURL(),
+            WorkspaceAddress.from(workspace, agent),
+        )
+
+        verify(exactly = 1) {
+            underlyingLogger.info("$sessionPrefix Configuring SSH config at $sshConfigPath")
+        }
+        verify(atLeast = 1) {
+            underlyingLogger.info(match<String> {
+                it.startsWith("`${ccm.localBinaryPath} version --output json`:") &&
+                        it.contains("\"version\": \"2.25.0\"")
+            })
+        }
+        verify(exactly = 1) {
+            underlyingLogger.info("No existing SSH config to modify")
+        }
+        verify(exactly = 0) {
+            underlyingLogger.info("$sessionPrefix No existing SSH config to modify")
+        }
+        verify(exactly = 1) {
+            underlyingLogger.info("$sessionPrefix Finished configuring SSH config")
+        }
+        verify(exactly = 0) {
+            underlyingLogger.info(match<String> {
+                it.startsWith("$sessionPrefix `${ccm.localBinaryPath} version --output json`:")
+            })
+        }
+    }
+
+    @Test
+    fun `no-op SSH config removal is logged without a session`() {
+        val sshConfigPath = tmpdir.resolve("unmanaged-ssh-config-${UUID.randomUUID()}.conf")
+        sshConfigPath.toFile().writeText("Host unrelated" + System.lineSeparator())
+        val ccm = CoderCLIManager(context, URI("https://test.coder.invalid").toURL())
+        val sessionId = SessionId.generate()
+        val message = "No workspaces and no existing config blocks to remove"
+
+        ccm.configSsh(
+            workspaceAddresses = emptySet(),
+            sessionIds = setOf(sessionId),
+            feats = Features(),
+            sshConfigPath = sshConfigPath.toString(),
+        )
+
+        verify(exactly = 1) { underlyingLogger.info(message) }
+        verify(exactly = 0) { underlyingLogger.info("client_session_id=$sessionId $message") }
     }
 
     @Test
@@ -817,7 +906,7 @@ internal class CoderCLIManagerTest {
         }
 
         assertFailsWith<InvalidCoderIdentifierException> {
-            ccm.configSsh(setOf(WorkspaceAddress.from(workspace, agent)), Features())
+            ccm.configSsh(setOf(WorkspaceAddress.from(workspace, agent)), feats = Features())
         }
         assertFalse(sshConfigPath.toFile().exists())
 
@@ -857,7 +946,7 @@ internal class CoderCLIManagerTest {
         val workspace = workspace("safe", agents = mapOf("agent" to UUID.randomUUID().toString()))
         val withAgent = workspace.latestBuild.resources.single().agents!!.single()
 
-        ccm.configSsh(setOf(WorkspaceAddress.from(workspace, withAgent)), Features())
+        ccm.configSsh(setOf(WorkspaceAddress.from(workspace, withAgent)), feats = Features())
 
         val updatedConfig = sshConfigPath.toFile().readText()
         assertFalse(updatedConfig.contains("unsafe-command"))

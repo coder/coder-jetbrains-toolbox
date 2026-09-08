@@ -13,6 +13,7 @@ import com.coder.toolbox.cli.gpg.VerificationResult
 import com.coder.toolbox.cli.gpg.VerificationResult.Failed
 import com.coder.toolbox.cli.gpg.VerificationResult.Invalid
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
+import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.settings.SignatureFallbackStrategy.ALLOW
 import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.SemVer
@@ -293,16 +294,23 @@ class CoderCLIManager(
     /**
      * Configure SSH to use this binary.
      *
+     * The caller supplies the affected [sessionIds] because [workspaceAddresses] may be empty
+     * while cleaning up configuration or may no longer contain a removed environment.
+     *
      * This can take supported features for testing purposes only.
      */
     internal fun configSsh(
         workspaceAddresses: Set<WorkspaceAddress>,
+        sessionIds: Set<SessionId> = emptySet(),
         feats: Features = features,
         sshConfigPath: String = context.settingsStore.sshConfigPath,
     ) {
-        context.logger.info("Configuring SSH config at $sshConfigPath")
-        writeSSHConfig(modifySSHConfig(readSSHConfig(sshConfigPath), workspaceAddresses, feats), sshConfigPath)
-        context.logger.info("Finished configuring SSH config")
+        context.logger.info(sessionIds, "Configuring SSH config at $sshConfigPath")
+        writeSSHConfig(
+            modifySSHConfig(workspaceAddresses, sessionIds, readSSHConfig(sshConfigPath), feats),
+            sshConfigPath,
+        )
+        context.logger.info(sessionIds, "Finished configuring SSH config")
     }
 
     /**
@@ -323,8 +331,9 @@ class CoderCLIManager(
      * version.
      */
     private fun modifySSHConfig(
-        contents: String?,
         workspaceAddresses: Set<WorkspaceAddress>,
+        sessionIds: Set<SessionId>,
+        contents: String?,
         feats: Features,
     ): String? {
         val host = deploymentURL.safeHost()
@@ -425,7 +434,7 @@ class CoderCLIManager(
         }
 
         if (managedBlock == null) {
-            context.logger.info("Appending config block")
+            context.logger.info(sessionIds, "Appending config block")
             val toAppend =
                 if (contents.isEmpty()) {
                     blockContent
@@ -441,7 +450,7 @@ class CoderCLIManager(
         val (start, end) = managedBlock
 
         if (isRemoving) {
-            context.logger.info("No workspaces; removing config block")
+            context.logger.info(sessionIds, "No workspaces; removing config block")
             return listOf(
                 contents.substring(0, start.range.first),
                 // Need to keep the trailing newline(s) if we are not at the
@@ -452,7 +461,7 @@ class CoderCLIManager(
             ).joinToString("")
         }
 
-        context.logger.info("Replacing existing config block")
+        context.logger.info(sessionIds, "Replacing existing config block")
         return listOf(
             contents.substring(0, start.range.first),
             start.groupValues[1], // Leading newline(s).

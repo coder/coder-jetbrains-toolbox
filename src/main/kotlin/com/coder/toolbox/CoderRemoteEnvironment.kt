@@ -10,6 +10,8 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.NetworkMetrics
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.session.SessionId
+import com.coder.toolbox.session.SessionIdRegistry
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.waitForFalseWithTimeout
 import com.coder.toolbox.util.withPath
@@ -88,13 +90,16 @@ class CoderRemoteEnvironment(
 
     init {
         if (context.settingsStore.shouldAutoConnect(id)) {
-            context.logger.info("Last session to $id was still active, trying to establish SSH connection")
+            context.logger.info("Auto-connect is enabled for $id, trying to establish SSH connection")
             startSshConnection()
         }
         refreshAvailableActions()
     }
 
     internal fun toWorkspaceAddressOrNull(): WorkspaceAddress? = agent?.let { WorkspaceAddress.from(workspace, it) }
+
+    internal fun currentSessionId(): SessionId? =
+        agent?.let { SessionIdRegistry.findSession(workspace.name, it.name) }
 
     private fun refreshAvailableActions() {
         val actions = mutableListOf<ActionDescription>()
@@ -158,47 +163,47 @@ class CoderRemoteEnvironment(
         }
         if (environmentStatus.canStop()) {
             if (workspace.outdated) {
-                actions.add(Action(context, "Update and restart") {
-                    context.logger.debug("Updating and re-starting $id...")
-                    val build = client.updateWorkspace(workspace)
-                    update(workspace.copy(latestBuild = build), agent)
-                    workspaceRefreshTrigger.trySend(true)
-                }
+                actions.add(
+                    Action(context, "Update and restart") {
+                        context.logger.debug(currentSessionId(), "Updating and re-starting $id...")
+                        val build = client.updateWorkspace(workspace)
+                        update(workspace.copy(latestBuild = build), agent)
+                        workspaceRefreshTrigger.trySend(true)
+                    }.withCurrentSessionId(::currentSessionId)
                 )
             }
-            actions.add(Action(context, "Stop") {
-                tryStopSshConnection()
-                context.logger.debug("Stoping $id...")
-                val build = client.stopWorkspace(workspace)
-                update(workspace.copy(latestBuild = build), agent)
-            }
+            actions.add(
+                Action(context, "Stop") {
+                    tryStopSshConnection()
+                    context.logger.debug(currentSessionId(), "Stopping $id...")
+                    val build = client.stopWorkspace(workspace)
+                    update(workspace.copy(latestBuild = build), agent)
+                }.withCurrentSessionId(::currentSessionId)
             )
         }
         actions.add(CoderDelimiter(context.i18n.pnotr("")))
-        actions.add(Action(context, "Delete workspace", highlightInRed = true) {
-            context.cs.launch(CoroutineName("Delete Workspace Action")) {
+        actions.add(
+            Action(context, "Delete workspace", highlightInRed = true) {
                 var dialogText =
                     if (environmentStatus.canStop()) "This will close the workspace and remove all its information, including files, unsaved changes, history, and usage data."
                     else "This will remove all information from the workspace, including files, unsaved changes, history, and usage data."
                 dialogText += "\n\nType \"${workspace.name}\" below to confirm:"
 
                 val confirmation = context.ui.showTextInputPopup(
-                    if (environmentStatus.canStop()) context.i18n.ptrl("Delete running workspace?") else context.i18n.ptrl(
-                        "Delete workspace?"
-                    ),
+                    if (environmentStatus.canStop()) context.i18n.ptrl("Delete running workspace?")
+                    else context.i18n.ptrl("Delete workspace?"),
                     context.i18n.pnotr(dialogText),
                     context.i18n.ptrl("Workspace name"),
                     TextType.General,
                     context.i18n.ptrl("OK"),
                     context.i18n.ptrl("Cancel")
                 )
-                if (confirmation != workspace.name) {
-                    return@launch
+                if (confirmation == workspace.name) {
+                    context.logger.debug(currentSessionId(), "Deleting $id...")
+                    deleteWorkspace()
                 }
-                context.logger.debug("Deleting $id...")
-                deleteWorkspace()
-            }
-        })
+            }.withCurrentSessionId(::currentSessionId)
+        )
 
         actionsList.update {
             actions
@@ -212,7 +217,10 @@ class CoderRemoteEnvironment(
             }
 
             if (isConnected.waitForFalseWithTimeout(10.seconds) == null) {
-                context.logger.warn("The SSH connection to workspace $name could not be dropped in time, going to stop the workspace while the SSH connection is live")
+                val message =
+                    "The SSH connection to workspace $name could not be dropped in time, " +
+                            "going to stop the workspace while the SSH connection is live"
+                context.logger.warn(currentSessionId(), message)
             }
         }
     }
@@ -222,49 +230,55 @@ class CoderRemoteEnvironment(
     override fun getAfterDisconnectHooks(): List<AfterDisconnectHook> = listOf(this)
 
     override fun beforeConnection() {
-        if (agent == null) {
-            return
-        }
+        val currentAgent = agent ?: return
+        val sessionId = SessionIdRegistry.startSession(context, workspace.name, currentAgent.name)
         context.logger.info(
-            "Launching SSH connection to $id on a ${agent?.operatingSystem.displayName()} machine"
+            sessionId,
+            "Launching SSH connection to $id on a ${currentAgent.operatingSystem.displayName()} machine"
         )
         isConnected.update { true }
         context.settingsStore.updateAutoConnect(this.id, true)
+        // Toolbox can invoke this hook again while retrying without first reporting a disconnect.
+        // Replace the previous poller so one environment never leaves multiple pollers behind.
+        pollJob?.cancel()
         pollJob = pollNetworkMetrics()
     }
 
-    private fun pollNetworkMetrics(): Job = context.cs.launch(CoroutineName("Network Metrics Poller")) {
-        context.logger.info("Starting the network metrics poll job for $id")
-        while (isActive) {
-            val currentAgent = agent ?: break
-            context.logger.debug("Searching SSH command's PID for workspace $id...")
-            val pid = proxyCommandHandle.findByWorkspaceAndAgent(workspace, currentAgent)
-            if (pid == null) {
-                context.logger.debug("No SSH command PID was found for workspace $id")
-                delay(POLL_INTERVAL)
-                continue
-            }
+    private fun pollNetworkMetrics(): Job =
+        context.cs.launch(CoroutineName("Network Metrics Poller")) {
+            context.logger.info(currentSessionId(), "Starting the network metrics poll job for $id")
+            while (isActive) {
+                val currentAgent = agent ?: break
+                val sessionId = currentSessionId()
+                context.logger.debug(sessionId, "Searching SSH command's PID for workspace $id...")
+                val pid = proxyCommandHandle.findByWorkspaceAndAgent(workspace, currentAgent)
+                if (pid == null) {
+                    context.logger.debug(sessionId, "No SSH command PID was found for workspace $id")
+                    delay(POLL_INTERVAL)
+                    continue
+                }
 
-            val metricsFile = Path.of(context.settingsStore.networkInfoDir, "$pid.json").toFile()
-            if (metricsFile.doesNotExists()) {
-                context.logger.debug("No metrics file found at ${metricsFile.absolutePath} for $id")
+                val metricsFile = Path.of(context.settingsStore.networkInfoDir, "$pid.json").toFile()
+                if (metricsFile.doesNotExists()) {
+                    context.logger.debug(sessionId, "No metrics file found at ${metricsFile.absolutePath} for $id")
+                    delay(POLL_INTERVAL)
+                    continue
+                }
+                context.logger.debug(sessionId, "Loading metrics from ${metricsFile.absolutePath} for $id")
+                try {
+                    val metrics = networkMetricsMarshaller.fromJson(metricsFile.readText()) ?: return@launch
+                    context.logger.debug(sessionId, "$id metrics: $metrics")
+                    additionalEnvironmentInformation[context.i18n.ptrl("Network Status")] = metrics.toPretty()
+                } catch (e: Exception) {
+                    context.logger.error(
+                        sessionId,
+                        e,
+                        "Error encountered while trying to load network metrics from ${metricsFile.absolutePath} for $id"
+                    )
+                }
                 delay(POLL_INTERVAL)
-                continue
             }
-            context.logger.debug("Loading metrics from ${metricsFile.absolutePath} for $id")
-            try {
-                val metrics = networkMetricsMarshaller.fromJson(metricsFile.readText()) ?: return@launch
-                context.logger.debug("$id metrics: $metrics")
-                additionalEnvironmentInformation[context.i18n.ptrl("Network Status")] = metrics.toPretty()
-            } catch (e: Exception) {
-                context.logger.error(
-                    e,
-                    "Error encountered while trying to load network metrics from ${metricsFile.absolutePath} for $id"
-                )
-            }
-            delay(POLL_INTERVAL)
         }
-    }
 
     private fun File.doesNotExists(): Boolean = !this.exists()
 
@@ -275,41 +289,73 @@ class CoderRemoteEnvironment(
      *
      * Toolbox reacts to the removal by closing its environment wrapper, which only
      * cancels the wrapper's own coroutine scope and never invokes the
-     * [AfterDisconnectHook], so the network metrics poller must be stopped here.
+     * [AfterDisconnectHook], so the network metrics poller must be stopped and the session
+     * registry entry must be removed here.
      */
     fun dispose() {
         pollJob?.cancel()
+        pollJob = null
         isConnected.update { false }
+        val removedSessionId = agent?.let {
+            SessionIdRegistry.removeSession(workspace.name, it.name)
+        }
+        removedSessionId?.let { sessionId ->
+            context.logger.info(sessionId, "Removed Toolbox SSH session for $id")
+        }
     }
 
     override fun afterDisconnect(isManual: Boolean) {
-        context.logger.info("Stopping the network metrics poll job for $id")
+        val sessionId = currentSessionId()
+        // A false value also covers Toolbox's Reconnect action. The current Coder state is useful
+        // context, but it cannot establish the disconnect cause on its own.
+        val disconnectKind =
+            if (isManual) "after an explicit user disconnect"
+            else "without an explicit user disconnect"
+        val stateInference =
+            if (!isManual && !environmentStatus.ready()) {
+                " The latest state may indicate a workspace or agent change."
+            } else {
+                ""
+            }
+        val latestCoderState =
+            "environment=${environmentStatus.label}, " +
+                    "workspace=${workspace.latestBuild.status}, " +
+                    "agent=${agent?.status ?: "unavailable"}, " +
+                    "agentLifecycle=${agent?.lifecycleState ?: "unavailable"}"
+        context.logger.info(
+            sessionId,
+            "Toolbox is disconnecting SSH from $id $disconnectKind.$stateInference " +
+                    "Latest known Coder state: $latestCoderState",
+        )
+        context.logger.info(sessionId, "Stopping the network metrics poll job for $id")
         pollJob?.cancel()
-        this.connectionRequest.update { false }
+        pollJob = null
+        connectionRequest.update { false }
         isConnected.update { false }
         if (isManual) {
             // if the user manually disconnects the ssh connection we should not connect automatically
             context.settingsStore.updateAutoConnect(this.id, false)
+            agent?.let {
+                SessionIdRegistry.removeSession(workspace.name, it.name)
+            }?.let {
+                context.logger.info(it, "Removed Toolbox SSH session for $id after manual disconnect")
+            }
         }
-        context.logger.info("Disconnected from $id")
     }
 
     /**
      * Update the workspace/agent status to the listeners, if it has changed.
      */
-    fun update(workspace: Workspace, agent: WorkspaceAgent?) {
-        if (this.workspace.latestBuild == workspace.latestBuild) {
+    fun update(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
+        if (workspace.latestBuild == newWorkspace.latestBuild) {
             return
         }
-        this.workspace = workspace
-        this.agent = agent
-        name = environmentId(workspace, agent)
 
         // workspace&agent status can be different from "environment status"
         // which is forced to queued state when a workspace is scheduled to start
-        updateStatus(WorkspaceAndAgentStatus.from(workspace, agent))
-        if (agent != null) {
-            context.connectionMonitoringService.checkConnectionStatus(workspace, agent)
+        updateStatus(WorkspaceAndAgentStatus.from(newWorkspace, newAgent), newAgent)
+        if (newAgent != null) {
+            context.connectionMonitoringService.checkConnectionStatus(newWorkspace, newAgent)
         }
 
         // we have to regenerate the action list in order to force a redraw
@@ -318,18 +364,30 @@ class CoderRemoteEnvironment(
     }
 
 
-    private fun updateStatus(status: WorkspaceAndAgentStatus) {
-        environmentStatus = status
+    private fun updateStatus(
+        newState: WorkspaceAndAgentStatus,
+        newAgent: WorkspaceAgent? = agent,
+    ) {
+        val previousEnvironmentStatus = environmentStatus
+        val previousWorkspace = workspace
+        val previousAgent = agent
+        val sessionId = currentSessionId()
+
+        environmentStatus = newState
+        workspace = newState.workspace
+        agent = newAgent
+        name = environmentId(workspace, agent)
         state.update {
             environmentStatus.toRemoteEnvironmentState(context)
         }
-        context.logger.info(
-            "Overall status for workspace $id is $environmentStatus. " +
-                    "Workspace status: ${workspace.latestBuild.status}, " +
-                    "agent status: ${agent?.status}, " +
-                    "agent lifecycle state: ${agent?.lifecycleState}, " +
-                    "login before ready: ${agent?.loginBeforeReady}"
-        )
+        val message =
+            "Overall status for workspace $id changed from ${previousEnvironmentStatus.label} " +
+                    "to ${environmentStatus.label}. " +
+                    "Workspace status: ${previousWorkspace.latestBuild.status} -> ${workspace.latestBuild.status}, " +
+                    "agent status: ${previousAgent?.status} -> ${agent?.status}, " +
+                    "agent lifecycle state: ${previousAgent?.lifecycleState} -> ${agent?.lifecycleState}, " +
+                    "login before ready: ${previousAgent?.loginBeforeReady} -> ${agent?.loginBeforeReady}"
+        context.logger.info(sessionId, message)
     }
 
     /**
@@ -347,7 +405,7 @@ class CoderRemoteEnvironment(
             client.url,
             cli,
             workspace,
-            envAgent
+            envAgent,
         )
     }
 
@@ -362,9 +420,14 @@ class CoderRemoteEnvironment(
     }
 
     /**
-     * Schedules the SSH connection to start as soon as possible if the workspace is ready and there is no connection already established.
+     * Schedules the SSH connection to start as soon as possible if the workspace is ready and
+     * there is no connection already established.
+     *
+     * The session is created or reactivated by [beforeConnection], when Toolbox confirms that it
+     * is starting the connection.
      */
     fun startSshConnection() {
+        if (agent == null) return
         if (environmentStatus.ready() && !isConnected.value) {
             connectionRequest.update {
                 true

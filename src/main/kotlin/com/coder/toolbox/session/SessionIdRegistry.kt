@@ -1,5 +1,6 @@
 package com.coder.toolbox.session
 
+import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.toHex
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
@@ -39,35 +40,44 @@ private data class SessionKey(
 )
 
 /**
- * Process-local registry of active connection sessions.
+ * Process-local registry of connection sessions.
  *
- * A session is keyed only by workspace and agent names. Call [startSession] from the initial SSH
- * connection path; all other code should use [findSession] so observing a session cannot create one.
- * Entries intentionally remain across SSH disconnects and reconnects. Call [removeSession] only
- * when the Toolbox environment that owns the session is disposed.
+ * A session is keyed only by workspace and agent names. Call [startSession] from the SSH
+ * before-connection callback; all other code should use [findSession] so observing a session cannot
+ * create one. Non-user disconnects and retries remain part of the same logical session. A manual
+ * disconnect ends the session, as does disposal of the Toolbox environment that owns it.
  */
 object SessionIdRegistry {
     private val sessionIds = ConcurrentHashMap<SessionKey, SessionId>()
 
     /**
-     * Returns the active session ID for this workspace and agent, creating it when absent.
+     * Returns the session ID for this workspace and agent, creating it when absent.
      *
-     * Reusing an existing ID allows transient reconnects to remain part of the same session.
+     * Reusing an existing ID allows transient reconnects to remain part of the same session. A
+     * newly created session is logged here so callers do not need to distinguish creation from reuse.
      */
-    fun startSession(workspaceName: String, agentName: String): SessionId =
-        sessionIds.computeIfAbsent(SessionKey(workspaceName, agentName)) { SessionId.generate() }
+    fun startSession(context: CoderToolboxContext, workspaceName: String, agentName: String): SessionId {
+        var created = false
+        val sessionId = sessionIds.computeIfAbsent(SessionKey(workspaceName, agentName)) {
+            created = true
+            SessionId.generate()
+        }
+        if (created) {
+            context.logger.info(sessionId, "Created Toolbox SSH session for $workspaceName.$agentName")
+        }
+        return sessionId
+    }
 
-    /** Returns the active session ID without creating a session. */
+    /** Returns the current logical session ID without creating one. */
     fun findSession(workspaceName: String, agentName: String): SessionId? =
         sessionIds[SessionKey(workspaceName, agentName)]
 
     /**
-     * Removes the session when its owning Toolbox environment is disposed.
+     * Removes a session that has reached the end of its lifetime.
      *
-     * This must only be called from the environment disposal lifecycle, such as
-     * `RemoteEnvironment.dispose()`, when Toolbox removes or destroys that environment. It must
-     * not be called when an IDE closes, the SSH transport disconnects, or the SSH transport reconnects;
-     * those events remain part of the same Toolbox session.
+     * Call this when the user deliberately disconnects or when Toolbox disposes the environment.
+     * Do not call it for a transient transport disconnect or an IDE closing; those events remain
+     * part of the same Toolbox session.
      */
     fun removeSession(workspaceName: String, agentName: String): SessionId? =
         sessionIds.remove(SessionKey(workspaceName, agentName))
