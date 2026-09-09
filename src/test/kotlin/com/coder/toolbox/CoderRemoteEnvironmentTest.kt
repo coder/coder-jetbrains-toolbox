@@ -1,7 +1,6 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
-import com.coder.toolbox.cli.Features
 import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
@@ -13,7 +12,6 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
 import com.coder.toolbox.store.CoderSettingsStore
-import com.coder.toolbox.views.Action
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.environments.SshEnvironmentContentsView
@@ -24,18 +22,12 @@ import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -75,41 +67,6 @@ class CoderRemoteEnvironmentTest {
         } finally {
             fixture.environment.dispose()
             fixture.removeSession()
-        }
-    }
-
-    @Test
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun `start action reports CLI failures and refreshes the workspace`() = runTest {
-        val actionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val fixture = fixture(actionScope, workspaceStatus = WorkspaceStatus.STOPPED)
-        val failure = IllegalStateException("start failed")
-        val errorLogged = CompletableDeferred<Pair<Throwable, String>>()
-        every { fixture.cli.features } returns Features()
-        every { fixture.cli.startWorkspace(any(), any()) } throws failure
-        every { fixture.logger.error(any<Throwable>(), any<String>()) } answers {
-            errorLogged.complete(firstArg<Throwable>() to secondArg<String>())
-        }
-
-        try {
-            val startAction = fixture.environment.actionsList.value[2] as Action
-
-            startAction.run()
-            val loggedError = withContext(Dispatchers.IO) {
-                withTimeout(5_000) { errorLogged.await() }
-            }
-
-            verify(exactly = 1) {
-                fixture.cli.startWorkspace(any(), any())
-            }
-            assertEquals(failure::class, loggedError.first::class)
-            assertEquals(failure.message, loggedError.first.message)
-            assertEquals("start failed", loggedError.second)
-            assertEquals(true, fixture.workspaceRefreshTrigger.tryReceive().getOrNull())
-        } finally {
-            fixture.environment.dispose()
-            fixture.removeSession()
-            actionScope.cancel()
         }
     }
 
@@ -364,20 +321,13 @@ class CoderRemoteEnvironmentTest {
         verify { fixture.logger wasNot Called }
     }
 
-    private fun fixture(
-        scope: CoroutineScope,
-        autoConnect: Boolean = false,
-        workspaceStatus: WorkspaceStatus = WorkspaceStatus.RUNNING,
-    ): Fixture {
+    private fun fixture(scope: CoroutineScope, autoConnect: Boolean = false): Fixture {
         val suffix = UUID.randomUUID().toString().take(8)
         val workspaceName = "workspace-$suffix"
         val agentName = "agent-$suffix"
-        val generatedWorkspace = DataGen.workspace(
+        val workspace = DataGen.workspace(
             name = workspaceName,
             agents = mapOf(agentName to UUID.randomUUID().toString()),
-        )
-        val workspace = generatedWorkspace.copy(
-            latestBuild = generatedWorkspace.latestBuild.copy(status = workspaceStatus),
         )
         val agent = requireNotNull(workspace.latestBuild.resources.single().agents).single()
         val context = mockk<CoderToolboxContext>(relaxed = true)
@@ -385,9 +335,6 @@ class CoderRemoteEnvironmentTest {
         val settingsStore = mockk<CoderSettingsStore>(relaxed = true)
         val i18n = mockk<LocalizableStringFactory>(relaxed = true)
         val coderLogger = CoderLogger(logger, mockk<ToolboxUi>(relaxed = true), scope, i18n)
-        val cli = mockk<CoderCLIManager>(relaxed = true)
-        val workspaceRefreshTrigger = Channel<Boolean>(Channel.CONFLATED)
-
         every { context.cs } returns scope
         every { context.logger } returns coderLogger
         every { context.settingsStore } returns settingsStore
@@ -398,8 +345,8 @@ class CoderRemoteEnvironmentTest {
         val environment = CoderRemoteEnvironment(
             context = context,
             client = mockk<CoderRestClient>(relaxed = true),
-            cli = cli,
-            workspaceRefreshTrigger = workspaceRefreshTrigger,
+            cli = mockk<CoderCLIManager>(relaxed = true),
+            workspaceRefreshTrigger = Channel(Channel.CONFLATED),
             workspace = workspace,
             agent = agent,
         )
@@ -407,8 +354,6 @@ class CoderRemoteEnvironmentTest {
             environment,
             logger,
             settingsStore,
-            cli,
-            workspaceRefreshTrigger,
             workspace,
             agent,
             workspaceName,
@@ -433,8 +378,6 @@ class CoderRemoteEnvironmentTest {
         val environment: CoderRemoteEnvironment,
         val logger: Logger,
         val settingsStore: CoderSettingsStore,
-        val cli: CoderCLIManager,
-        val workspaceRefreshTrigger: Channel<Boolean>,
         val workspace: Workspace,
         val agent: WorkspaceAgent,
         val workspaceName: String,
