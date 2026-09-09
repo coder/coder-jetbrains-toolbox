@@ -2,9 +2,13 @@ package com.coder.toolbox.session
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.diagnostics.CoderLogger
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -17,11 +21,17 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SessionIdRegistryTest {
-    private val logger = mockk<CoderLogger>(relaxed = true)
+    private val logger = mockk<Logger>(relaxed = true)
+    private val coderLogger = CoderLogger(
+        logger,
+        mockk<ToolboxUi>(relaxed = true),
+        mockk<CoroutineScope>(relaxed = true),
+        mockk<LocalizableStringFactory>(relaxed = true),
+    )
     private val context = mockk<CoderToolboxContext>(relaxed = true)
 
     init {
-        every { context.logger } returns logger
+        every { context.logger } returns coderLogger
     }
 
     @Test
@@ -41,7 +51,9 @@ class SessionIdRegistryTest {
         assertEquals(first, second)
         assertEquals(first, SessionIdRegistry.findSession(key.workspaceName, key.agentName))
         verify(exactly = 1) {
-            logger.info(first, "Created Toolbox SSH session for ${key.workspaceName}.${key.agentName}")
+            logger.info(
+                "client_session_id=$first Created Toolbox SSH session for ${key.workspaceName}.${key.agentName}"
+            )
         }
     }
 
@@ -89,7 +101,10 @@ class SessionIdRegistryTest {
 
         assertEquals(1, results.toSet().size)
         verify(exactly = 1) {
-            logger.info(results.first(), "Created Toolbox SSH session for ${key.workspaceName}.${key.agentName}")
+            logger.info(
+                "client_session_id=${results.first()} Created Toolbox SSH session for " +
+                        "${key.workspaceName}.${key.agentName}"
+            )
         }
     }
 

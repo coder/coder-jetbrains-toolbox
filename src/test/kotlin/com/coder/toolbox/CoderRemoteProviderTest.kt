@@ -17,7 +17,10 @@ import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.state.StoredOAuthSession
 import com.coder.toolbox.views.state.WizardStep
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.util.LoadableState
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -26,6 +29,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -49,6 +53,7 @@ class CoderRemoteProviderTest {
     private lateinit var mockCli: CoderCLIManager
     private lateinit var mockContext: CoderToolboxContext
     private lateinit var mockLogger: CoderLogger
+    private lateinit var underlyingLogger: Logger
     private lateinit var remoteProvider: CoderRemoteProvider
 
     @BeforeTest
@@ -56,7 +61,13 @@ class CoderRemoteProviderTest {
         mockClient = mockk(relaxed = true)
         mockCli = mockk(relaxed = true)
         mockContext = mockk(relaxed = true)
-        mockLogger = mockk(relaxed = true)
+        underlyingLogger = mockk(relaxed = true)
+        mockLogger = CoderLogger(
+            underlyingLogger,
+            mockk<ToolboxUi>(relaxed = true),
+            CoroutineScope(Dispatchers.Unconfined),
+            mockk<LocalizableStringFactory>(relaxed = true),
+        )
         val settingsStore = mockk<CoderSettingsStore>(relaxed = true)
         every { mockContext.settingsStore } returns settingsStore
         every { mockContext.logger } returns mockLogger
@@ -88,7 +99,8 @@ class CoderRemoteProviderTest {
         val agent = mockAgent("agent1")
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
-        every { mockCli.configSsh(any(), any(), any(), any()) } throws FileNotFoundException("Permission denied")
+        val failure = FileNotFoundException("Permission denied")
+        every { mockCli.configSsh(any(), any(), any(), any()) } throws failure
 
         // when
         val pollJob = remoteProvider.poll(mockClient, mockCli)
@@ -102,12 +114,7 @@ class CoderRemoteProviderTest {
         }
         val warningText = slot<String>()
         verify(exactly = 1) {
-            mockLogger.logAndShowWarning(
-                emptySet(),
-                "SSH configuration could not be updated",
-                capture(warningText),
-                any(),
-            )
+            underlyingLogger.warn(failure, capture(warningText))
         }
         assertTrue(warningText.captured.contains("Permission denied"))
 
@@ -144,10 +151,14 @@ class CoderRemoteProviderTest {
         runCurrent()
 
         verify(exactly = 1) {
-            mockLogger.info(
-                setOf(firstSessionId, secondSessionId),
-                match { it.startsWith("Workspaces have changed, reconfiguring CLI:") },
-            )
+            underlyingLogger.info(match<String> {
+                it.startsWith("client_session_id=$firstSessionId Workspaces have changed, reconfiguring CLI:")
+            })
+        }
+        verify(exactly = 1) {
+            underlyingLogger.info(match<String> {
+                it.startsWith("client_session_id=$secondSessionId Workspaces have changed, reconfiguring CLI:")
+            })
         }
 
         pollJob.cancel()
@@ -176,11 +187,10 @@ class CoderRemoteProviderTest {
         runCurrent()
 
         verify(exactly = 1) {
-            mockLogger.error(
-                setOf(firstSessionId, secondSessionId),
-                failure,
-                "workspace polling error encountered",
-            )
+            underlyingLogger.error(failure, "client_session_id=$firstSessionId workspace polling error encountered")
+        }
+        verify(exactly = 1) {
+            underlyingLogger.error(failure, "client_session_id=$secondSessionId workspace polling error encountered")
         }
 
         pollJob.cancel()
@@ -206,7 +216,9 @@ class CoderRemoteProviderTest {
 
         verify(exactly = 1) { existingEnvironment.dispose() }
         verify(exactly = 1) {
-            mockLogger.info(setOf(sessionId), match { it.startsWith("Workspaces have changed, reconfiguring CLI:") })
+            underlyingLogger.info(match<String> {
+                it.startsWith("client_session_id=$sessionId Workspaces have changed, reconfiguring CLI:")
+            })
         }
         verify(exactly = 1) {
             mockCli.configSsh(any(), setOf(sessionId), any(), any())
@@ -230,11 +242,7 @@ class CoderRemoteProviderTest {
 
         assertTrue(remoteProvider.environments.value is LoadableState.Loading)
         verify(exactly = 0) {
-            mockLogger.logAndShowWarning(
-                "SSH configuration could not be updated",
-                any(),
-                any(),
-            )
+            underlyingLogger.warn(any<Throwable>(), match<String> { it.startsWith("Workspaces remain available") })
         }
 
         pollJob.cancel()

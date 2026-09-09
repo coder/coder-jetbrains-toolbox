@@ -3,10 +3,14 @@ package com.coder.toolbox.feed
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.store.CoderSettingsStore
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -86,7 +90,12 @@ class IdeFeedManagerOfflineTest {
         System.setProperty("user.home", tempDir.toAbsolutePath().toString())
 
         context = mockk<CoderToolboxContext>()
-        logger = mockk(relaxed = true)
+        logger = CoderLogger(
+            mockk<Logger>(relaxed = true),
+            mockk<ToolboxUi>(relaxed = true),
+            mockk<CoroutineScope>(relaxed = true),
+            mockk<LocalizableStringFactory>(relaxed = true),
+        )
         settingsStore = mockk(relaxed = true)
 
         every { context.logger } returns logger

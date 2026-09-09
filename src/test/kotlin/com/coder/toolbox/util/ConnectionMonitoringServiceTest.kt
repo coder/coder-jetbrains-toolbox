@@ -9,20 +9,34 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionIdRegistry
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import java.util.UUID
 import kotlin.test.Test
+
+private const val CONNECTION_WARNING =
+    "Unstable connection between Coder server and workspace detected. Your active sessions may disconnect"
 
 class ConnectionMonitoringServiceTest {
 
     private val context = mockk<CoderToolboxContext>(relaxed = true)
-    private val logger = mockk<CoderLogger>(relaxed = true)
+    private val logger = mockk<Logger>(relaxed = true)
+    private val coderLogger = CoderLogger(
+        logger,
+        mockk<ToolboxUi>(relaxed = true),
+        CoroutineScope(Dispatchers.Unconfined),
+        mockk<LocalizableStringFactory>(relaxed = true),
+    )
 
     init {
-        every { context.logger } returns logger
+        every { context.logger } returns coderLogger
     }
 
     @Test
@@ -33,7 +47,7 @@ class ConnectionMonitoringServiceTest {
 
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 1) { logger.logAndShowWarning(null, any(), any()) }
+        verify(exactly = 1) { logger.warn(CONNECTION_WARNING) }
     }
 
     @Test
@@ -44,7 +58,7 @@ class ConnectionMonitoringServiceTest {
 
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 1) { logger.logAndShowWarning(null, any(), any()) }
+        verify(exactly = 1) { logger.warn(CONNECTION_WARNING) }
     }
 
     @Test
@@ -58,11 +72,7 @@ class ConnectionMonitoringServiceTest {
             service.checkConnectionStatus(workspace, agent)
 
             verify(exactly = 1) {
-                logger.logAndShowWarning(
-                    sessionId,
-                    "Unstable connection detected",
-                    any(),
-                )
+                logger.warn("client_session_id=$sessionId $CONNECTION_WARNING")
             }
         } finally {
             SessionIdRegistry.removeSession(workspace.name, agent.name)
@@ -77,7 +87,7 @@ class ConnectionMonitoringServiceTest {
 
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 0) { logger.logAndShowWarning(null, any(), any()) }
+        verify(exactly = 0) { logger.warn(any<String>()) }
     }
 
     @Test
@@ -88,7 +98,7 @@ class ConnectionMonitoringServiceTest {
 
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 0) { logger.logAndShowWarning(null, any(), any()) }
+        verify(exactly = 0) { logger.warn(any<String>()) }
     }
 
     @Test
@@ -106,7 +116,7 @@ class ConnectionMonitoringServiceTest {
         // Second call should not trigger notification
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 0) { logger.logAndShowWarning(null, any(), any()) }
+        verify(exactly = 0) { logger.warn(any<String>()) }
     }
 
     @Test
@@ -121,7 +131,7 @@ class ConnectionMonitoringServiceTest {
         // Second call should not trigger notification
         service.checkConnectionStatus(workspace, agent)
 
-        verify(exactly = 1) { logger.logAndShowWarning(null, any(), any()) }
+        verify(exactly = 1) { logger.warn(CONNECTION_WARNING) }
     }
 
     @Test
@@ -138,7 +148,7 @@ class ConnectionMonitoringServiceTest {
         // Second call should not trigger notification
         service.checkConnectionStatus(ws2, agent2)
 
-        verify(exactly = 1) { logger.logAndShowWarning(null, any(), any()) }
+        verify(exactly = 1) { logger.warn(CONNECTION_WARNING) }
     }
 
     @Test
@@ -155,7 +165,7 @@ class ConnectionMonitoringServiceTest {
         // Second call should not trigger notification
         service.checkConnectionStatus(ws2, agent2)
 
-        verify(exactly = 1) { logger.logAndShowWarning(null, any(), any()) }
+        verify(exactly = 1) { logger.warn(CONNECTION_WARNING) }
     }
 
 

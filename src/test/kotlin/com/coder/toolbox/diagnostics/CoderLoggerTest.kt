@@ -11,6 +11,7 @@ import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class CoderLoggerTest {
     private val delegate = mockk<Logger>(relaxed = true)
@@ -84,12 +85,15 @@ class CoderLoggerTest {
     }
 
     @Test
-    fun `log and show logs and displays the same user message`() {
-        logger.logAndShowInfo("Connection ready", "Connected to the workspace")
+    fun `log and show evaluates and displays the message once`() {
+        var evaluations = 0
 
-        verify(exactly = 1) { delegate.info("Connected to the workspace") }
+        logger.logAndShowInfo("Connection ready", "Connected ${++evaluations}")
+
+        assertEquals(1, evaluations)
+        verify(exactly = 1) { delegate.info("Connected 1") }
         verify(exactly = 1) { i18n.pnotr("Connection ready") }
-        verify(exactly = 1) { i18n.pnotr("Connected to the workspace") }
+        verify(exactly = 1) { i18n.pnotr("Connected 1") }
         coVerify(exactly = 1) {
             ui.showInfoPopup(
                 any<LocalizableString>(),

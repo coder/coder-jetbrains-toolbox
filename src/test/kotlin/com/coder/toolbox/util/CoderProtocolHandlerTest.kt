@@ -12,8 +12,11 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.util.LoadableState
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -42,6 +45,7 @@ class CoderProtocolHandlerTest {
     private lateinit var handler: CoderProtocolHandler
     private lateinit var remoteToolsHelper: RemoteToolsHelper
     private lateinit var logger: CoderLogger
+    private lateinit var underlyingLogger: Logger
     private lateinit var environment: CoderRemoteEnvironment
 
     // Test Coroutine Scope
@@ -68,7 +72,13 @@ class CoderProtocolHandlerTest {
         feedService = mockk(relaxed = true)
         ideFeedManager = IdeFeedManager(context, feedService)
         remoteToolsHelper = mockk(relaxed = true)
-        logger = mockk(relaxed = true)
+        underlyingLogger = mockk(relaxed = true)
+        logger = CoderLogger(
+            underlyingLogger,
+            mockk<ToolboxUi>(relaxed = true),
+            CoroutineScope(dispatcher),
+            mockk<LocalizableStringFactory>(relaxed = true),
+        )
         environment = mockk {
             every { id } returns "env-1"
             every { currentSessionId() } returns null
@@ -437,10 +447,10 @@ class CoderProtocolHandlerTest {
 
         assertEquals("RR-241.1", handler.resolveIdeIdentifier(environment, "RR", "241.1"))
 
-        verify(exactly = 1) { logger.info(sessionId, "Available RR IDEs: [241.1]") }
-        verify(exactly = 1) { logger.info(sessionId, "Installed RR IDEs: []") }
-        verify(exactly = 0) { logger.info("Available RR IDEs: [241.1]") }
-        verify(exactly = 0) { logger.info("Installed RR IDEs: []") }
+        verify(exactly = 1) { underlyingLogger.info("client_session_id=$sessionId Available RR IDEs: [241.1]") }
+        verify(exactly = 1) { underlyingLogger.info("client_session_id=$sessionId Installed RR IDEs: []") }
+        verify(exactly = 0) { underlyingLogger.info("Available RR IDEs: [241.1]") }
+        verify(exactly = 0) { underlyingLogger.info("Installed RR IDEs: []") }
     }
 
     @Test
@@ -456,8 +466,8 @@ class CoderProtocolHandlerTest {
 
         assertNull(handler.resolveIdeIdentifier(environment, "RR", "latest_eap"))
 
-        verify(exactly = 1) { logger.logAndShowError(sessionId, "Can't handle URI", message) }
-        verify(exactly = 0) { logger.logAndShowError("Can't handle URI", message) }
+        verify(exactly = 1) { underlyingLogger.error("client_session_id=$sessionId $message") }
+        verify(exactly = 0) { underlyingLogger.error(message) }
     }
 
     @Test
@@ -499,10 +509,12 @@ class CoderProtocolHandlerTest {
 
             verify(exactly = 1) { environment.startSshConnection() }
             verify(exactly = 1) {
-                logger.info(sessionId, "Selected IDE RR-241.1 for RR with hint 241.1")
+                underlyingLogger.info("client_session_id=$sessionId Selected IDE RR-241.1 for RR with hint 241.1")
             }
-            verify(exactly = 1) { logger.info(sessionId, "Launching RR-241.1 on $environmentId") }
-            verify(exactly = 0) { logger.info("Launching RR-241.1 on $environmentId") }
+            verify(exactly = 1) {
+                underlyingLogger.info("client_session_id=$sessionId Launching RR-241.1 on $environmentId")
+            }
+            verify(exactly = 0) { underlyingLogger.info("Launching RR-241.1 on $environmentId") }
         } finally {
             SessionIdRegistry.removeSession(workspace.name, AGENT_BOB.name)
         }
