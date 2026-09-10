@@ -12,9 +12,11 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
 import com.coder.toolbox.store.CoderSettingsStore
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.environments.SshEnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.Called
 import io.mockk.clearMocks
 import io.mockk.every
@@ -86,7 +88,9 @@ class CoderRemoteEnvironmentTest {
                 connectionInfo.environment,
             )
             verify(exactly = 1) {
-                fixture.logger.info(sessionId, match(::isSessionStartedMessage))
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, sessionId) && isSessionStartedMessage(it)
+                })
             }
         } finally {
             fixture.environment.dispose()
@@ -103,29 +107,31 @@ class CoderRemoteEnvironmentTest {
             val firstSessionId = assertNotNull(fixture.currentSessionId())
 
             verify(exactly = 1) {
-                fixture.logger.info(firstSessionId, match(::isSessionStartedMessage))
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, firstSessionId) && isSessionStartedMessage(it)
+                })
             }
 
             fixture.environment.afterDisconnect(isManual = false)
             assertEquals(firstSessionId, fixture.currentSessionId())
             verify(exactly = 1) {
-                fixture.logger.info(
-                    firstSessionId,
-                    match {
-                        it.contains("without an explicit user disconnect") &&
-                                it.contains("environment=Ready") &&
-                                it.contains("workspace=RUNNING") &&
-                                it.contains("agent=CONNECTED") &&
-                                it.contains("agentLifecycle=READY") &&
-                                !it.contains("may indicate a workspace or agent change")
-                    },
-                )
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, firstSessionId) &&
+                            it.contains("without an explicit user disconnect") &&
+                            it.contains("environment=Ready") &&
+                            it.contains("workspace=RUNNING") &&
+                            it.contains("agent=CONNECTED") &&
+                            it.contains("agentLifecycle=READY") &&
+                            !it.contains("may indicate a workspace or agent change")
+                })
             }
 
             fixture.environment.beforeConnection()
             assertEquals(firstSessionId, fixture.currentSessionId())
             verify(exactly = 1) {
-                fixture.logger.info(firstSessionId, match(::isSessionStartedMessage))
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, firstSessionId) && isSessionStartedMessage(it)
+                })
             }
         } finally {
             fixture.environment.dispose()
@@ -150,8 +156,7 @@ class CoderRemoteEnvironmentTest {
             )
             verify(exactly = 1) {
                 fixture.logger.info(
-                    sessionId,
-                    "Starting the network metrics poll job for ${fixture.environment.id}",
+                    "client_session_id=$sessionId Starting the network metrics poll job for ${fixture.environment.id}",
                 )
             }
         } finally {
@@ -180,24 +185,26 @@ class CoderRemoteEnvironmentTest {
             }
             verify(exactly = 1) {
                 fixture.logger.info(
-                    firstSessionId,
-                    "Removed Toolbox SSH session for ${fixture.environment.id} after manual disconnect",
+                    "client_session_id=$firstSessionId Removed Toolbox SSH session for " +
+                            "${fixture.environment.id} after manual disconnect",
                 )
             }
             verify(exactly = 1) {
-                fixture.logger.info(
-                    firstSessionId,
-                    match {
-                        it.contains("after an explicit user disconnect") &&
-                                it.contains("Latest known Coder state")
-                    },
-                )
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, firstSessionId) &&
+                            it.contains("after an explicit user disconnect") &&
+                            it.contains("Latest known Coder state")
+                })
             }
             verify(exactly = 1) {
-                fixture.logger.info(firstSessionId, match(::isSessionStartedMessage))
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, firstSessionId) && isSessionStartedMessage(it)
+                })
             }
             verify(exactly = 1) {
-                fixture.logger.info(secondSessionId, match(::isSessionStartedMessage))
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, secondSessionId) && isSessionStartedMessage(it)
+                })
             }
         } finally {
             fixture.environment.dispose()
@@ -225,17 +232,15 @@ class CoderRemoteEnvironmentTest {
 
             assertEquals(sessionId, fixture.currentSessionId())
             verify(exactly = 1) {
-                fixture.logger.info(
-                    sessionId,
-                    match {
-                        it.contains("without an explicit user disconnect") &&
-                                it.contains("may indicate a workspace or agent change") &&
-                                it.contains("environment=Stopping") &&
-                                it.contains("workspace=STOPPING") &&
-                                it.contains("agent=DISCONNECTED") &&
-                                it.contains("agentLifecycle=SHUTTING_DOWN")
-                    },
-                )
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, sessionId) &&
+                            it.contains("without an explicit user disconnect") &&
+                            it.contains("may indicate a workspace or agent change") &&
+                            it.contains("environment=Stopping") &&
+                            it.contains("workspace=STOPPING") &&
+                            it.contains("agent=DISCONNECTED") &&
+                            it.contains("agentLifecycle=SHUTTING_DOWN")
+                })
             }
         } finally {
             fixture.environment.dispose()
@@ -255,13 +260,17 @@ class CoderRemoteEnvironmentTest {
 
             assertNull(fixture.currentSessionId())
             verify(exactly = 1) {
-                fixture.logger.info(sessionId, match(::isSessionDisposedMessage))
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, sessionId) && isSessionDisposedMessage(it)
+                })
             }
 
             fixture.environment.dispose()
             assertNull(fixture.currentSessionId())
             verify(exactly = 1) {
-                fixture.logger.info(sessionId, match(::isSessionDisposedMessage))
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, sessionId) && isSessionDisposedMessage(it)
+                })
             }
         } finally {
             fixture.removeSession()
@@ -286,15 +295,13 @@ class CoderRemoteEnvironmentTest {
             fixture.environment.update(updatedWorkspace, updatedAgent)
 
             verify(exactly = 1) {
-                fixture.logger.info(
-                    sessionId,
-                    match {
-                        it.contains("changed from Ready to Stopping") &&
-                                it.contains("Workspace status: RUNNING -> STOPPING") &&
-                                it.contains("agent status: CONNECTED -> DISCONNECTED") &&
-                                it.contains("agent lifecycle state: READY -> SHUTTING_DOWN")
-                    },
-                )
+                fixture.logger.info(match<String> {
+                    hasSessionId(it, sessionId) &&
+                            it.contains("changed from Ready to Stopping") &&
+                            it.contains("Workspace status: RUNNING -> STOPPING") &&
+                            it.contains("agent status: CONNECTED -> DISCONNECTED") &&
+                            it.contains("agent lifecycle state: READY -> SHUTTING_DOWN")
+                })
             }
         } finally {
             fixture.environment.dispose()
@@ -324,13 +331,14 @@ class CoderRemoteEnvironmentTest {
         )
         val agent = requireNotNull(workspace.latestBuild.resources.single().agents).single()
         val context = mockk<CoderToolboxContext>(relaxed = true)
-        val logger = mockk<CoderLogger>(relaxed = true)
+        val logger = mockk<Logger>(relaxed = true)
         val settingsStore = mockk<CoderSettingsStore>(relaxed = true)
-
+        val i18n = mockk<LocalizableStringFactory>(relaxed = true)
+        val coderLogger = CoderLogger(logger, mockk<ToolboxUi>(relaxed = true), scope, i18n)
         every { context.cs } returns scope
-        every { context.logger } returns logger
+        every { context.logger } returns coderLogger
         every { context.settingsStore } returns settingsStore
-        every { context.i18n } returns mockk<LocalizableStringFactory>(relaxed = true)
+        every { context.i18n } returns i18n
         every { context.envStateColorPalette } returns mockk<EnvironmentStateColorPalette>(relaxed = true)
         every { settingsStore.shouldAutoConnect(any()) } returns autoConnect
 
@@ -342,7 +350,15 @@ class CoderRemoteEnvironmentTest {
             workspace = workspace,
             agent = agent,
         )
-        return Fixture(environment, logger, settingsStore, workspace, agent, workspaceName, agentName)
+        return Fixture(
+            environment,
+            logger,
+            settingsStore,
+            workspace,
+            agent,
+            workspaceName,
+            agentName,
+        )
     }
 
     private fun isSessionStartedMessage(message: String): Boolean =
@@ -355,9 +371,12 @@ class CoderRemoteEnvironmentTest {
                         message.contains("remov", ignoreCase = true) ||
                         message.contains("end", ignoreCase = true))
 
+    private fun hasSessionId(message: String, sessionId: SessionId): Boolean =
+        message.startsWith("client_session_id=$sessionId ")
+
     private data class Fixture(
         val environment: CoderRemoteEnvironment,
-        val logger: CoderLogger,
+        val logger: Logger,
         val settingsStore: CoderSettingsStore,
         val workspace: Workspace,
         val agent: WorkspaceAgent,

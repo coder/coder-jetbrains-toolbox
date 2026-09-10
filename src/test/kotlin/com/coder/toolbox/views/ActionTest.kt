@@ -3,6 +3,9 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.session.SessionId
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -16,11 +19,17 @@ class ActionTest {
     @OptIn(ExperimentalCoroutinesApi::class)
     fun `action failure uses the current session`() = runTest {
         val context = mockk<CoderToolboxContext>(relaxed = true)
-        val logger = mockk<CoderLogger>(relaxed = true)
+        val logger = mockk<Logger>(relaxed = true)
         val sessionId = SessionId.generate()
         val testScope = this
+        val coderLogger = CoderLogger(
+            logger,
+            mockk<ToolboxUi>(relaxed = true),
+            testScope,
+            mockk<LocalizableStringFactory>(relaxed = true),
+        )
         every { context.cs } returns testScope
-        every { context.logger } returns logger
+        every { context.logger } returns coderLogger
         val action = Action(context, "Stop workspace") {
             error("stop failed")
         }.withCurrentSessionId { sessionId }
@@ -29,12 +38,7 @@ class ActionTest {
         advanceUntilIdle()
 
         verify(exactly = 1) {
-            logger.logAndShowError(
-                sessionId,
-                "Error while running `Stop workspace`",
-                "stop failed",
-                any(),
-            )
+            logger.error(any<Throwable>(), "client_session_id=$sessionId stop failed")
         }
     }
 
@@ -42,12 +46,18 @@ class ActionTest {
     @OptIn(ExperimentalCoroutinesApi::class)
     fun `action failure resolves the session when the error is logged`() = runTest {
         val context = mockk<CoderToolboxContext>(relaxed = true)
-        val logger = mockk<CoderLogger>(relaxed = true)
+        val logger = mockk<Logger>(relaxed = true)
         val sessionId = SessionId.generate()
         var currentSessionId: SessionId? = sessionId
         val testScope = this
+        val coderLogger = CoderLogger(
+            logger,
+            mockk<ToolboxUi>(relaxed = true),
+            testScope,
+            mockk<LocalizableStringFactory>(relaxed = true),
+        )
         every { context.cs } returns testScope
-        every { context.logger } returns logger
+        every { context.logger } returns coderLogger
         val action = Action(context, "Stop workspace") {
             currentSessionId = null
             error("stop failed")
@@ -57,12 +67,7 @@ class ActionTest {
         advanceUntilIdle()
 
         verify(exactly = 1) {
-            logger.logAndShowError(
-                null,
-                "Error while running `Stop workspace`",
-                "stop failed",
-                any(),
-            )
+            logger.error(any<Throwable>(), "stop failed")
         }
     }
 }
