@@ -6,12 +6,12 @@ import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.test.Test
-import kotlin.test.assertEquals
 
 class CoderLoggerTest {
     private val delegate = mockk<Logger>(relaxed = true)
@@ -85,20 +85,25 @@ class CoderLoggerTest {
     }
 
     @Test
-    fun `log and show evaluates and displays the message once`() {
-        var evaluations = 0
+    fun `log and show logs and displays the same message`() {
+        val localizedTitle = mockk<LocalizableString>()
+        val localizedMessage = mockk<LocalizableString>()
+        val localizedOk = mockk<LocalizableString>()
+        every { i18n.pnotr("Connection ready") } returns localizedTitle
+        every { i18n.pnotr("Connected to the workspace") } returns localizedMessage
+        every { i18n.ptrl("OK") } returns localizedOk
 
-        logger.logAndShowInfo("Connection ready", "Connected ${++evaluations}")
+        logger.logAndShowInfo("Connection ready", "Connected to the workspace")
 
-        assertEquals(1, evaluations)
-        verify(exactly = 1) { delegate.info("Connected 1") }
+        verify(exactly = 1) { delegate.info("Connected to the workspace") }
         verify(exactly = 1) { i18n.pnotr("Connection ready") }
-        verify(exactly = 1) { i18n.pnotr("Connected 1") }
+        verify(exactly = 1) { i18n.pnotr("Connected to the workspace") }
+        verify(exactly = 1) { i18n.ptrl("OK") }
         coVerify(exactly = 1) {
             ui.showInfoPopup(
-                any<LocalizableString>(),
-                any<LocalizableString>(),
-                any<LocalizableString>(),
+                localizedTitle,
+                localizedMessage,
+                localizedOk,
             )
         }
     }
