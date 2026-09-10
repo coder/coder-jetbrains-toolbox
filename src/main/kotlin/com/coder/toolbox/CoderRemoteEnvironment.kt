@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.nio.file.Path
@@ -101,6 +102,16 @@ class CoderRemoteEnvironment(
     internal fun currentSessionId(): SessionId? =
         agent?.let { SessionIdRegistry.findSession(workspace.name, it.name) }
 
+    private suspend fun <T> withProgress(message: String, action: suspend () -> T): T {
+        val previousDescription = description.value
+        description.value = EnvironmentDescription.Progress(context.i18n.ptrl(message), indeterminate = true)
+        return try {
+            action()
+        } finally {
+            description.value = previousDescription
+        }
+    }
+
     private fun refreshAvailableActions() {
         val actions = mutableListOf<ActionDescription>()
         context.logger.debug("Refreshing available actions for workspace $id with status: $environmentStatus")
@@ -139,25 +150,36 @@ class CoderRemoteEnvironment(
         if (environmentStatus.canStart()) {
             if (workspace.outdated) {
                 actions.add(Action(context, "Update and start") {
-                    context.logger.debug("Updating and starting $id...")
-                    val build = client.updateWorkspace(workspace)
-                    update(workspace.copy(latestBuild = build), agent)
-                    workspaceRefreshTrigger.trySend(true)
+                    withProgress("Updating and starting workspace…") {
+                        context.logger.debug("Updating and starting $id...")
+                        val build = client.updateWorkspace(workspace)
+                        update(workspace.copy(latestBuild = build), agent)
+                        workspaceRefreshTrigger.trySend(true)
+                    }
                 })
             } else {
                 actions.add(Action(context, "Start") {
-                    context.logger.debug("Starting $id... ")
-                    context.cs
-                        .launch(CoroutineName("Start Workspace Action CLI Runner") + Dispatchers.IO) {
-                            cli.startWorkspace(WorkspaceAddress.from(workspace))
+                    withProgress("Starting workspace…") {
+                        context.logger.debug("Starting $id... ")
+                        val previousStatus = environmentStatus
+                        // The CLI can take a while before Coder reports a new workspace state. Show
+                        // the pending state immediately and remove the Start action in the meantime.
+                        updateStatus(WorkspaceAndAgentStatus.Queued(workspace))
+                        refreshAvailableActions()
+                        var commandSucceeded = false
+                        try {
+                            withContext(Dispatchers.IO) {
+                                cli.startWorkspace(WorkspaceAddress.from(workspace))
+                            }
+                            commandSucceeded = true
                             workspaceRefreshTrigger.trySend(true)
+                        } finally {
+                            if (!commandSucceeded) {
+                                updateStatus(previousStatus)
+                                refreshAvailableActions()
+                            }
                         }
-                    // cli takes 15 seconds to move the workspace in queueing/starting state
-                    // while the user won't see anything happening in TBX after start is clicked
-                    // During those 15 seconds we work around by forcing a `Queuing` state
-                    updateStatus(WorkspaceAndAgentStatus.Queued(workspace))
-                    // force refresh of the actions list (Start should no longer be available)
-                    refreshAvailableActions()
+                    }
                 })
             }
         }
@@ -165,19 +187,23 @@ class CoderRemoteEnvironment(
             if (workspace.outdated) {
                 actions.add(
                     Action(context, "Update and restart") {
-                        context.logger.debug(currentSessionId(), "Updating and re-starting $id...")
-                        val build = client.updateWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
-                        workspaceRefreshTrigger.trySend(true)
+                        withProgress("Updating and restarting workspace…") {
+                            context.logger.debug(currentSessionId(), "Updating and re-starting $id...")
+                            val build = client.updateWorkspace(workspace)
+                            update(workspace.copy(latestBuild = build), agent)
+                            workspaceRefreshTrigger.trySend(true)
+                        }
                     }.withCurrentSessionId(::currentSessionId)
                 )
             }
             actions.add(
                 Action(context, "Stop") {
-                    tryStopSshConnection()
-                    context.logger.debug(currentSessionId(), "Stopping $id...")
-                    val build = client.stopWorkspace(workspace)
-                    update(workspace.copy(latestBuild = build), agent)
+                    withProgress("Stopping workspace…") {
+                        tryStopSshConnection()
+                        context.logger.debug(currentSessionId(), "Stopping $id...")
+                        val build = client.stopWorkspace(workspace)
+                        update(workspace.copy(latestBuild = build), agent)
+                    }
                 }.withCurrentSessionId(::currentSessionId)
             )
         }
@@ -199,8 +225,10 @@ class CoderRemoteEnvironment(
                     context.i18n.ptrl("Cancel")
                 )
                 if (confirmation == workspace.name) {
-                    context.logger.debug(currentSessionId(), "Deleting $id...")
-                    deleteWorkspace()
+                    withProgress("Deleting workspace…") {
+                        context.logger.debug(currentSessionId(), "Deleting $id...")
+                        deleteWorkspace()
+                    }
                 }
             }.withCurrentSessionId(::currentSessionId)
         )
