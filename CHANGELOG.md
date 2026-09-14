@@ -5,6 +5,7 @@
 ### Changed
 
 - upgraded the Toolbox plugin API, dropping support for Toolbox versions older than 3.7.2
+- display live workspace start progress reported by the Coder CLI
 
 ## 0.9.4 - 2026-08-26
 

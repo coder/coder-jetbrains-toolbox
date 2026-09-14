@@ -325,7 +325,8 @@ class CoderRemoteEnvironmentTest {
         val fixture = fixture(this, workspaceStatus = WorkspaceStatus.STOPPED)
         val commandStarted = CountDownLatch(1)
         val finishCommand = CountDownLatch(1)
-        every { fixture.cli.startWorkspace(any()) } answers {
+        every { fixture.cli.startWorkspace(any(), any(), any()) } answers {
+            thirdArg<(String) -> Unit>()("\u001B[92mProvisioning workspace...\u001B[0m")
             commandStarted.countDown()
             check(finishCommand.await(5, TimeUnit.SECONDS))
             ""
@@ -337,11 +338,11 @@ class CoderRemoteEnvironmentTest {
         assertTrue(commandStarted.await(5, TimeUnit.SECONDS))
         val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertTrue(progress.indeterminate)
-        assertSame(fixture.localizedStrings.getValue("Starting workspace…"), progress.description)
+        assertSame(fixture.localizedStrings.getValue("Provisioning workspace..."), progress.description)
 
         finishCommand.countDown()
         advanceUntilIdle()
-        verify(exactly = 1) { fixture.cli.startWorkspace(any()) }
+        verify(exactly = 1) { fixture.cli.startWorkspace(any(), any(), any()) }
     }
 
     @Test
@@ -408,6 +409,9 @@ class CoderRemoteEnvironmentTest {
         val i18n = mockk<LocalizableStringFactory>(relaxed = true)
         val localizedStrings = mutableMapOf<String, LocalizableString>()
         every { i18n.ptrl(any<String>()) } answers {
+            localizedStrings.getOrPut(firstArg()) { mockk(relaxed = true) }
+        }
+        every { i18n.pnotr(any<String>()) } answers {
             localizedStrings.getOrPut(firstArg()) { mockk(relaxed = true) }
         }
         val coderLogger = CoderLogger(logger, mockk<ToolboxUi>(relaxed = true), scope, i18n)

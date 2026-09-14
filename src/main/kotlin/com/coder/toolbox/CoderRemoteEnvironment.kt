@@ -48,6 +48,9 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 private val POLL_INTERVAL = 5.seconds
+private val ANSI_ESCAPE_SEQUENCE = Regex("\u001B\\[[0-?]*[ -/]*[@-~]")
+
+private fun String.stripAnsiEscapeSequences(): String = replace(ANSI_ESCAPE_SEQUENCE, "")
 
 private fun environmentId(workspace: Workspace, agent: WorkspaceAgent?): String =
     agent?.let { "${workspace.name}.${it.name}" } ?: workspace.name
@@ -112,6 +115,15 @@ class CoderRemoteEnvironment(
         }
     }
 
+    private fun showCliProgress(cliOutput: String) {
+        val progressMessage = cliOutput.stripAnsiEscapeSequences().trim()
+        if (progressMessage.isEmpty()) return
+        description.value = EnvironmentDescription.Progress(
+            context.i18n.pnotr(progressMessage),
+            indeterminate = true,
+        )
+    }
+
     private fun refreshAvailableActions() {
         val actions = mutableListOf<ActionDescription>()
         context.logger.debug("Refreshing available actions for workspace $id with status: $environmentStatus")
@@ -169,7 +181,10 @@ class CoderRemoteEnvironment(
                         var commandSucceeded = false
                         try {
                             withContext(Dispatchers.IO) {
-                                cli.startWorkspace(WorkspaceAddress.from(workspace))
+                                cli.startWorkspace(
+                                    WorkspaceAddress.from(workspace),
+                                    showTextProgress = ::showCliProgress,
+                                )
                             }
                             commandSucceeded = true
                             workspaceRefreshTrigger.trySend(true)
