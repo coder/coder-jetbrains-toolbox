@@ -10,6 +10,7 @@ import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.NetworkMetrics
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
 import com.coder.toolbox.util.OS
@@ -62,6 +63,22 @@ private fun OS?.displayName(): String = when (this) {
     null -> "unknown-OS"
 }
 
+private fun WorkspaceAndAgentStatus.toEnvironmentDescription(
+    context: CoderToolboxContext,
+): EnvironmentDescription {
+    val buildStatus = workspace.latestBuild.status
+    return when (buildStatus) {
+        WorkspaceStatus.PENDING,
+        WorkspaceStatus.STARTING,
+        WorkspaceStatus.STOPPING -> EnvironmentDescription.Progress(
+            context.i18n.pnotr("Building ${workspace.name} (${buildStatus.name.lowercase()})…"),
+            indeterminate = true,
+        )
+
+        else -> EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName))
+    }
+}
+
 /**
  * Represents a workspace, or a workspace and agent combination when an agent is available.
  *
@@ -84,7 +101,7 @@ class CoderRemoteEnvironment(
     override val state: MutableStateFlow<RemoteEnvironmentState> =
         MutableStateFlow(environmentStatus.toRemoteEnvironmentState(context))
     override val description: MutableStateFlow<EnvironmentDescription> =
-        MutableStateFlow(EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName)))
+        MutableStateFlow(environmentStatus.toEnvironmentDescription(context))
     override val additionalEnvironmentInformation: MutableMap<LocalizableString, String> = mutableMapOf()
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(emptyList())
 
@@ -106,12 +123,11 @@ class CoderRemoteEnvironment(
         agent?.let { SessionIdRegistry.findSession(workspace.name, it.name) }
 
     private suspend fun <T> withProgress(message: String, action: suspend () -> T): T {
-        val previousDescription = description.value
         description.value = EnvironmentDescription.Progress(context.i18n.ptrl(message), indeterminate = true)
         return try {
             action()
         } finally {
-            description.value = previousDescription
+            description.value = environmentStatus.toEnvironmentDescription(context)
         }
     }
 
@@ -218,6 +234,7 @@ class CoderRemoteEnvironment(
                         context.logger.debug(currentSessionId(), "Stopping $id...")
                         val build = client.stopWorkspace(workspace)
                         update(workspace.copy(latestBuild = build), agent)
+                        workspaceRefreshTrigger.trySend(true)
                     }
                 }.withCurrentSessionId(::currentSessionId)
             )
@@ -422,6 +439,9 @@ class CoderRemoteEnvironment(
         name = environmentId(workspace, agent)
         state.update {
             environmentStatus.toRemoteEnvironmentState(context)
+        }
+        description.update {
+            environmentStatus.toEnvironmentDescription(context)
         }
         val message =
             "Overall status for workspace $id changed from ${previousEnvironmentStatus.label} " +

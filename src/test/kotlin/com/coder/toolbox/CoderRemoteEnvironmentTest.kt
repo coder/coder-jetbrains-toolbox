@@ -347,15 +347,14 @@ class CoderRemoteEnvironmentTest {
 
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun `REST workspace action shows progress until the request finishes`() = runTest {
+    fun `update and restart shows request progress followed by build progress`() = runTest {
         val fixture = fixture(this, outdated = true)
-        val initialDescription = fixture.environment.description.value
         val requestStarted = CompletableDeferred<Unit>()
         val finishRequest = CompletableDeferred<Unit>()
         coEvery { fixture.client.updateWorkspace(any()) } coAnswers {
             requestStarted.complete(Unit)
             finishRequest.await()
-            fixture.workspace.latestBuild
+            fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STARTING)
         }
 
         fixture.action("Update and restart").run()
@@ -368,7 +367,86 @@ class CoderRemoteEnvironmentTest {
 
         finishRequest.complete(Unit)
         advanceUntilIdle()
-        assertSame(initialDescription, fixture.environment.description.value)
+        val buildProgress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertTrue(buildProgress.indeterminate)
+        assertSame(
+            fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (starting)…"),
+            buildProgress.description,
+        )
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `update and start keeps showing progress after the request finishes`() = runTest {
+        val fixture = fixture(this, workspaceStatus = WorkspaceStatus.STOPPED, outdated = true)
+        coEvery { fixture.client.updateWorkspace(any()) } returns
+            fixture.workspace.latestBuild.copy(status = WorkspaceStatus.PENDING)
+
+        fixture.action("Update and start").run()
+        advanceUntilIdle()
+
+        val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertTrue(progress.indeterminate)
+        assertSame(
+            fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (pending)…"),
+            progress.description,
+        )
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `stop keeps showing progress after the request finishes`() = runTest {
+        val fixture = fixture(this)
+        coEvery { fixture.client.stopWorkspace(any()) } returns
+            fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)
+
+        fixture.action("Stop").run()
+        advanceUntilIdle()
+
+        val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertTrue(progress.indeterminate)
+        assertSame(
+            fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (stopping)…"),
+            progress.description,
+        )
+    }
+
+    @Test
+    fun `polled build statuses update progress until the build finishes`() = runTest {
+        val fixture = fixture(backgroundScope, workspaceStatus = WorkspaceStatus.PENDING)
+
+        val queued = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(
+            fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (pending)…"),
+            queued.description,
+        )
+
+        val startingWorkspace = fixture.workspace.copy(
+            latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STARTING),
+        )
+        fixture.environment.update(startingWorkspace, null)
+        val starting = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(
+            fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (starting)…"),
+            starting.description,
+        )
+
+        val stoppingWorkspace = fixture.workspace.copy(
+            latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING),
+        )
+        fixture.environment.update(stoppingWorkspace, null)
+        val stopping = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(
+            fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (stopping)…"),
+            stopping.description,
+        )
+
+        val stoppedWorkspace = fixture.workspace.copy(
+            latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPED),
+        )
+        fixture.environment.update(stoppedWorkspace, null)
+        val finished = assertIs<EnvironmentDescription.General>(fixture.environment.description.value)
+        assertSame(fixture.localizedStrings.getValue(fixture.workspace.templateDisplayName), finished.description)
     }
 
     @Test
