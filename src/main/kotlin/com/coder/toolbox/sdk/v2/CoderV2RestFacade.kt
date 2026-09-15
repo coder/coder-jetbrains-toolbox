@@ -3,6 +3,7 @@ package com.coder.toolbox.sdk.v2
 import com.coder.toolbox.sdk.v2.models.Appearance
 import com.coder.toolbox.sdk.v2.models.BuildInfo
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
+import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
@@ -56,6 +57,12 @@ interface CoderV2RestFacade {
         @Path("workspaceID") workspaceID: UUID,
         @Body createWorkspaceBuildRequest: CreateWorkspaceBuildRequest,
     ): Response<WorkspaceBuild>
+
+    /** Retrieves the provisioner logs for a workspace build. */
+    @GET("api/v2/workspacebuilds/{workspaceBuildID}/logs")
+    suspend fun workspaceBuildLogs(
+        @Path("workspaceBuildID") workspaceBuildID: UUID,
+    ): Response<List<ProvisionerJobLog>>
 
     /**
      * Retrieves all templates the authenticated user can access.

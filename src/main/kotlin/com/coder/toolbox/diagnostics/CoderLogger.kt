@@ -59,6 +59,10 @@ class CoderLogger(
         delegate.warn(withSessionId(sessionId, message))
     }
 
+    inline fun warn(sessionId: SessionId?, exception: Throwable, message: String) {
+        delegate.warn(exception, withSessionId(sessionId, message))
+    }
+
     inline fun warn(sessionIds: Set<SessionId>, exception: Throwable, message: String) {
         sessionIds.onceOrForEach { delegate.warn(exception, withSessionId(it, message)) }
     }

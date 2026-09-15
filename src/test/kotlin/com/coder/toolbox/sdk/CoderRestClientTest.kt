@@ -8,6 +8,7 @@ import com.coder.toolbox.sdk.v2.models.Appearance
 import com.coder.toolbox.sdk.v2.models.BuildInfo
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
 import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
+import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Response
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
@@ -58,6 +59,7 @@ import java.net.SocketAddress
 import java.net.URI
 import java.net.URL
 import java.nio.file.Path
+import java.time.Instant
 import java.util.UUID
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
@@ -488,6 +490,40 @@ class CoderRestClientTest {
             )
         }
 
+        srv.stop(0)
+    }
+
+    @Test
+    fun `workspace build logs request returns entries`() {
+        val buildID = UUID.randomUUID()
+        val logs = listOf(
+            ProvisionerJobLog(
+                id = 43,
+                createdAt = Instant.parse("2026-09-14T12:00:00Z"),
+                source = "provisioner",
+                level = "info",
+                stage = "Planning",
+                output = "Planning workspace resources",
+            ),
+        )
+        val type = Types.newParameterizedType(List::class.java, ProvisionerJobLog::class.java)
+        val body = moshi.adapter<List<ProvisionerJobLog>>(type).toJson(logs).toByteArray()
+        val queries = mutableListOf<String?>()
+        val (srv, url) = mockServer()
+        val client = CoderRestClient(context, URL(url), "token")
+        srv.createContext(
+            "/api/v2/workspacebuilds/$buildID/logs",
+            BaseHttpHandler("GET") { exchange ->
+                queries.add(exchange.requestURI.rawQuery)
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
+                exchange.responseBody.write(body)
+            },
+        )
+
+        val returnedLogs = runBlocking { client.workspaceBuildLogs(buildID) }
+
+        assertEquals(logs, returnedLogs)
+        assertEquals(listOf<String?>(null), queries)
         srv.stop(0)
     }
 

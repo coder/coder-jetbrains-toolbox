@@ -4,6 +4,7 @@ import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
+import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
@@ -23,6 +24,7 @@ import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.Called
 import io.mockk.clearMocks
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -34,6 +36,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -380,7 +383,7 @@ class CoderRemoteEnvironmentTest {
     fun `update and start keeps showing progress after the request finishes`() = runTest {
         val fixture = fixture(this, workspaceStatus = WorkspaceStatus.STOPPED, outdated = true)
         coEvery { fixture.client.updateWorkspace(any()) } returns
-            fixture.workspace.latestBuild.copy(status = WorkspaceStatus.PENDING)
+                fixture.workspace.latestBuild.copy(status = WorkspaceStatus.PENDING)
 
         fixture.action("Update and start").run()
         advanceUntilIdle()
@@ -398,7 +401,7 @@ class CoderRemoteEnvironmentTest {
     fun `stop keeps showing progress after the request finishes`() = runTest {
         val fixture = fixture(this)
         coEvery { fixture.client.stopWorkspace(any()) } returns
-            fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)
+                fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)
 
         fixture.action("Stop").run()
         advanceUntilIdle()
@@ -447,6 +450,80 @@ class CoderRemoteEnvironmentTest {
         fixture.environment.update(stoppedWorkspace, null)
         val finished = assertIs<EnvironmentDescription.General>(fixture.environment.description.value)
         assertSame(fixture.localizedStrings.getValue(fixture.workspace.templateDisplayName), finished.description)
+    }
+
+    @Test
+    fun `workspace poll does not request logs for a completed build`() = runTest {
+        val fixture = fixture(backgroundScope)
+
+        fixture.environment.update(fixture.workspace, fixture.agent)
+
+        coVerify(exactly = 0) { fixture.client.workspaceBuildLogs(any()) }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `workspace poll shows the latest log from an active build`() = runTest {
+        val fixture = fixture(this, workspaceStatus = WorkspaceStatus.PENDING)
+        val build = fixture.workspace.latestBuild
+        coEvery { fixture.client.workspaceBuildLogs(build.id) } returnsMany listOf(
+            listOf(
+                buildLog(1, "Preparing workspace"),
+                buildLog(2, "\u001B[92mApplying workspace resources\u001B[0m"),
+            ),
+            listOf(
+                buildLog(1, "Preparing workspace"),
+                buildLog(2, "Applying workspace resources"),
+                buildLog(3, "Starting workspace applications"),
+            ),
+        )
+
+        val workspaceSnapshot = fixture.workspace.copy(latestBuild = build)
+
+        fixture.environment.update(workspaceSnapshot, null)
+        val firstProgress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(
+            fixture.localizedStrings.getValue("Applying workspace resources"),
+            firstProgress.description,
+        )
+
+        fixture.environment.update(workspaceSnapshot, null)
+        val nextProgress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(
+            fixture.localizedStrings.getValue("Starting workspace applications"),
+            nextProgress.description,
+        )
+
+        fixture.environment.update(
+            workspaceSnapshot.copy(latestBuild = build.copy(status = WorkspaceStatus.RUNNING)),
+            fixture.agent,
+        )
+        assertIs<EnvironmentDescription.General>(fixture.environment.description.value)
+        coVerify(exactly = 2) { fixture.client.workspaceBuildLogs(build.id) }
+    }
+
+    @Test
+    fun `build progress failure includes the current session id`() = runTest {
+        val fixture = fixture(backgroundScope)
+
+        try {
+            fixture.environment.beforeConnection()
+            val sessionId = assertNotNull(fixture.currentSessionId())
+            val build = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)
+            val failure = IllegalStateException("logs unavailable")
+            coEvery { fixture.client.workspaceBuildLogs(build.id) } throws failure
+
+            fixture.environment.update(fixture.workspace.copy(latestBuild = build), fixture.agent)
+
+            verify(exactly = 1) {
+                fixture.logger.warn(
+                    failure,
+                    "client_session_id=$sessionId Failed to retrieve progress for workspace build ${build.id}",
+                )
+            }
+        } finally {
+            fixture.removeSession()
+        }
     }
 
     @Test
@@ -536,6 +613,15 @@ class CoderRemoteEnvironmentTest {
 
     private fun hasSessionId(message: String, sessionId: SessionId): Boolean =
         message.startsWith("client_session_id=$sessionId ")
+
+    private fun buildLog(id: Long, output: String) = ProvisionerJobLog(
+        id = id,
+        createdAt = Instant.EPOCH,
+        source = "provisioner",
+        level = "info",
+        stage = "Building",
+        output = output,
+    )
 
     private data class Fixture(
         val environment: CoderRemoteEnvironment,

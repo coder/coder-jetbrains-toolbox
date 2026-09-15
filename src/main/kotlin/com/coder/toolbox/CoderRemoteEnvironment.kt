@@ -45,11 +45,17 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 private val POLL_INTERVAL = 5.seconds
 private val ANSI_ESCAPE_SEQUENCE = Regex("\u001B\\[[0-?]*[ -/]*[@-~]")
+private val IN_PROGRESS_BUILD_STATUSES = setOf(
+    WorkspaceStatus.PENDING,
+    WorkspaceStatus.STARTING,
+    WorkspaceStatus.STOPPING,
+)
 
 private fun String.stripAnsiEscapeSequences(): String = replace(ANSI_ESCAPE_SEQUENCE, "")
 
@@ -67,15 +73,13 @@ private fun WorkspaceAndAgentStatus.toEnvironmentDescription(
     context: CoderToolboxContext,
 ): EnvironmentDescription {
     val buildStatus = workspace.latestBuild.status
-    return when (buildStatus) {
-        WorkspaceStatus.PENDING,
-        WorkspaceStatus.STARTING,
-        WorkspaceStatus.STOPPING -> EnvironmentDescription.Progress(
+    return if (buildStatus in IN_PROGRESS_BUILD_STATUSES) {
+        EnvironmentDescription.Progress(
             context.i18n.pnotr("Building ${workspace.name} (${buildStatus.name.lowercase()})…"),
             indeterminate = true,
         )
-
-        else -> EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName))
+    } else {
+        EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName))
     }
 }
 
@@ -131,8 +135,8 @@ class CoderRemoteEnvironment(
         }
     }
 
-    private fun showCliProgress(cliOutput: String) {
-        val progressMessage = cliOutput.stripAnsiEscapeSequences().trim()
+    private fun showProgress(output: String) {
+        val progressMessage = output.stripAnsiEscapeSequences().trim()
         if (progressMessage.isEmpty()) return
         description.value = EnvironmentDescription.Progress(
             context.i18n.pnotr(progressMessage),
@@ -181,7 +185,7 @@ class CoderRemoteEnvironment(
                     withProgress("Updating and starting workspace…") {
                         context.logger.debug("Updating and starting $id...")
                         val build = client.updateWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
+                        applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
                         workspaceRefreshTrigger.trySend(true)
                     }
                 })
@@ -199,7 +203,7 @@ class CoderRemoteEnvironment(
                             withContext(Dispatchers.IO) {
                                 cli.startWorkspace(
                                     WorkspaceAddress.from(workspace),
-                                    showTextProgress = ::showCliProgress,
+                                    showTextProgress = ::showProgress,
                                 )
                             }
                             commandSucceeded = true
@@ -221,7 +225,7 @@ class CoderRemoteEnvironment(
                         withProgress("Updating and restarting workspace…") {
                             context.logger.debug(currentSessionId(), "Updating and re-starting $id...")
                             val build = client.updateWorkspace(workspace)
-                            update(workspace.copy(latestBuild = build), agent)
+                            applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
                             workspaceRefreshTrigger.trySend(true)
                         }
                     }.withCurrentSessionId(::currentSessionId)
@@ -233,7 +237,7 @@ class CoderRemoteEnvironment(
                         tryStopSshConnection()
                         context.logger.debug(currentSessionId(), "Stopping $id...")
                         val build = client.stopWorkspace(workspace)
-                        update(workspace.copy(latestBuild = build), agent)
+                        applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
                         workspaceRefreshTrigger.trySend(true)
                     }
                 }.withCurrentSessionId(::currentSessionId)
@@ -406,7 +410,12 @@ class CoderRemoteEnvironment(
     /**
      * Update the workspace/agent status to the listeners, if it has changed.
      */
-    fun update(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
+    suspend fun update(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
+        applyWorkspaceSnapshot(newWorkspace, newAgent)
+        updateBuildProgress(newWorkspace)
+    }
+
+    private fun applyWorkspaceSnapshot(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
         if (workspace.latestBuild == newWorkspace.latestBuild) {
             return
         }
@@ -423,6 +432,23 @@ class CoderRemoteEnvironment(
         refreshAvailableActions()
     }
 
+    private suspend fun updateBuildProgress(newWorkspace: Workspace) {
+        val build = newWorkspace.latestBuild
+        if (build.status !in IN_PROGRESS_BUILD_STATUSES) return
+        val latestLog = try {
+            client.workspaceBuildLogs(build.id).lastOrNull()
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            context.logger.warn(
+                currentSessionId(),
+                ex,
+                "Failed to retrieve progress for workspace build ${build.id}",
+            )
+            return
+        }
+        latestLog?.output?.let(::showProgress)
+    }
 
     private fun updateStatus(
         newState: WorkspaceAndAgentStatus,
