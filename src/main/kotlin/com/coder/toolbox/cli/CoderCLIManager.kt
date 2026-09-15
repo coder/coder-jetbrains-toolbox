@@ -274,7 +274,11 @@ class CoderCLIManager(
     /**
      * Start a workspace. Throws if the command execution fails.
      */
-    internal fun startWorkspace(wsAddress: WorkspaceAddress, feats: Features = features): String {
+    internal fun startWorkspace(
+        wsAddress: WorkspaceAddress,
+        feats: Features = features,
+        showTextProgress: (String) -> Unit = {},
+    ): String {
         val args = mutableListOf(
             "--global-config",
             coderConfigPath.toString(),
@@ -288,7 +292,7 @@ class CoderCLIManager(
         args.add("--")
         args.add(wsAddress.ownerAndWsName)
 
-        return exec(*args.toTypedArray())
+        return exec(*args.toTypedArray(), showTextProgress = showTextProgress)
     }
 
     /**
@@ -571,12 +575,22 @@ class CoderCLIManager(
         return matches
     }
 
-    private fun exec(vararg args: String): String {
-        val stdout =
+    private fun exec(
+        vararg args: String,
+        showTextProgress: ((String) -> Unit)? = null,
+    ): String {
+        val processExecutor =
             ProcessExecutor()
                 .command(localBinaryPath.toString(), *args)
                 .environment("CODER_HEADER_COMMAND", context.settingsStore.headerCommand)
                 .exitValues(0)
+
+        showTextProgress?.let { reportProgress ->
+            processExecutor.redirectOutput(reportProgress::invoke)
+        }
+
+        val stdout =
+            processExecutor
                 .readOutput(true)
                 .execute()
                 .outputUTF8()

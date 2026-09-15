@@ -818,6 +818,52 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
+    fun `start workspace reports CLI output as text progress`() {
+        val testDirectory = tmpdir.resolve("start-progress-${UUID.randomUUID()}")
+        val binaryPath = if (getOS() == OS.WINDOWS) {
+            testDirectory.resolve("coder.bat")
+        } else {
+            testDirectory.resolve("coder")
+        }
+        binaryPath.parent.toFile().mkdirs()
+        binaryPath.toFile().writeText(
+            mkbin(
+                listOf(
+                    echo("Queued"),
+                    echo("Waiting for Git authentication..."),
+                ).joinToString(System.lineSeparator())
+            )
+        )
+        if (getOS() != OS.WINDOWS) {
+            binaryPath.toFile().setExecutable(true)
+        }
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binaryPath.toString(),
+                ENABLE_DOWNLOADS to "false",
+            ),
+            Environment(),
+            context.logger,
+        )
+        val ccm = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            URI("https://test.coder.invalid").toURL(),
+        )
+        val workspace = workspace("start-progress")
+        val progressMessages = mutableListOf<String>()
+
+        val output = ccm.startWorkspace(
+            WorkspaceAddress.from(workspace),
+            Features(),
+            progressMessages::add,
+        )
+
+        assertEquals(listOf("Queued", "Waiting for Git authentication..."), progressMessages)
+        assertContains(output, "Queued")
+        assertContains(output, "Waiting for Git authentication...")
+    }
+
+    @Test
     fun testMalformedConfig() {
         val tests =
             listOf(

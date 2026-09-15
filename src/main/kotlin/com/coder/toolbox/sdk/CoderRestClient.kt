@@ -18,6 +18,7 @@ import com.coder.toolbox.sdk.v2.models.BuildInfo
 import com.coder.toolbox.sdk.v2.models.CoderIdentifierPolicy
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
 import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
+import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
@@ -315,6 +316,25 @@ open class CoderRestClient(
         return requireNotNull(buildResponse.body()) {
             "Successful response returned null body or workspace build"
         }.withoutUnsafeAgents()
+    }
+
+    /** Retrieves the provisioner logs for [workspaceBuildID]. */
+    suspend fun workspaceBuildLogs(workspaceBuildID: UUID): List<ProvisionerJobLog> {
+        val logsResponse = callWithRetry {
+            retroRestClient.workspaceBuildLogs(workspaceBuildID)
+        }
+        if (!logsResponse.isSuccessful) {
+            throw APIResponseException(
+                "retrieve logs for workspace build $workspaceBuildID",
+                url,
+                logsResponse.code(),
+                logsResponse.parseErrorBody(moshi),
+            )
+        }
+
+        return requireNotNull(logsResponse.body()) {
+            "Successful response returned null body for workspace build logs"
+        }
     }
 
     /**

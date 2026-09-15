@@ -717,6 +717,7 @@ class CoderRemoteProviderTest {
         resources: List<WorkspaceResource>
     ): Workspace {
         val latestBuild = mockk<WorkspaceBuild> {
+            every { this@mockk.id } returns UUID.randomUUID()
             every { this@mockk.status } returns status
             every { this@mockk.resources } returns resources
         }
