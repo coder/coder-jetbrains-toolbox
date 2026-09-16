@@ -23,6 +23,7 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import org.zeroturnaround.exec.ProcessExecutor
 import retrofit2.Retrofit
@@ -31,6 +32,8 @@ import java.io.FileNotFoundException
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
  * Version output from the CLI's version command.
@@ -583,6 +586,47 @@ class CoderCLIManager(
         val redactedArgs = listOf(*args).joinToString(" ").replace(tokenRegex, "--token <redacted>")
         context.logger.info("`$localBinaryPath $redactedArgs`: $stdout")
         return stdout
+    }
+
+    /** Generates a support bundle for the workspace and optional agent, saving it to [outputFile]. */
+    internal suspend fun supportBundle(address: WorkspaceAddress, outputFile: Path) {
+        val command = listOfNotNull(
+            localBinaryPath.toString(),
+            "--global-config", coderConfigPath.toString(),
+            "--url", deploymentURL.toString(),
+            "support", "bundle", "--yes", "--output-file", outputFile.toAbsolutePath().toString(),
+            "--", address.ownerAndWsName, address.agentName,
+        )
+        runSupportBundleProcess(command)
+        check(Files.isRegularFile(outputFile) && Files.size(outputFile) > 0) {
+            "Coder CLI did not produce a support bundle"
+        }
+    }
+
+    /** Runs the support-bundle command with a timeout and terminates it on cancellation. */
+    internal suspend fun runSupportBundleProcess(
+        command: List<String>,
+        timeoutSeconds: Long = 120,
+    ) = runInterruptible(Dispatchers.IO) {
+        val builder = ProcessBuilder(command)
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+        // An inherited token must not override the selected deployment's stored login.
+        builder.environment().remove("CODER_SESSION_TOKEN")
+        builder.environment().remove("CODER_HEADER_COMMAND")
+        context.settingsStore.headerCommand?.let { builder.environment()["CODER_HEADER_COMMAND"] = it }
+        val process = builder.start()
+        try {
+            process.outputStream.close()
+            if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
+                throw TimeoutException("Coder support bundle collection timed out")
+            }
+            check(process.exitValue() == 0) {
+                "Coder support bundle failed with exit code ${process.exitValue()}"
+            }
+        } finally {
+            if (process.isAlive) process.destroyForcibly()
+        }
     }
 
     val features: Features

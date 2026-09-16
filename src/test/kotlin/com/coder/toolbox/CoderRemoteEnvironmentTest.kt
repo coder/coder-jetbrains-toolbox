@@ -19,6 +19,8 @@ import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.Called
 import io.mockk.clearMocks
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -28,6 +30,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import java.nio.file.Files
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,6 +40,42 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CoderRemoteEnvironmentTest {
+    @Test
+    fun `diagnostic collector uses current workspace agent and CLI after refresh`() = runTest {
+        val fixture = fixture(backgroundScope)
+        val collector = fixture.environment.diagnosticInfoCollector
+        val refreshedCli = mockk<CoderCLIManager>(relaxed = true)
+        val updatedAgent = fixture.agent.copy(name = "updated-agent")
+        fixture.environment.update(
+            fixture.workspace.copy(latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)),
+            updatedAgent,
+        )
+        fixture.environment.updateClientAndCli(mockk(relaxed = true), refreshedCli)
+        val root = Files.createTempDirectory("coder-diagnostics-test")
+        try {
+            coEvery { refreshedCli.supportBundle(any(), any()) } answers {
+                Files.writeString(secondArg(), "bundle")
+                Unit
+            }
+            collector.collectAdditionalDiagnostics(root)
+            coVerify(exactly = 1) {
+                refreshedCli.supportBundle(
+                    match {
+                        it.ownerAndWsName == "${fixture.workspace.ownerName}/${fixture.workspace.name}" &&
+                                it.agentName == "updated-agent"
+                    },
+                    root.resolve("coder-support.zip"),
+                )
+            }
+            fixture.environment.update(fixture.workspace, null)
+            collector.collectAdditionalDiagnostics(root)
+            coVerify(exactly = 1) { refreshedCli.supportBundle(match { it.agentName == null }, any()) }
+        } finally {
+            root.toFile().deleteRecursively()
+            fixture.environment.dispose()
+        }
+    }
+
     @Test
     fun `auto-connect requests SSH while the environment is initialized`() = runTest {
         val fixture = fixture(backgroundScope, autoConnect = true)

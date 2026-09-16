@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- include a Coder support bundle for the selected workspace and agent only when using the environment's
+  _Collect logs_ action in Toolbox
+
 ### Changed
 
 - upgraded the Toolbox plugin API, dropping support for Toolbox versions older than 3.7.2
@@ -12,7 +17,8 @@
 
 - support for configuring the SSH config path, letting Toolbox manage a separate SSH config file instead of always
   writing to `~/.ssh/config`
-- the header command falls back to the `CODER_HEADER_COMMAND` environment variable when the setting is blank, matching the Coder CLI and the VS Code extension
+- the header command falls back to the `CODER_HEADER_COMMAND` environment variable when the setting is blank, matching
+  the Coder CLI and the VS Code extension
 
 ### Fixed
 
