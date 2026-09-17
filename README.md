@@ -386,8 +386,8 @@ in Coder or within the individual workspace view, under the option labeled _Coll
 ### Coder Support Bundles
 
 The plugin includes a Coder support bundle **only when you use the environment's _Collect logs_ action** in Toolbox.
-Open the action menu for the environment on Coder's Workspaces page or within its workspace view, then select
-_Collect logs_. The general **Settings > About > Collect logs and diagnostic data** action does not generate a
+Open the action menu for the environment on Coder's Workspaces page or within its workspace view, then select _Collect
+logs_. The general **Settings > About > Collect logs and diagnostic data** action does not generate a
 Coder support bundle.
 
 The plugin runs `coder support bundle` using the deployment's existing CLI login and targets the selected workspace
@@ -399,9 +399,9 @@ source, and agent diagnostics. Available information depends on your permissions
 Review the bundle before sharing, following
 [Coder's support-bundle guidance](https://coder.com/docs/support/support-bundle).
 
-Support bundles require a Coder CLI that supports `coder support bundle` (Coder 2.10 or newer). Collection has a
-two-minute timeout and stops if you cancel log collection. If the CLI is unavailable or unsupported, authentication
-or connectivity fails, or collection times out, the plugin removes any partial bundle and attempts to include
+Support bundles require a Coder CLI that supports `coder support bundle` (Coder 2.10 or newer). Collection runs until
+the CLI finishes or you cancel log collection. If the CLI is unavailable or unsupported, or authentication or
+connectivity fails, the plugin removes any partial bundle and attempts to include
 `coder-support-error.txt` instead. Toolbox's other diagnostics remain available.
 
 ### HTTP Request Logging

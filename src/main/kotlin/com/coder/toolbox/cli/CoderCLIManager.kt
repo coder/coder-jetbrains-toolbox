@@ -32,8 +32,6 @@ import java.io.FileNotFoundException
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 
 /**
  * Version output from the CLI's version command.
@@ -617,24 +615,18 @@ class CoderCLIManager(
         }
     }
 
-    /** Runs the support-bundle command with a timeout and terminates it on cancellation. */
+    /** Runs the support-bundle command and terminates it on cancellation. */
     internal suspend fun runSupportBundleProcess(
         command: List<String>,
-        timeoutSeconds: Long = 120,
     ) = runInterruptible(Dispatchers.IO) {
         val builder = ProcessBuilder(command)
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
-        // An inherited token must not override the selected deployment's stored login.
-        builder.environment().remove("CODER_SESSION_TOKEN")
-        builder.environment().remove("CODER_HEADER_COMMAND")
         context.settingsStore.headerCommand?.let { builder.environment()["CODER_HEADER_COMMAND"] = it }
         val process = builder.start()
         try {
             process.outputStream.close()
-            if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-                throw TimeoutException("Coder support bundle collection timed out")
-            }
+            process.waitFor()
             check(process.exitValue() == 0) {
                 "Coder support bundle failed with exit code ${process.exitValue()}"
             }

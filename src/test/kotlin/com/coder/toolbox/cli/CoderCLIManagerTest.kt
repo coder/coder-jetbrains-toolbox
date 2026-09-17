@@ -49,25 +49,6 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import java.net.HttpURLConnection
-import java.net.InetSocketAddress
-import java.net.Proxy
-import java.net.ProxySelector
-import java.net.URI
-import java.net.URL
-import java.nio.file.AccessDeniedException
-import java.nio.file.Files
-import java.nio.file.Path
-import java.util.UUID
-import java.util.concurrent.TimeoutException
-import kotlin.test.BeforeTest
-import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
-import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
@@ -83,6 +64,24 @@ import org.junit.jupiter.api.condition.OS.MAC
 import org.junit.jupiter.api.io.TempDir
 import org.zeroturnaround.exec.InvalidExitValueException
 import org.zeroturnaround.exec.ProcessInitException
+import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.URI
+import java.net.URL
+import java.nio.file.AccessDeniedException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.UUID
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 private const val VERSION_FOR_PROGRESS_REPORTING = "v2.13.1-devel+de07351b8"
 private val noOpTextProgress: (String) -> Unit = { _ -> }
@@ -114,24 +113,6 @@ internal class CoderCLIManagerTest {
         val process = awaitProcess()
         try {
             job.cancelAndJoin()
-            awaitExit(process)
-        } finally {
-            job.cancelAndJoin()
-            process.destroyForcibly()
-        }
-    }
-
-    @Test
-    @EnabledOnOs(LINUX, MAC)
-    fun `timeout terminates the running CLI`() = runBlocking {
-        val job = launch(Dispatchers.Default) {
-            assertFailsWith<TimeoutException> {
-                supportBundleCli.runSupportBundleProcess(waitingCommand(), timeoutSeconds = 1)
-            }
-        }
-        val process = awaitProcess()
-        try {
-            job.join()
             awaitExit(process)
         } finally {
             job.cancelAndJoin()
