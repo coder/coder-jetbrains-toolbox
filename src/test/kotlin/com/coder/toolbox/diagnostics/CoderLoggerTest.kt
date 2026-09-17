@@ -38,6 +38,7 @@ class CoderLoggerTest {
 
         logger.error(null, exception, "exception")
         logger.warn(null, "warning")
+        logger.warn(null, exception, "warning exception")
         logger.debug(null, "debug")
         logger.info(null, "info")
         logger.info(message = "named info")
@@ -45,6 +46,7 @@ class CoderLoggerTest {
 
         verify(exactly = 1) { delegate.error(exception, "exception") }
         verify(exactly = 1) { delegate.warn("warning") }
+        verify(exactly = 1) { delegate.warn(exception, "warning exception") }
         verify(exactly = 1) { delegate.debug("debug") }
         verify(exactly = 1) { delegate.info("info") }
         verify(exactly = 1) { delegate.info("named info") }
@@ -57,11 +59,13 @@ class CoderLoggerTest {
 
         logger.error(sessionId, exception, "exception")
         logger.warn(sessionId, "warning")
+        logger.warn(sessionId, exception, "warning exception")
         logger.debug(sessionId, "debug")
         logger.info(sessionId, "info")
 
         verify(exactly = 1) { delegate.error(exception, "$prefix exception") }
         verify(exactly = 1) { delegate.warn("$prefix warning") }
+        verify(exactly = 1) { delegate.warn(exception, "$prefix warning exception") }
         verify(exactly = 1) { delegate.debug("$prefix debug") }
         verify(exactly = 1) { delegate.info("$prefix info") }
     }
