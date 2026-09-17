@@ -50,9 +50,18 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.assertDoesNotThrow
+import org.junit.jupiter.api.condition.EnabledOnOs
+import org.junit.jupiter.api.condition.OS.LINUX
+import org.junit.jupiter.api.condition.OS.MAC
+import org.junit.jupiter.api.io.TempDir
 import org.zeroturnaround.exec.InvalidExitValueException
 import org.zeroturnaround.exec.ProcessInitException
 import java.net.HttpURLConnection
@@ -62,6 +71,7 @@ import java.net.ProxySelector
 import java.net.URI
 import java.net.URL
 import java.nio.file.AccessDeniedException
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
 import kotlin.test.BeforeTest
@@ -77,6 +87,96 @@ private const val VERSION_FOR_PROGRESS_REPORTING = "v2.13.1-devel+de07351b8"
 private val noOpTextProgress: (String) -> Unit = { _ -> }
 
 internal class CoderCLIManagerTest {
+    private val supportBundleCli get() = CoderCLIManager(context, URI("https://coder.example.test").toURL())
+
+    @TempDir
+    lateinit var supportBundleProcessRoot: Path
+
+    private fun waitingCommand(): List<String> = listOf(
+        "/bin/sh", "-c", "echo $$ > \"\$1\"; exec sleep 30", "test", supportBundleProcessRoot.resolve("pid").toString(),
+    )
+
+    private suspend fun awaitProcess(): ProcessHandle = withTimeout(5_000) {
+        val pidFile = supportBundleProcessRoot.resolve("pid")
+        while (!Files.exists(pidFile) || Files.size(pidFile) == 0L) delay(10)
+        ProcessHandle.of(Files.readString(pidFile).trim().toLong()).orElseThrow()
+    }
+
+    private suspend fun awaitExit(process: ProcessHandle) = withTimeout(5_000) {
+        while (process.isAlive) delay(10)
+    }
+
+    @Test
+    @EnabledOnOs(LINUX, MAC)
+    fun `cancellation terminates the running CLI`() = runBlocking {
+        val job = launch(Dispatchers.Default) { supportBundleCli.runSupportBundleProcess(waitingCommand()) }
+        val process = awaitProcess()
+        try {
+            job.cancelAndJoin()
+            awaitExit(process)
+        } finally {
+            job.cancelAndJoin()
+            process.destroyForcibly()
+        }
+    }
+
+    @Test
+    @EnabledOnOs(LINUX, MAC)
+    fun `unsupported CLI exit is reported`() = runBlocking<Unit> {
+        assertFailsWith<IllegalStateException> {
+            supportBundleCli.runSupportBundleProcess(listOf("/bin/sh", "-c", "exit 1"))
+        }
+    }
+
+    @Test
+    @EnabledOnOs(LINUX, MAC)
+    fun `support bundle scopes deployment workspace and optional agent without shell interpolation`() = runBlocking {
+        val root = java.nio.file.Files.createTempDirectory("coder bundle test")
+        val binary = root.resolve("coder")
+        binary.toFile().writeText(
+            """#!/bin/sh
+            |for arg in "${'$'}@"; do
+            |  if [ "${'$'}previous" = "--output-file" ]; then output="${'$'}arg"; fi
+            |  previous="${'$'}arg"
+            |done
+            |printf '%s\n' "${'$'}@" > "${'$'}output"
+            |printf '%s' "${'$'}CODER_HEADER_COMMAND" > "${'$'}output.header"
+            |""".trimMargin(),
+        )
+        binary.toFile().setExecutable(true)
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(
+                BINARY_DESTINATION to binary.toString(),
+                ENABLE_DOWNLOADS to "false",
+                DATA_DIRECTORY to root.toString(),
+                HEADER_COMMAND to "custom header",
+            ),
+            Environment(),
+            context.logger,
+        )
+        try {
+            val url = "https://coder.example.test".toURL()
+            val cli = CoderCLIManager(context.copy(settingsStore = settings), url)
+            val ws = workspace("diagnostic-workspace", agents = mapOf("main" to UUID.randomUUID().toString()))
+            val agent = ws.latestBuild.resources.flatMap { it.agents.orEmpty() }.first()
+            for (selectedAgent in listOf(agent, null)) {
+                val output = root.resolve("bundle with spaces.zip")
+                cli.supportBundle(WorkspaceAddress.from(ws, selectedAgent), output)
+                assertEquals(
+                    listOfNotNull(
+                        "--global-config", cli.coderConfigPath.toString(), "--url", url.toString(),
+                        "support", "bundle", "--yes", "--output-file", output.toString(),
+                        "--", "${ws.ownerName}/${ws.name}", selectedAgent?.name,
+                    ),
+                    output.toFile().readLines(),
+                )
+                assertEquals("custom header", root.resolve("bundle with spaces.zip.header").toFile().readText())
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     private val ui = mockk<ToolboxUi>(relaxed = true)
     private val underlyingLogger = mockk<Logger>(relaxed = true)
     private val context = CoderToolboxContext(

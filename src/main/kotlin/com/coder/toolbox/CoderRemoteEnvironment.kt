@@ -4,6 +4,7 @@ import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.SshCommandProcessHandle
 import com.coder.toolbox.cli.WorkspaceAddress
+import com.coder.toolbox.diagnostics.CoderSupportBundleCollector
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
@@ -25,6 +26,7 @@ import com.jetbrains.toolbox.api.remoteDev.AfterDisconnectHook
 import com.jetbrains.toolbox.api.remoteDev.BeforeConnectionHook
 import com.jetbrains.toolbox.api.remoteDev.EnvironmentVisibilityState
 import com.jetbrains.toolbox.api.remoteDev.RemoteProviderEnvironment
+import com.jetbrains.toolbox.api.remoteDev.deploy.DiagnosticInfoCollector
 import com.jetbrains.toolbox.api.remoteDev.environments.EnvironmentContentsView
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
 import com.jetbrains.toolbox.api.remoteDev.states.RemoteEnvironmentState
@@ -125,6 +127,11 @@ class CoderRemoteEnvironment(
 
     internal fun currentSessionId(): SessionId? =
         agent?.let { SessionIdRegistry.findSession(workspace.name, it.name) }
+
+    override val diagnosticInfoCollector: DiagnosticInfoCollector =
+        CoderSupportBundleCollector(context.logger) { outputFile ->
+            cli.supportBundle(WorkspaceAddress.from(workspace, agent), outputFile)
+        }
 
     private suspend fun <T> withProgress(message: String, action: suspend () -> T): T {
         description.value = EnvironmentDescription.Progress(context.i18n.ptrl(message), indeterminate = true)

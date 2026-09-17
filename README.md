@@ -383,6 +383,27 @@ About > Show log files.
 Alternatively, you can generate a ZIP file using the Workspace action menu, available either on the main Workspaces page
 in Coder or within the individual workspace view, under the option labeled _Collect logs_.
 
+### Coder Support Bundles
+
+The plugin includes a Coder support bundle **only when you use the environment's _Collect logs_ action** in Toolbox.
+Open the action menu for the environment on Coder's Workspaces page or within its workspace view, then select _Collect
+logs_. The general **Settings > About > Collect logs and diagnostic data** action does not generate a
+Coder support bundle.
+
+The plugin runs `coder support bundle` using the deployment's existing CLI login and targets the selected workspace
+and its agent, when available. It places `coder-support.zip` inside the environment's diagnostic directory in the
+Toolbox log archive. Collection does not start a stopped workspace.
+
+The bundle can contain deployment health and configuration, network diagnostics, workspace build logs, template
+source, and agent diagnostics. Available information depends on your permissions and workspace connectivity.
+Review the bundle before sharing, following
+[Coder's support-bundle guidance](https://coder.com/docs/support/support-bundle).
+
+Support bundles require a Coder CLI that supports `coder support bundle` (Coder 2.10 or newer). Collection runs until
+the CLI finishes or you cancel log collection. If the CLI is unavailable or unsupported, or authentication or
+connectivity fails, the plugin removes any partial bundle and attempts to include
+`coder-support-error.txt` instead. Toolbox's other diagnostics remain available.
+
 ### HTTP Request Logging
 
 The Coder Toolbox plugin includes comprehensive HTTP request logging capabilities to help diagnose API communication
