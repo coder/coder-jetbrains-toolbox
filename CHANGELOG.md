@@ -10,6 +10,8 @@
 ### Changed
 
 - upgraded the Toolbox plugin API, dropping support for Toolbox versions older than 3.7.2
+- display live workspace start output from the Coder CLI and poll build status and provisioner output while updating,
+  restarting, or stopping workspaces
 
 ## 0.9.4 - 2026-08-26
 
