@@ -1,6 +1,7 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.diagnostics.CoderProviderLogCollector
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.util.CUSTOM_WORKSPACE_FILTER_NAME
 import com.coder.toolbox.util.DEFAULT_WORKSPACE_FILTER_QUERY
@@ -9,13 +10,17 @@ import com.coder.toolbox.util.parseFilterQuery
 import com.coder.toolbox.util.presetNameForQuery
 import com.coder.toolbox.util.withFilterTerm
 import com.jetbrains.toolbox.api.localization.LocalizableString
+import com.jetbrains.toolbox.api.ui.components.CallToActionField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField
 import com.jetbrains.toolbox.api.ui.components.FieldModifier
+import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
 import com.jetbrains.toolbox.api.ui.components.UiField
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -108,8 +113,58 @@ class NewEnvironmentPage(
     /** The current filter query available to outside components*/
     val workspaceSearchQuery: StateFlow<String?> = mutableWorkspaceSearchQuery
 
-    override val fields: StateFlow<List<UiField>> =
-        MutableStateFlow(listOf(workspaceSearchField, filterControlsGroup))
+    private val filterFields = listOf(workspaceSearchField, filterControlsGroup)
+    override val fields: MutableStateFlow<List<UiField>> = MutableStateFlow(filterFields)
+    override val isCancellable = MutableStateFlow(false)
+    private var collectorJob: Job? = null
+
+    /** Displays diagnostic collection in the expanded header while preserving the workspace filters. */
+    @Suppress("TooGenericExceptionCaught")
+    internal fun collectDiagnostics(collector: CoderProviderLogCollector) {
+        if (collectorJob?.isCompleted == false) return
+        val status = LabelField(context.i18n.ptrl("Preparing log collection…"))
+        val detail = LabelField(context.i18n.pnotr(""))
+        val cancel = CallToActionField(context.i18n.pnotr(""), Action(context, "Cancel") {
+            cancelDiagnosticCollection()
+        })
+        fields.value = listOf(status, detail, cancel)
+        isBusy.value = true
+        isCancellable.value = true
+        var result: UiField? = null
+        val job = context.cs.launch(CoroutineName("Collect Coder diagnostics"), start = CoroutineStart.LAZY) {
+            try {
+                val archive = collector.collect {
+                    status.textState.value = context.i18n.ptrl(it.message)
+                    detail.textState.value = context.i18n.pnotr(it.detail)
+                }
+                context.desktop.openPath(archive)
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                context.logger.warn(ex, "Could not collect Coder provider logs")
+                result = LabelField(
+                    context.i18n.ptrl(
+                        "Could not create the log archive. Check the Toolbox logs for details."
+                    )
+                )
+            }
+        }
+        collectorJob = job
+        job.invokeOnCompletion {
+            fields.value = listOfNotNull(result) + filterFields
+            isBusy.value = false
+            isCancellable.value = false
+        }
+        job.start()
+    }
+
+    internal fun cancelDiagnosticCollection() {
+        collectorJob?.cancel()
+    }
+
+    override fun cancel() {
+        cancelDiagnosticCollection()
+    }
 
     override fun beforeShow() {
         syncJob?.cancel()

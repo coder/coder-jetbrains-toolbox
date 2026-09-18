@@ -27,7 +27,6 @@ import com.coder.toolbox.util.withPath
 import com.coder.toolbox.util.workspace
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderDelimiter
-import com.coder.toolbox.views.CoderDiagnosticCollectorPage
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.NewEnvironmentPage
@@ -89,7 +88,6 @@ class CoderRemoteProvider(
     // The REST client, if we are signed in
     private var client: CoderRestClient? = null
     private var cli: CoderCLIManager? = null
-    private var diagnosticsCollectorPage: CoderDiagnosticCollectorPage? = null
 
     // On the first load, automatically log in if we can.
     private var firstRun = true
@@ -383,15 +381,14 @@ class CoderRemoteProvider(
             Action(context, "Collect detailed deployment and Toolbox logs") {
                 val activeClient = checkNotNull(client) { "Connect to a Coder deployment before collecting logs." }
                 val activeCli = checkNotNull(cli) { "Connect to a Coder deployment before collecting logs." }
-                val page = diagnosticsCollectorPage?.takeUnless { it.isFinished } ?: CoderDiagnosticCollectorPage(
-                    context,
+                coderHeaderPage.collectDiagnostics(
                     CoderProviderLogCollector(
                         context.logger,
                         workspaces = { activeClient.workspaces() },
                         collectBundle = activeCli::supportBundle,
                     ),
-                ).also { diagnosticsCollectorPage = it }
-                context.ui.showUiPageSuspending(page)
+                )
+                context.envPageManager.showPluginEnvironmentsPage(true)
             },
             CoderDelimiter(context.i18n.pnotr("")),
             Action(context, "Settings") {
@@ -407,8 +404,7 @@ class CoderRemoteProvider(
      */
     override fun close() {
         val sessionIds = lastEnvironments.currentSessionIds()
-        diagnosticsCollectorPage?.cancel()
-        diagnosticsCollectorPage = null
+        coderHeaderPage.cancelDiagnosticCollection()
         softClose()
         client = null
         cli = null

@@ -429,7 +429,9 @@ workspaces or local logs. Collection failures and missing or unreadable local lo
 Local logs are copied after Coder bundles finish so they include messages produced during collection. Copies stop
 at each file's observed size. Symbolic links and the collector's own temporary directory are excluded.
 
-The progress page lets you cancel collection. Closing the provider also cancels collection. Cancellation terminates
+During collection, progress and a Cancel button replace the filters in the expanded Coder header. The filters and
+their previous selections return when collection ends.
+Closing the provider also cancels collection. Cancellation terminates
 the active Coder CLI process and removes the unfinished archive and staging files. A successful archive remains in
 a temporary directory, and Toolbox opens its enclosing folder and selects the archive in your file manager.
 
