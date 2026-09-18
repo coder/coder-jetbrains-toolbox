@@ -207,3 +207,36 @@ msgstr ""
 
 msgid "All statuses"
 msgstr ""
+
+msgid "Collect detailed deployment and Toolbox logs"
+msgstr ""
+
+msgid "Collect diagnostics for all accessible workspaces and agents, plus Toolbox and JetBrains daemon logs."
+msgstr ""
+
+msgid "Preparing log collection…"
+msgstr ""
+
+msgid "Listing Coder workspaces…"
+msgstr ""
+
+msgid "Collecting workspace diagnostics…"
+msgstr ""
+
+msgid "Collecting Toolbox and JetBrains daemon logs…"
+msgstr ""
+
+msgid "Creating log archive…"
+msgstr ""
+
+msgid "Log archive created. Any collection failures are reported inside the archive."
+msgstr ""
+
+msgid "Show log archive"
+msgstr ""
+
+msgid "Log collection cancelled."
+msgstr ""
+
+msgid "Could not create the log archive. Check the Toolbox logs for details."
+msgstr ""

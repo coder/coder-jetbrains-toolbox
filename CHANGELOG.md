@@ -4,8 +4,10 @@
 
 ### Added
 
-- include a Coder support bundle for the selected workspace and agent only when using the environment's
-  _Collect logs_ action in Toolbox
+- include a Coder support bundle for the selected workspace and agent when using the environment's _Collect logs_ action
+  in Toolbox
+- add a Coder provider _Collect detailed deployment and Toolbox logs_ action that bundles diagnostics for all accessible
+  workspaces and agents alongside local Toolbox and JetBrains daemon logs on Windows, macOS, and Linux
 
 ### Changed
 

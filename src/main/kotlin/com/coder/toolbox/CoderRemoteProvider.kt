@@ -2,6 +2,7 @@ package com.coder.toolbox
 
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.diagnostics.CoderProviderLogCollector
 import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.plugin.PluginManager
@@ -26,6 +27,7 @@ import com.coder.toolbox.util.withPath
 import com.coder.toolbox.util.workspace
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderDelimiter
+import com.coder.toolbox.views.CoderDiagnosticCollectorPage
 import com.coder.toolbox.views.CoderSettingsPage
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.NewEnvironmentPage
@@ -87,6 +89,7 @@ class CoderRemoteProvider(
     // The REST client, if we are signed in
     private var client: CoderRestClient? = null
     private var cli: CoderCLIManager? = null
+    private var diagnosticsCollectorPage: CoderDiagnosticCollectorPage? = null
 
     // On the first load, automatically log in if we can.
     private var firstRun = true
@@ -377,6 +380,19 @@ class CoderRemoteProvider(
                     context.ui.showErrorInfoPopup(it)
                 }
             },
+            Action(context, "Collect detailed deployment and Toolbox logs") {
+                val activeClient = checkNotNull(client) { "Connect to a Coder deployment before collecting logs." }
+                val activeCli = checkNotNull(cli) { "Connect to a Coder deployment before collecting logs." }
+                val page = diagnosticsCollectorPage?.takeUnless { it.isFinished } ?: CoderDiagnosticCollectorPage(
+                    context,
+                    CoderProviderLogCollector(
+                        context.logger,
+                        workspaces = { activeClient.workspaces() },
+                        collectBundle = activeCli::supportBundle,
+                    ),
+                ).also { diagnosticsCollectorPage = it }
+                context.ui.showUiPageSuspending(page)
+            },
             CoderDelimiter(context.i18n.pnotr("")),
             Action(context, "Settings") {
                 context.ui.showUiPage(settingsPage)
@@ -391,6 +407,8 @@ class CoderRemoteProvider(
      */
     override fun close() {
         val sessionIds = lastEnvironments.currentSessionIds()
+        diagnosticsCollectorPage?.cancel()
+        diagnosticsCollectorPage = null
         softClose()
         client = null
         cli = null
