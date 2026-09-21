@@ -2,6 +2,7 @@ package com.coder.toolbox
 
 import com.coder.toolbox.browser.browse
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.diagnostics.CoderProviderLogCollector
 import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.plugin.PluginManager
@@ -377,6 +378,18 @@ class CoderRemoteProvider(
                     context.ui.showErrorInfoPopup(it)
                 }
             },
+            Action(context, "Collect detailed deployment and Toolbox logs") {
+                val activeClient = checkNotNull(client) { "Connect to a Coder deployment before collecting logs." }
+                val activeCli = checkNotNull(cli) { "Connect to a Coder deployment before collecting logs." }
+                coderHeaderPage.collectDiagnostics(
+                    CoderProviderLogCollector(
+                        context.logger,
+                        workspaces = { activeClient.workspaces() },
+                        collectBundle = activeCli::supportBundle,
+                    ),
+                )
+                context.envPageManager.showPluginEnvironmentsPage(true)
+            },
             CoderDelimiter(context.i18n.pnotr("")),
             Action(context, "Settings") {
                 context.ui.showUiPage(settingsPage)
@@ -391,6 +404,7 @@ class CoderRemoteProvider(
      */
     override fun close() {
         val sessionIds = lastEnvironments.currentSessionIds()
+        coderHeaderPage.cancelDiagnosticCollection()
         softClose()
         client = null
         cli = null

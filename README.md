@@ -385,24 +385,74 @@ in Coder or within the individual workspace view, under the option labeled _Coll
 
 ### Coder Support Bundles
 
-The plugin includes a Coder support bundle **only when you use the environment's _Collect logs_ action** in Toolbox.
-Open the action menu for the environment on Coder's Workspaces page or within its workspace view, then select _Collect
-logs_. The general **Settings > About > Collect logs and diagnostic data** action does not generate a
-Coder support bundle.
+Toolbox's general **Settings > About > Collect logs and diagnostic data** action does not allow providers to attach
+additional diagnostic bundles. The Coder plugin therefore provides its own action to combine detailed Coder
+diagnostics with local Toolbox logs in one archive.
 
-The plugin runs `coder support bundle` using the deployment's existing CLI login and targets the selected workspace
-and its agent, when available. It places `coder-support.zip` inside the environment's diagnostic directory in the
-Toolbox log archive. Collection does not start a stopped workspace.
+The plugin offers two collection actions with different scopes:
 
-The bundle can contain deployment health and configuration, network diagnostics, workspace build logs, template
-source, and agent diagnostics. Available information depends on your permissions and workspace connectivity.
-Review the bundle before sharing, following
+- **Environment _Collect logs_**: open the action menu for an environment on Coder's Workspaces page or within its
+  workspace view. Coder bundle collection is limited to **that workspace and its selected agent**, when available.
+  The plugin adds the bundle as `coder-support.zip`
+  inside the environment's diagnostic directory in the Toolbox log archive.
+- **Coder provider _Collect detailed deployment and Toolbox logs_**: open the Coder provider menu at the top of the
+  workspace list. The plugin creates `coder-toolbox-logs.zip` with support bundles for **all workspaces accessible to
+  your account on the connected deployment**, regardless of the current workspace filter. The plugin collects each
+  agent separately and includes workspaces without agents. The archive also contains the full local Toolbox and
+  JetBrains daemon log directories, including rotated logs and nested plugin logs. These are the local log sources
+  used by Toolbox's general About action. Remote IDE logs are not collected by this provider action.
+
+The general **Settings > About > Collect logs and diagnostic data** action does not generate Coder support bundles.
+
+The plugin runs `coder support bundle` using the deployment's existing CLI configuration and normal Coder environment
+variable overrides. It passes an explicit workspace and agent, or just the workspace when no agent is available.
+Collection does not start a stopped workspace.
+
+Bundles can contain deployment health and configuration, network diagnostics, workspace build logs, template
+source, and agent diagnostics. Available information depends on your permissions, CLI version, and workspace
+connectivity. Review the bundle before sharing, following
 [Coder's support-bundle guidance](https://coder.com/docs/support/support-bundle).
 
 Support bundles require a Coder CLI that supports `coder support bundle` (Coder 2.10 or newer). Collection runs until
 the CLI finishes or you cancel log collection. If the CLI is unavailable or unsupported, or authentication or
-connectivity fails, the plugin removes any partial bundle and attempts to include
-`coder-support-error.txt` instead. Toolbox's other diagnostics remain available.
+connectivity fails, the plugin removes any partial bundle and attempts to include `coder-support-error.txt` instead.
+Toolbox's other diagnostics remain available.
+
+#### Provider Archive and Collection
+
+The provider archive contains `workspaces/`, `toolbox/`, and `daemon/`. Workspace and agent UUIDs form the directories
+under `workspaces/`; each target's `workspace.txt` identifies it, and `coder-support.zip` contains its bundle.
+Bundles run sequentially without an overall timeout. One failed bundle does not prevent collection of the remaining
+workspaces or local logs. Collection failures and missing or unreadable local logs are recorded in
+`collection-report.txt`.
+
+Local logs are copied after Coder bundles finish so they include messages produced during collection. Copies stop
+at each file's observed size. Symbolic links and the collector's own temporary directory are excluded.
+
+During collection, progress and a Cancel button replace the filters in the expanded Coder header. The filters and
+their previous selections return when collection ends.
+Closing the provider also cancels collection. Cancellation terminates
+the active Coder CLI process and removes the unfinished archive and staging files. A successful archive remains in
+a temporary directory, and Toolbox opens its enclosing folder and selects the archive in your file manager.
+
+#### Local Log Locations
+
+| Platform | Toolbox                                                   | JetBrains daemon                                         |
+|----------|-----------------------------------------------------------|----------------------------------------------------------|
+| Windows  | Local AppData known folder, then `JetBrains/Toolbox/logs` | `LOCALAPPDATA`, then `JetBrains/Daemon/logs`             |
+| macOS    | `~/Library/Logs/JetBrains/Toolbox`                        | `~/Library/Logs/JetBrains/Daemon`                        |
+| Linux    | `${XDG_DATA_HOME:-~/.local/share}/JetBrains/Toolbox/logs` | `${XDG_DATA_HOME:-~/.local/share}/JetBrains/Daemon/logs` |
+
+Toolbox's `toolbox.log.path` JVM property overrides its log location on every platform. On Windows and Linux,
+`toolbox.localAppData.path` overrides the base data location when there is no explicit log path. It does not affect
+the daemon. Windows falls back to `~/AppData/Local` when the native known-folder lookup fails; the daemon uses that
+fallback when `LOCALAPPDATA` is unavailable. JNA provides the same Windows known-folder lookup used by Toolbox,
+including redirected user folders.
+
+For the daemon, `JETBRAINS_DAEMON_SNAPSHOT_BASE_PATH` plus `logs` takes precedence over
+`JETBRAINS_DAEMON_LOG_DIRECTORY`, which takes precedence over platform defaults. `JETBRAINS_DAEMON_DATA_DIRECTORY`
+does not change the log location. The Toolbox defaults above target release builds; development builds using
+`Toolbox-Dev` need an explicit `toolbox.log.path` override.
 
 ### HTTP Request Logging
 

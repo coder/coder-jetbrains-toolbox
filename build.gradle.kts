@@ -44,6 +44,7 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.moshi)
     implementation(libs.bundles.bouncycastle)
+    implementation(libs.jna.platform)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)
