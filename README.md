@@ -380,15 +380,30 @@ There is no need to restart Toolbox, as it will begin logging at the __DEBUG__ l
 Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly via Toolbox App Menu >
 About > Show log files.
 
-Alternatively, you can generate a ZIP file using the Workspace action menu, available either on the main Workspaces page
-in Coder or within the individual workspace view, under the option labeled _Collect logs_.
+Alternatively, use the workspace environment's _Collect logs_ action to generate a ZIP file with Toolbox diagnostics
+and a Coder support bundle. See [Coder Support Bundles](#coder-support-bundles) below for the navigation steps and
+collection requirements.
 
 ### Coder Support Bundles
 
-The plugin includes a Coder support bundle **only when you use the environment's _Collect logs_ action** in Toolbox.
-Open the action menu for the environment on Coder's Workspaces page or within its workspace view, then select _Collect
-logs_. The general **Settings > About > Collect logs and diagnostic data** action does not generate a
-Coder support bundle.
+The plugin includes a Coder support bundle **only when you use the workspace environment's _Collect logs_ action**
+in JetBrains Toolbox.
+
+> [!IMPORTANT]
+> When reporting an issue, we recommend using this action so the log archive includes both Toolbox diagnostics and a
+> Coder support bundle, giving the support team more information to investigate.
+
+To collect logs with a Coder support bundle:
+
+1. Open JetBrains Toolbox and navigate to the Coder plugin's **Workspaces** page.
+2. Find the workspace environment you want to troubleshoot and open **that environment's action menu**.
+   You can also open the workspace view and use its environment action menu there.
+3. Select **Collect logs** to generate the Toolbox log archive, including the Coder support bundle when collection
+   succeeds.
+
+> [!NOTE]
+> The general Toolbox **Settings > About > Collect logs and diagnostic data** action does **not** generate a Coder
+> support bundle.
 
 The plugin runs `coder support bundle` using the deployment's existing CLI login and targets the selected workspace
 and its agent, when available. It places `coder-support.zip` inside the environment's diagnostic directory in the
