@@ -4,11 +4,13 @@ import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
+import com.coder.toolbox.sdk.WorkspaceProgressWatcher
 import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
+import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
@@ -540,6 +542,51 @@ class CoderRemoteEnvironmentTest {
     }
 
     @Test
+    fun `websocket progress changes the description without changing polled state`() = runTest {
+        val fixture = fixture(backgroundScope, workspaceStatus = WorkspaceStatus.PENDING)
+        val watcher = FakeWorkspaceProgressWatcher()
+        lateinit var onBuild: (WorkspaceBuild) -> Unit
+        lateinit var onOutput: (String) -> Unit
+        every { fixture.client.watchWorkspaceProgress(any(), any(), any(), any()) } answers {
+            onBuild = secondArg()
+            onOutput = thirdArg()
+            watcher
+        }
+        val polledState = fixture.environment.state.value
+
+        fixture.environment.update(fixture.workspace, null)
+        onBuild(fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STARTING))
+        onOutput("\u001B[92mApplying workspace resources\u001B[0m")
+
+        assertSame(polledState, fixture.environment.state.value)
+        val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(fixture.localizedStrings.getValue("Applying workspace resources"), progress.description)
+        assertEquals(listOf(fixture.workspace.latestBuild), watcher.builds)
+        coVerify(exactly = 0) { fixture.client.workspaceBuildLogs(any()) }
+    }
+
+    @Test
+    fun `workspace polling resumes progress requests after websocket failure`() = runTest {
+        val fixture = fixture(backgroundScope, workspaceStatus = WorkspaceStatus.PENDING)
+        val watcher = FakeWorkspaceProgressWatcher()
+        lateinit var onFailure: (Throwable) -> Unit
+        every { fixture.client.watchWorkspaceProgress(any(), any(), any(), any()) } answers {
+            onFailure = arg(3)
+            watcher
+        }
+        val build = fixture.workspace.latestBuild
+        coEvery { fixture.client.workspaceBuildLogs(build.id) } returns listOf(buildLog(1, "Polling fallback"))
+
+        fixture.environment.update(fixture.workspace, null)
+        onFailure(IllegalStateException("WebSockets blocked"))
+        fixture.environment.update(fixture.workspace, null)
+
+        val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(fixture.localizedStrings.getValue("Polling fallback"), progress.description)
+        coVerify(exactly = 1) { fixture.client.workspaceBuildLogs(build.id) }
+    }
+
+    @Test
     fun `build progress failure includes the current session id`() = runTest {
         val fixture = fixture(backgroundScope)
 
@@ -615,6 +662,7 @@ class CoderRemoteEnvironmentTest {
         every { settingsStore.shouldAutoConnect(any()) } returns autoConnect
 
         val client = mockk<CoderRestClient>(relaxed = true)
+        every { client.watchWorkspaceProgress(any(), any(), any(), any()) } returns null
         val cli = mockk<CoderCLIManager>(relaxed = true)
         val environment = CoderRemoteEnvironment(
             context = context,
@@ -683,6 +731,19 @@ class CoderRemoteEnvironmentTest {
 
         fun removeSession() {
             SessionIdRegistry.removeSession(workspaceName, agentName)
+        }
+    }
+
+    private class FakeWorkspaceProgressWatcher : WorkspaceProgressWatcher {
+        override var isActive = true
+        val builds = mutableListOf<WorkspaceBuild>()
+
+        override fun watchBuild(build: WorkspaceBuild) {
+            builds.add(build)
+        }
+
+        override fun close() {
+            isActive = false
         }
     }
 }

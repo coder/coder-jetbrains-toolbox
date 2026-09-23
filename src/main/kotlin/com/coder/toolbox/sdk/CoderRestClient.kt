@@ -26,6 +26,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.util.ReloadableTlsContext
+import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.hasRefreshToken
 import com.squareup.moshi.Moshi
@@ -43,6 +44,7 @@ import java.net.URL
 import java.util.UUID
 
 private const val INVALID_DEPLOYMENT_DATA_WARNING_TITLE = "Coder returned unsafe workspace data"
+private val WORKSPACE_WEBSOCKET_MINIMUM_VERSION = SemVer.parse("2.22.0")
 private const val INVALID_DEPLOYMENT_DATA_WARNING =
     "The deployment returned an invalid workspace, owner, or agent name. " +
             "Unsafe entries were ignored and will not be available for SSH connections."
@@ -216,6 +218,34 @@ open class CoderRestClient(
         return requireNotNull(workspaceResponse.body()) {
             "Successful response returned null body or workspace"
         }.withSafeIdentifiers()
+    }
+
+    /**
+     * Watches workspace build progress without changing the workspace state held by the caller.
+     * Older Coder deployments continue to use the polling path.
+     */
+    internal fun watchWorkspaceProgress(
+        workspace: Workspace,
+        onBuild: (WorkspaceBuild) -> Unit,
+        onOutput: (String) -> Unit,
+        onFailure: (Throwable) -> Unit,
+    ): WorkspaceProgressWatcher? {
+        if (!supportsWorkspaceProgressWebSockets()) return null
+
+        return WebSocketWorkspaceProgressWatcher(
+            httpClient,
+            moshi,
+            url,
+            workspace,
+            WorkspaceProgressCallbacks(onBuild, onOutput, onFailure),
+        )
+    }
+
+    internal fun supportsWorkspaceProgressWebSockets(): Boolean {
+        if (!::buildVersion.isInitialized) return false
+        return runCatching {
+            SemVer.parse(buildVersion) >= WORKSPACE_WEBSOCKET_MINIMUM_VERSION
+        }.getOrDefault(false)
     }
 
     suspend fun buildInfo(): BuildInfo {
