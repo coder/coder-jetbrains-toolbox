@@ -34,10 +34,12 @@ class WorkspaceProgressWatcherTest {
         val builds = mutableListOf<WorkspaceBuild>()
         val output = mutableListOf<String>()
         val failures = mutableListOf<Throwable>()
-        val watcher = WebSocketWorkspaceProgressWatcher(
-            client,
+        val watcher = WorkspaceProgressWatcher(
             workspace,
-            WorkspaceProgressCallbacks(builds::add, output::add, failures::add),
+            client,
+            onBuild = builds::add,
+            onOutput = output::add,
+            onFailure = failures::add,
         )
 
         workspaceMessage.captured(WorkspaceWatchEvent("data", workspace))
@@ -95,10 +97,12 @@ class WorkspaceProgressWatcherTest {
         } returns socket
         val failure = IllegalStateException("WebSockets blocked")
         val failures = mutableListOf<Throwable>()
-        val watcher = WebSocketWorkspaceProgressWatcher(
-            client,
+        val watcher = WorkspaceProgressWatcher(
             DataGen.workspace("failed-progress"),
-            WorkspaceProgressCallbacks({}, {}, failures::add),
+            client,
+            onBuild = {},
+            onOutput = {},
+            onFailure = failures::add,
         )
 
         onFailure.captured(failure)

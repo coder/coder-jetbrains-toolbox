@@ -15,23 +15,13 @@ private val ACTIVE_BUILD_STATUSES = setOf(
 )
 private const val NORMAL_CLOSURE = 1000
 
-internal interface WorkspaceProgressWatcher : AutoCloseable {
-    val isActive: Boolean
-
-    fun watchBuild(build: WorkspaceBuild)
-}
-
-internal data class WorkspaceProgressCallbacks(
-    val onBuild: (WorkspaceBuild) -> Unit,
-    val onOutput: (String) -> Unit,
-    val onFailure: (Throwable) -> Unit,
-)
-
-internal class WebSocketWorkspaceProgressWatcher(
-    private val client: CoderRestClient,
+internal class WorkspaceProgressWatcher(
     workspace: Workspace,
-    private val callbacks: WorkspaceProgressCallbacks,
-) : WorkspaceProgressWatcher {
+    private val client: CoderRestClient,
+    private val onBuild: (WorkspaceBuild) -> Unit,
+    private val onOutput: (String) -> Unit,
+    private val onFailure: (Throwable) -> Unit,
+) : AutoCloseable {
     private val active = AtomicBoolean(true)
     private val lock = Any()
     private val initialBuildID = workspace.latestBuild.id
@@ -57,12 +47,12 @@ internal class WebSocketWorkspaceProgressWatcher(
         },
     )
 
-    override val isActive: Boolean
+    val isActive: Boolean
         get() = active.get()
 
-    override fun watchBuild(build: WorkspaceBuild) {
+    fun watchBuild(build: WorkspaceBuild) {
         if (active.get()) {
-            callbacks.onBuild(build)
+            onBuild(build)
             if (build.status in ACTIVE_BUILD_STATUSES) {
                 synchronized(lock) {
                     if (watchedBuildID != build.id || buildLogsSocket == null) {
@@ -97,7 +87,7 @@ internal class WebSocketWorkspaceProgressWatcher(
                         true
                     }
                 }
-                if (isNew) callbacks.onOutput(log.output)
+                if (isNew) onOutput(log.output)
             }
         },
         onFailure = ::fail,
@@ -111,7 +101,7 @@ internal class WebSocketWorkspaceProgressWatcher(
             buildLogsSocket?.cancel()
             buildLogsSocket = null
         }
-        callbacks.onFailure(error)
+        onFailure(error)
     }
 
     override fun close() {
