@@ -7,6 +7,8 @@ import com.coder.toolbox.cli.WorkspaceAddress
 import com.coder.toolbox.diagnostics.CoderSupportBundleCollector
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.WebSocketWorkspaceProgressWatcher
+import com.coder.toolbox.sdk.WorkspaceProgressCallbacks
 import com.coder.toolbox.sdk.WorkspaceProgressWatcher
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.NetworkMetrics
@@ -117,6 +119,7 @@ class CoderRemoteEnvironment(
     private val proxyCommandHandle = SshCommandProcessHandle(context)
     private var pollJob: Job? = null
     private var progressWatcher: WorkspaceProgressWatcher? = null
+
     @Volatile
     private var webSocketProgressUnavailable = false
 
@@ -168,6 +171,7 @@ class CoderRemoteEnvironment(
     }
 
     private fun ensureProgressWatcher(retry: Boolean = false): WorkspaceProgressWatcher? {
+        if (!cli.features.workspaceProgressWebSockets) return null
         if (retry) {
             progressWatcher?.close()
             progressWatcher = null
@@ -179,18 +183,21 @@ class CoderRemoteEnvironment(
             activeWatcher != null -> activeWatcher
             else -> {
                 progressWatcher?.close()
-                client.watchWorkspaceProgress(
+                WebSocketWorkspaceProgressWatcher(
+                    client,
                     workspace,
-                    onBuild = ::showBuildProgress,
-                    onOutput = ::showProgress,
-                    onFailure = { ex ->
-                        webSocketProgressUnavailable = true
-                        context.logger.warn(
-                            currentSessionId(),
-                            ex,
-                            "Workspace progress WebSocket failed for ${workspace.name}; polling will continue",
-                        )
-                    },
+                    WorkspaceProgressCallbacks(
+                        onBuild = ::showBuildProgress,
+                        onOutput = ::showProgress,
+                        onFailure = { ex ->
+                            webSocketProgressUnavailable = true
+                            context.logger.warn(
+                                currentSessionId(),
+                                ex,
+                                "Workspace progress WebSocket failed for ${workspace.name}; polling will continue",
+                            )
+                        },
+                    ),
                 ).also { progressWatcher = it }
             }
         }
@@ -522,7 +529,10 @@ class CoderRemoteEnvironment(
                 progressWatcher?.close()
                 progressWatcher = null
             }
-            ensureProgressWatcher() != null -> progressWatcher?.watchBuild(build)
+
+            cli.features.workspaceProgressWebSockets && !webSocketProgressUnavailable ->
+                ensureProgressWatcher()?.watchBuild(build)
+
             else -> updateBuildProgressByPolling(build)
         }
     }

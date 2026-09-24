@@ -1246,12 +1246,22 @@ internal class CoderCLIManagerTest {
                 Pair("2.5.0", Features(true)),
                 Pair("2.13.0", Features(disableAutostart = true, reportWorkspaceUsage = true)),
                 Pair(
+                    "2.22.0",
+                    Features(
+                        disableAutostart = true,
+                        reportWorkspaceUsage = true,
+                        wildcardSsh = true,
+                        workspaceProgressWebSockets = true,
+                    )
+                ),
+                Pair(
                     "2.25.0",
                     Features(
                         disableAutostart = true,
                         reportWorkspaceUsage = true,
                         wildcardSsh = true,
-                        buildReason = true
+                        workspaceProgressWebSockets = true,
+                        buildReason = true,
                     )
                 ),
                 Pair(
@@ -1259,7 +1269,8 @@ internal class CoderCLIManagerTest {
                         disableAutostart = true,
                         reportWorkspaceUsage = true,
                         wildcardSsh = true,
-                        buildReason = true
+                        workspaceProgressWebSockets = true,
+                        buildReason = true,
                     )
                 ),
                 Pair("2.4.9", Features(false)),

@@ -1,19 +1,10 @@
 package com.coder.toolbox.sdk
 
-import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
-import com.squareup.moshi.Json
-import com.squareup.moshi.JsonClass
-import com.squareup.moshi.Moshi
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
 import okhttp3.WebSocket
-import okhttp3.WebSocketListener
 import java.io.IOException
-import java.net.URL
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -37,49 +28,31 @@ internal data class WorkspaceProgressCallbacks(
 )
 
 internal class WebSocketWorkspaceProgressWatcher(
-    private val httpClient: OkHttpClient,
-    moshi: Moshi,
-    private val baseUrl: URL,
+    private val client: CoderRestClient,
     workspace: Workspace,
     private val callbacks: WorkspaceProgressCallbacks,
 ) : WorkspaceProgressWatcher {
     private val active = AtomicBoolean(true)
     private val lock = Any()
-    private val workspaceAdapter = moshi.adapter(WorkspaceWatchEvent::class.java)
-    private val logAdapter = moshi.adapter(ProvisionerJobLog::class.java)
     private val initialBuildID = workspace.latestBuild.id
 
     private var watchedBuildID: UUID? = null
     private var lastLogID = 0L
     private var buildLogsSocket: WebSocket? = null
 
-    private val workspaceSocket = httpClient.newWebSocket(
-        Request.Builder()
-            .url(baseUrl.webSocketUrl("/api/v2/workspaces/${workspace.id}/watch-ws"))
-            .build(),
-        object : WebSocketListener() {
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                if (!active.get()) return
-                runCatching {
-                    workspaceAdapter.fromJson(text)
-                }.onFailure(::fail).getOrNull()?.data?.let { updatedWorkspace ->
-                    val build = updatedWorkspace.latestBuild
-                    val currentBuildID = synchronized(lock) { watchedBuildID }
-                    if (currentBuildID != null || build.id != initialBuildID) {
-                        watchBuild(build)
-                        if (build.status !in ACTIVE_BUILD_STATUSES) close()
-                    }
+    private val workspaceSocket = client.streamWorkspace(
+        workspace.id,
+        onMessage = { event ->
+            if (active.get()) {
+                event.data?.let { updatedWorkspace ->
+                    handleWorkspace(updatedWorkspace)
                 }
             }
-
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                fail(t)
-            }
-
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (active.get()) {
-                    fail(IOException("Workspace progress WebSocket closed: $code $reason"))
-                }
+        },
+        onFailure = ::fail,
+        onClosed = { code, reason ->
+            if (active.get()) {
+                fail(IOException("Workspace progress WebSocket closed: $code $reason"))
             }
         },
     )
@@ -103,32 +76,32 @@ internal class WebSocketWorkspaceProgressWatcher(
         }
     }
 
-    private fun openBuildLogsSocket(buildID: UUID): WebSocket = httpClient.newWebSocket(
-        Request.Builder()
-            .url(baseUrl.webSocketUrl("/api/v2/workspacebuilds/$buildID/logs?follow=true"))
-            .build(),
-        object : WebSocketListener() {
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                if (!active.get()) return
-                runCatching {
-                    logAdapter.fromJson(text)
-                }.onFailure(::fail).getOrNull()?.let { log ->
-                    val isNew = synchronized(lock) {
-                        if (log.id <= lastLogID) {
-                            false
-                        } else {
-                            lastLogID = log.id
-                            true
-                        }
-                    }
-                    if (isNew) callbacks.onOutput(log.output)
-                }
-            }
+    private fun handleWorkspace(updatedWorkspace: Workspace) {
+        val build = updatedWorkspace.latestBuild
+        val currentBuildID = synchronized(lock) { watchedBuildID }
+        if (currentBuildID != null || build.id != initialBuildID) {
+            watchBuild(build)
+            if (build.status !in ACTIVE_BUILD_STATUSES) close()
+        }
+    }
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                fail(t)
+    private fun openBuildLogsSocket(buildID: UUID): WebSocket = client.streamWorkspaceBuildLogs(
+        buildID,
+        onMessage = { log ->
+            if (active.get()) {
+                val isNew = synchronized(lock) {
+                    if (log.id <= lastLogID) {
+                        false
+                    } else {
+                        lastLogID = log.id
+                        true
+                    }
+                }
+                if (isNew) callbacks.onOutput(log.output)
             }
         },
+        onFailure = ::fail,
+        onClosed = { _, _ -> },
     )
 
     private fun fail(error: Throwable) {
@@ -149,17 +122,4 @@ internal class WebSocketWorkspaceProgressWatcher(
             buildLogsSocket = null
         }
     }
-}
-
-@JsonClass(generateAdapter = true)
-internal data class WorkspaceWatchEvent(
-    @property:Json(name = "type") val type: String,
-    @property:Json(name = "data") val data: Workspace? = null,
-)
-
-private fun URL.webSocketUrl(pathAndQuery: String): String {
-    val scheme = if (protocol == "https") "wss" else "ws"
-    val portPart = if (port == -1) "" else ":$port"
-    val path = if (pathAndQuery.startsWith('/')) pathAndQuery else "/$pathAndQuery"
-    return "$scheme://$host$portPart$path"
 }

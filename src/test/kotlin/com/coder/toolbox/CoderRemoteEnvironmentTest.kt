@@ -1,17 +1,17 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.cli.Features
 import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
-import com.coder.toolbox.sdk.WorkspaceProgressWatcher
 import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
-import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.sdk.v2.models.WorkspaceWatchEvent
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
 import com.coder.toolbox.store.CoderSettingsStore
@@ -29,6 +29,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +39,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import okhttp3.WebSocket
 import java.nio.file.Files
 import java.time.Instant
 import java.util.UUID
@@ -532,6 +534,14 @@ class CoderRemoteEnvironmentTest {
             fixture.localizedStrings.getValue("Starting workspace applications"),
             nextProgress.description,
         )
+        verify(exactly = 0) {
+            fixture.client.streamWorkspace(
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        }
 
         fixture.environment.update(
             workspaceSnapshot.copy(latestBuild = build.copy(status = WorkspaceStatus.RUNNING)),
@@ -543,42 +553,77 @@ class CoderRemoteEnvironmentTest {
 
     @Test
     fun `websocket progress changes the description without changing polled state`() = runTest {
-        val fixture = fixture(backgroundScope, workspaceStatus = WorkspaceStatus.PENDING)
-        val watcher = FakeWorkspaceProgressWatcher()
-        lateinit var onBuild: (WorkspaceBuild) -> Unit
-        lateinit var onOutput: (String) -> Unit
-        every { fixture.client.watchWorkspaceProgress(any(), any(), any(), any()) } answers {
-            onBuild = secondArg()
-            onOutput = thirdArg()
-            watcher
-        }
+        val fixture = fixture(
+            backgroundScope,
+            workspaceStatus = WorkspaceStatus.PENDING,
+            workspaceProgressWebSockets = true,
+        )
+        val workspaceMessage = slot<(WorkspaceWatchEvent) -> Unit>()
+        val buildLogMessage = slot<(ProvisionerJobLog) -> Unit>()
+        every {
+            fixture.client.streamWorkspace(
+                any(),
+                capture(workspaceMessage),
+                any(),
+                any(),
+            )
+        } returns mockk<WebSocket>(relaxed = true)
+        every {
+            fixture.client.streamWorkspaceBuildLogs(
+                any(),
+                capture(buildLogMessage),
+                any(),
+                any(),
+            )
+        } returns mockk<WebSocket>(relaxed = true)
         val polledState = fixture.environment.state.value
 
         fixture.environment.update(fixture.workspace, null)
-        onBuild(fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STARTING))
-        onOutput("\u001B[92mApplying workspace resources\u001B[0m")
+        workspaceMessage.captured(
+            WorkspaceWatchEvent(
+                "data",
+                fixture.workspace.copy(
+                    latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STARTING),
+                ),
+            ),
+        )
+        buildLogMessage.captured(buildLog(1, "\u001B[92mApplying workspace resources\u001B[0m"))
 
         assertSame(polledState, fixture.environment.state.value)
         val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertSame(fixture.localizedStrings.getValue("Applying workspace resources"), progress.description)
-        assertEquals(listOf(fixture.workspace.latestBuild), watcher.builds)
         coVerify(exactly = 0) { fixture.client.workspaceBuildLogs(any()) }
     }
 
     @Test
     fun `workspace polling resumes progress requests after websocket failure`() = runTest {
-        val fixture = fixture(backgroundScope, workspaceStatus = WorkspaceStatus.PENDING)
-        val watcher = FakeWorkspaceProgressWatcher()
-        lateinit var onFailure: (Throwable) -> Unit
-        every { fixture.client.watchWorkspaceProgress(any(), any(), any(), any()) } answers {
-            onFailure = arg(3)
-            watcher
-        }
+        val fixture = fixture(
+            backgroundScope,
+            workspaceStatus = WorkspaceStatus.PENDING,
+            workspaceProgressWebSockets = true,
+        )
+        val onFailure = slot<(Throwable) -> Unit>()
+        every {
+            fixture.client.streamWorkspace(
+                any(),
+                any(),
+                capture(onFailure),
+                any(),
+            )
+        } returns mockk<WebSocket>(relaxed = true)
+        every {
+            fixture.client.streamWorkspaceBuildLogs(
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        } returns mockk<WebSocket>(relaxed = true)
         val build = fixture.workspace.latestBuild
         coEvery { fixture.client.workspaceBuildLogs(build.id) } returns listOf(buildLog(1, "Polling fallback"))
 
         fixture.environment.update(fixture.workspace, null)
-        onFailure(IllegalStateException("WebSockets blocked"))
+        onFailure.captured(IllegalStateException("WebSockets blocked"))
         fixture.environment.update(fixture.workspace, null)
 
         val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
@@ -627,6 +672,7 @@ class CoderRemoteEnvironmentTest {
         autoConnect: Boolean = false,
         workspaceStatus: WorkspaceStatus = WorkspaceStatus.RUNNING,
         outdated: Boolean = false,
+        workspaceProgressWebSockets: Boolean = false,
     ): Fixture {
         val suffix = UUID.randomUUID().toString().take(8)
         val workspaceName = "workspace-$suffix"
@@ -662,8 +708,8 @@ class CoderRemoteEnvironmentTest {
         every { settingsStore.shouldAutoConnect(any()) } returns autoConnect
 
         val client = mockk<CoderRestClient>(relaxed = true)
-        every { client.watchWorkspaceProgress(any(), any(), any(), any()) } returns null
         val cli = mockk<CoderCLIManager>(relaxed = true)
+        every { cli.features } returns Features(workspaceProgressWebSockets = workspaceProgressWebSockets)
         val environment = CoderRemoteEnvironment(
             context = context,
             client = client,
@@ -731,19 +777,6 @@ class CoderRemoteEnvironmentTest {
 
         fun removeSession() {
             SessionIdRegistry.removeSession(workspaceName, agentName)
-        }
-    }
-
-    private class FakeWorkspaceProgressWatcher : WorkspaceProgressWatcher {
-        override var isActive = true
-        val builds = mutableListOf<WorkspaceBuild>()
-
-        override fun watchBuild(build: WorkspaceBuild) {
-            builds.add(build)
-        }
-
-        override fun close() {
-            isActive = false
         }
     }
 }

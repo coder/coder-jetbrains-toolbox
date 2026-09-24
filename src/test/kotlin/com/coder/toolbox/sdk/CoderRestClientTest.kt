@@ -136,19 +136,6 @@ class CoderRestClientTest {
         },
     )
 
-    @Test
-    fun `workspace progress websockets require Coder 2_22 or newer`() {
-        val client = CoderRestClient(context, URI.create("https://coder.example.com").toURL(), "token")
-
-        assertEquals(false, client.supportsWorkspaceProgressWebSockets())
-        client.buildVersion = "v2.21.3"
-        assertEquals(false, client.supportsWorkspaceProgressWebSockets())
-        client.buildVersion = "v2.22.0"
-        assertEquals(true, client.supportsWorkspaceProgressWebSockets())
-        client.buildVersion = "v2.28.0-devel+abcdef"
-        assertEquals(true, client.supportsWorkspaceProgressWebSockets())
-    }
-
     /**
      * Create, start, and return a server.
      */
