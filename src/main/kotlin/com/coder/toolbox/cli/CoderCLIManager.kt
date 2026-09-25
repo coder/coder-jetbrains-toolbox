@@ -279,7 +279,6 @@ class CoderCLIManager(
     internal fun startWorkspace(
         wsAddress: WorkspaceAddress,
         feats: Features = features,
-        showTextProgress: (String) -> Unit = {},
     ): String {
         val args = mutableListOf(
             "--global-config",
@@ -294,7 +293,7 @@ class CoderCLIManager(
         args.add("--")
         args.add(wsAddress.ownerAndWsName)
 
-        return exec(*args.toTypedArray(), showTextProgress = showTextProgress)
+        return exec(*args.toTypedArray())
     }
 
     /**
@@ -577,19 +576,12 @@ class CoderCLIManager(
         return matches
     }
 
-    private fun exec(
-        vararg args: String,
-        showTextProgress: ((String) -> Unit)? = null,
-    ): String {
+    private fun exec(vararg args: String): String {
         val processExecutor =
             ProcessExecutor()
                 .command(localBinaryPath.toString(), *args)
                 .environment("CODER_HEADER_COMMAND", context.settingsStore.headerCommand)
                 .exitValues(0)
-
-        showTextProgress?.let { reportProgress ->
-            processExecutor.redirectOutput(reportProgress::invoke)
-        }
 
         val stdout =
             processExecutor

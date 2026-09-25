@@ -225,41 +225,50 @@ open class CoderRestClient(
 
     internal fun streamWorkspace(
         workspaceID: UUID,
+        onOpen: () -> Unit = {},
         onMessage: (WorkspaceWatchEvent) -> Unit,
-        onFailure: (Throwable) -> Unit,
         onClosed: (code: Int, reason: String) -> Unit,
+        onFailure: (Throwable) -> Unit,
     ): WebSocket = openWebSocket(
         retroRestClient.streamWorkspace(workspaceID).request(),
         WorkspaceWatchEvent::class.java,
+        onOpen,
         onMessage,
-        onFailure,
         onClosed,
+        onFailure,
     )
 
     internal fun streamWorkspaceBuildLogs(
         workspaceBuildID: UUID,
+        onOpen: () -> Unit = {},
         onMessage: (ProvisionerJobLog) -> Unit,
-        onFailure: (Throwable) -> Unit,
         onClosed: (code: Int, reason: String) -> Unit,
+        onFailure: (Throwable) -> Unit,
     ): WebSocket = openWebSocket(
         retroRestClient.streamWorkspaceBuildLogs(workspaceBuildID).request(),
         ProvisionerJobLog::class.java,
+        onOpen,
         onMessage,
-        onFailure,
         onClosed,
+        onFailure,
     )
 
     private fun <T> openWebSocket(
         request: Request,
         messageType: Class<T>,
+        onOpen: () -> Unit,
         onMessage: (T) -> Unit,
-        onFailure: (Throwable) -> Unit,
         onClosed: (code: Int, reason: String) -> Unit,
+        onFailure: (Throwable) -> Unit,
     ): WebSocket {
         val adapter = moshi.adapter(messageType)
         return httpClient.newWebSocket(
             request,
             object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: OkHttpResponse) {
+                    onOpen()
+                }
+
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     runCatching { adapter.fromJson(text) }
                         .onFailure(onFailure)
@@ -267,12 +276,12 @@ open class CoderRestClient(
                         ?.let(onMessage)
                 }
 
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: OkHttpResponse?) {
-                    onFailure(t)
-                }
-
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     onClosed(code, reason)
+                }
+
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: OkHttpResponse?) {
+                    onFailure(t)
                 }
             },
         )

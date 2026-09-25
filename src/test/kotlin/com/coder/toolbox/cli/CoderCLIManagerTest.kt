@@ -918,7 +918,7 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun `start workspace reports CLI output as text progress`() {
+    fun `start workspace captures CLI output`() {
         val testDirectory = tmpdir.resolve("start-progress-${UUID.randomUUID()}")
         val binaryPath = if (getOS() == OS.WINDOWS) {
             testDirectory.resolve("coder.bat")
@@ -950,15 +950,11 @@ internal class CoderCLIManagerTest {
             URI("https://test.coder.invalid").toURL(),
         )
         val workspace = workspace("start-progress")
-        val progressMessages = mutableListOf<String>()
-
         val output = ccm.startWorkspace(
             WorkspaceAddress.from(workspace),
             Features(),
-            progressMessages::add,
         )
 
-        assertEquals(listOf("Queued", "Waiting for Git authentication..."), progressMessages)
         assertContains(output, "Queued")
         assertContains(output, "Waiting for Git authentication...")
     }
