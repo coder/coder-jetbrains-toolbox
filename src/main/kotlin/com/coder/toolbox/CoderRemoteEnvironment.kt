@@ -163,19 +163,16 @@ class CoderRemoteEnvironment(
             if (workspace.outdated) {
                 actions.add(Action(context, "Update and start") {
                     withProgress("Updating and starting workspace…") {
-                        withProgressWatcher { watcher ->
+                        runWorkspaceBuildRequest {
                             context.logger.debug("Updating and starting $id...")
-                            val build = client.updateWorkspace(workspace)
-                            watcher?.watchBuild(build)
-                            applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
-                            workspaceRefreshTrigger.trySend(true)
+                            client.updateWorkspace(workspace)
                         }
                     }
                 })
             } else {
                 actions.add(Action(context, "Start") {
                     withProgress("Starting workspace…") {
-                        val watcher = ensureProgressWatcher(retry = true)
+                        val watcher = restartProgressWatcher()
                         context.logger.debug("Starting $id... ")
                         val previousStatus = environmentStatus
                         // The CLI can take a while before Coder reports a new workspace state. Show
@@ -208,12 +205,9 @@ class CoderRemoteEnvironment(
                 actions.add(
                     Action(context, "Update and restart") {
                         withProgress("Updating and restarting workspace…") {
-                            withProgressWatcher { watcher ->
+                            runWorkspaceBuildRequest {
                                 context.logger.debug(currentSessionId(), "Updating and re-starting $id...")
-                                val build = client.updateWorkspace(workspace)
-                                watcher?.watchBuild(build)
-                                applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
-                                workspaceRefreshTrigger.trySend(true)
+                                client.updateWorkspace(workspace)
                             }
                         }
                     }.withCurrentSessionId(::currentSessionId)
@@ -222,13 +216,10 @@ class CoderRemoteEnvironment(
             actions.add(
                 Action(context, "Stop") {
                     withProgress("Stopping workspace…") {
-                        withProgressWatcher { watcher ->
+                        runWorkspaceBuildRequest {
                             tryStopSshConnection()
                             context.logger.debug(currentSessionId(), "Stopping $id...")
-                            val build = client.stopWorkspace(workspace)
-                            watcher?.watchBuild(build)
-                            applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
-                            workspaceRefreshTrigger.trySend(true)
+                            client.stopWorkspace(workspace)
                         }
                     }
                 }.withCurrentSessionId(::currentSessionId)
@@ -274,8 +265,17 @@ class CoderRemoteEnvironment(
         }
     }
 
+    private suspend fun runWorkspaceBuildRequest(request: suspend () -> WorkspaceBuild) {
+        withProgressWatcher { watcher ->
+            val build = request()
+            watcher?.watchBuild(build)
+            applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
+            workspaceRefreshTrigger.trySend(true)
+        }
+    }
+
     private suspend fun <T> withProgressWatcher(action: suspend (WorkspaceProgressWatcher?) -> T): T {
-        val watcher = ensureProgressWatcher(retry = true)
+        val watcher = restartProgressWatcher()
         var succeeded = false
         try {
             val result = action(watcher)
@@ -286,19 +286,26 @@ class CoderRemoteEnvironment(
         }
     }
 
-    private fun ensureProgressWatcher(retry: Boolean = false): WorkspaceProgressWatcher? {
+    private fun restartProgressWatcher(): WorkspaceProgressWatcher? {
+        closeProgressWatcher(progressWatcher)
+        webSocketProgressUnavailable = false
+        return ensureProgressWatcher()
+    }
+
+    private fun closeProgressWatcher(watcher: WorkspaceProgressWatcher?) {
+        if (progressWatcher !== watcher) return
+        watcher?.close()
+        progressWatcher = null
+    }
+
+    private fun ensureProgressWatcher(): WorkspaceProgressWatcher? {
         if (!cli.features.workspaceProgressWebSockets) return null
-        if (retry) {
-            progressWatcher?.close()
-            progressWatcher = null
-            webSocketProgressUnavailable = false
-        }
         val activeWatcher = progressWatcher?.takeIf { it.isActive }
         return when {
             webSocketProgressUnavailable -> null
             activeWatcher != null -> activeWatcher
             else -> {
-                progressWatcher?.close()
+                closeProgressWatcher(progressWatcher)
                 WorkspaceProgressWatcher(
                     workspace,
                     client,
@@ -339,12 +346,6 @@ class CoderRemoteEnvironment(
 
     internal fun currentSessionId(): SessionId? =
         agent?.let { SessionIdRegistry.findSession(workspace.name, it.name) }
-
-    private fun closeProgressWatcher(watcher: WorkspaceProgressWatcher?) {
-        if (progressWatcher !== watcher) return
-        watcher?.close()
-        progressWatcher = null
-    }
 
     private fun applyWorkspaceSnapshot(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
         if (workspace.latestBuild == newWorkspace.latestBuild) {

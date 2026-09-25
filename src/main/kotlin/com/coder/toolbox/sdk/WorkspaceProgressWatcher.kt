@@ -33,7 +33,7 @@ internal class WorkspaceProgressWatcher(
     private val workspaceSocket = client.streamWorkspace(
         workspace.id,
         onMessage = { event ->
-            if (active.get()) {
+            if (isActive) {
                 event.data?.let { updatedWorkspace ->
                     handleWorkspace(updatedWorkspace)
                 }
@@ -41,7 +41,7 @@ internal class WorkspaceProgressWatcher(
         },
         onFailure = ::fail,
         onClosed = { code, reason ->
-            if (active.get()) {
+            if (isActive) {
                 fail(IOException("Workspace progress WebSocket closed: $code $reason"))
             }
         },
@@ -51,7 +51,7 @@ internal class WorkspaceProgressWatcher(
         get() = active.get()
 
     fun watchBuild(build: WorkspaceBuild) {
-        if (active.get()) {
+        if (isActive) {
             onBuild(build)
             if (build.status in ACTIVE_BUILD_STATUSES) {
                 synchronized(lock) {
@@ -78,21 +78,25 @@ internal class WorkspaceProgressWatcher(
     private fun openBuildLogsSocket(buildID: UUID): WebSocket = client.streamWorkspaceBuildLogs(
         buildID,
         onMessage = { log ->
-            if (active.get()) {
-                val isNew = synchronized(lock) {
-                    if (log.id <= lastLogID) {
-                        false
-                    } else {
-                        lastLogID = log.id
-                        true
-                    }
-                }
-                if (isNew) onOutput(log.output)
-            }
+            if (isActive) emitLogIfNew(log.id, log.output)
         },
         onFailure = ::fail,
-        onClosed = { _, _ -> },
+        onClosed = { code, reason ->
+            // The server normally closes this stream when the provisioner job finishes. The
+            // workspace stream remains responsible for reporting the completed build.
+            if (isActive && code != NORMAL_CLOSURE) {
+                fail(IOException("Workspace build log WebSocket closed: $code $reason"))
+            }
+        },
     )
+
+    private fun emitLogIfNew(logID: Long, output: String) {
+        synchronized(lock) {
+            if (logID <= lastLogID) return
+            lastLogID = logID
+        }
+        onOutput(output)
+    }
 
     private fun fail(error: Throwable) {
         if (!active.compareAndSet(true, false)) return

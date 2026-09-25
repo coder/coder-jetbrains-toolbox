@@ -111,4 +111,41 @@ class WorkspaceProgressWatcherTest {
         assertEquals(listOf<Throwable>(failure), failures)
         verify(exactly = 1) { socket.cancel() }
     }
+
+    @Test
+    fun `abnormal build log closure makes the watcher unavailable`() {
+        val client = mockk<CoderRestClient>()
+        val workspaceSocket = mockk<WebSocket>(relaxed = true)
+        val buildLogsSocket = mockk<WebSocket>(relaxed = true)
+        every { client.streamWorkspace(any(), any(), any(), any()) } returns workspaceSocket
+        val onBuildLogsClosed = slot<(Int, String) -> Unit>()
+        every {
+            client.streamWorkspaceBuildLogs(
+                any(),
+                any(),
+                any(),
+                capture(onBuildLogsClosed),
+            )
+        } returns buildLogsSocket
+        val failures = mutableListOf<Throwable>()
+        val watcher = WorkspaceProgressWatcher(
+            DataGen.workspace("closed-build-logs"),
+            client,
+            onBuild = {},
+            onOutput = {},
+            onFailure = failures::add,
+        )
+
+        watcher.watchBuild(DataGen.workspace("active-build").latestBuild.copy(status = WorkspaceStatus.STARTING))
+        onBuildLogsClosed.captured(1011, "Internal error")
+
+        assertFalse(watcher.isActive)
+        assertEquals(1, failures.size)
+        assertEquals(
+            "Workspace build log WebSocket closed: 1011 Internal error",
+            failures.single().message,
+        )
+        verify(exactly = 1) { workspaceSocket.cancel() }
+        verify(exactly = 1) { buildLogsSocket.cancel() }
+    }
 }
