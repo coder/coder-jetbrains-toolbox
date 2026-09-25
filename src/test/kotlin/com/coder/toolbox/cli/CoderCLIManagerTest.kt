@@ -918,7 +918,7 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun `start workspace reports CLI output as text progress`() {
+    fun `start workspace captures CLI output`() {
         val testDirectory = tmpdir.resolve("start-progress-${UUID.randomUUID()}")
         val binaryPath = if (getOS() == OS.WINDOWS) {
             testDirectory.resolve("coder.bat")
@@ -950,15 +950,11 @@ internal class CoderCLIManagerTest {
             URI("https://test.coder.invalid").toURL(),
         )
         val workspace = workspace("start-progress")
-        val progressMessages = mutableListOf<String>()
-
         val output = ccm.startWorkspace(
             WorkspaceAddress.from(workspace),
             Features(),
-            progressMessages::add,
         )
 
-        assertEquals(listOf("Queued", "Waiting for Git authentication..."), progressMessages)
         assertContains(output, "Queued")
         assertContains(output, "Waiting for Git authentication...")
     }
@@ -1246,12 +1242,22 @@ internal class CoderCLIManagerTest {
                 Pair("2.5.0", Features(true)),
                 Pair("2.13.0", Features(disableAutostart = true, reportWorkspaceUsage = true)),
                 Pair(
+                    "2.22.0",
+                    Features(
+                        disableAutostart = true,
+                        reportWorkspaceUsage = true,
+                        wildcardSsh = true,
+                        workspaceProgressWebSockets = true,
+                    )
+                ),
+                Pair(
                     "2.25.0",
                     Features(
                         disableAutostart = true,
                         reportWorkspaceUsage = true,
                         wildcardSsh = true,
-                        buildReason = true
+                        workspaceProgressWebSockets = true,
+                        buildReason = true,
                     )
                 ),
                 Pair(
@@ -1259,7 +1265,8 @@ internal class CoderCLIManagerTest {
                         disableAutostart = true,
                         reportWorkspaceUsage = true,
                         wildcardSsh = true,
-                        buildReason = true
+                        workspaceProgressWebSockets = true,
+                        buildReason = true,
                     )
                 ),
                 Pair("2.4.9", Features(false)),

@@ -7,10 +7,12 @@ import com.coder.toolbox.cli.WorkspaceAddress
 import com.coder.toolbox.diagnostics.CoderSupportBundleCollector
 import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.WorkspaceProgressWatcher
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.v2.models.NetworkMetrics
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
+import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
@@ -47,7 +49,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.nio.file.Path
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -58,32 +59,6 @@ private val IN_PROGRESS_BUILD_STATUSES = setOf(
     WorkspaceStatus.STARTING,
     WorkspaceStatus.STOPPING,
 )
-
-private fun String.stripAnsiEscapeSequences(): String = replace(ANSI_ESCAPE_SEQUENCE, "")
-
-private fun environmentId(workspace: Workspace, agent: WorkspaceAgent?): String =
-    agent?.let { "${workspace.name}.${it.name}" } ?: workspace.name
-
-private fun OS?.displayName(): String = when (this) {
-    OS.LINUX -> "Linux"
-    OS.WINDOWS -> "Windows"
-    OS.MAC -> "macOS"
-    null -> "unknown-OS"
-}
-
-private fun WorkspaceAndAgentStatus.toEnvironmentDescription(
-    context: CoderToolboxContext,
-): EnvironmentDescription {
-    val buildStatus = workspace.latestBuild.status
-    return if (buildStatus in IN_PROGRESS_BUILD_STATUSES) {
-        EnvironmentDescription.Progress(
-            context.i18n.pnotr("Building ${workspace.name} (${buildStatus.name.lowercase()})…"),
-            indeterminate = true,
-        )
-    } else {
-        EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName))
-    }
-}
 
 /**
  * Represents a workspace, or a workspace and agent combination when an agent is available.
@@ -110,10 +85,16 @@ class CoderRemoteEnvironment(
         MutableStateFlow(environmentStatus.toEnvironmentDescription(context))
     override val additionalEnvironmentInformation: MutableMap<LocalizableString, String> = mutableMapOf()
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(emptyList())
+    override val diagnosticInfoCollector: DiagnosticInfoCollector =
+        CoderSupportBundleCollector(context.logger) { outputFile ->
+            cli.supportBundle(WorkspaceAddress.from(workspace, agent), outputFile)
+        }
+    override val deleteActionFlow: StateFlow<(() -> Unit)?> = MutableStateFlow(null)
 
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
     private val proxyCommandHandle = SshCommandProcessHandle(context)
     private var pollJob: Job? = null
+    private var progressWatcher: WorkspaceProgressWatcher? = null
 
     init {
         if (context.settingsStore.shouldAutoConnect(id)) {
@@ -123,32 +104,20 @@ class CoderRemoteEnvironment(
         refreshAvailableActions()
     }
 
-    internal fun toWorkspaceAddressOrNull(): WorkspaceAddress? = agent?.let { WorkspaceAddress.from(workspace, it) }
-
-    internal fun currentSessionId(): SessionId? =
-        agent?.let { SessionIdRegistry.findSession(workspace.name, it.name) }
-
-    override val diagnosticInfoCollector: DiagnosticInfoCollector =
-        CoderSupportBundleCollector(context.logger) { outputFile ->
-            cli.supportBundle(WorkspaceAddress.from(workspace, agent), outputFile)
+    /**
+     * Schedules the SSH connection to start as soon as possible if the workspace is ready and
+     * there is no connection already established.
+     *
+     * The session is created or reactivated by [beforeConnection], when Toolbox confirms that it
+     * is starting the connection.
+     */
+    fun startSshConnection() {
+        if (agent == null) return
+        if (environmentStatus.ready() && !isConnected.value) {
+            connectionRequest.update {
+                true
+            }
         }
-
-    private suspend fun <T> withProgress(message: String, action: suspend () -> T): T {
-        description.value = EnvironmentDescription.Progress(context.i18n.ptrl(message), indeterminate = true)
-        return try {
-            action()
-        } finally {
-            description.value = environmentStatus.toEnvironmentDescription(context)
-        }
-    }
-
-    private fun showProgress(output: String) {
-        val progressMessage = output.stripAnsiEscapeSequences().trim()
-        if (progressMessage.isEmpty()) return
-        description.value = EnvironmentDescription.Progress(
-            context.i18n.pnotr(progressMessage),
-            indeterminate = true,
-        )
     }
 
     private fun refreshAvailableActions() {
@@ -189,37 +158,17 @@ class CoderRemoteEnvironment(
         if (environmentStatus.canStart()) {
             if (workspace.outdated) {
                 actions.add(Action(context, "Update and start") {
-                    withProgress("Updating and starting workspace…") {
+                    runWorkspaceBuildAction("Updating and starting workspace…") {
                         context.logger.debug("Updating and starting $id...")
-                        val build = client.updateWorkspace(workspace)
-                        applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
-                        workspaceRefreshTrigger.trySend(true)
+                        client.updateWorkspace(workspace)
                     }
                 })
             } else {
                 actions.add(Action(context, "Start") {
-                    withProgress("Starting workspace…") {
+                    runWorkspaceBuildAction("Starting workspace…") {
                         context.logger.debug("Starting $id... ")
-                        val previousStatus = environmentStatus
-                        // The CLI can take a while before Coder reports a new workspace state. Show
-                        // the pending state immediately and remove the Start action in the meantime.
-                        updateStatus(WorkspaceAndAgentStatus.Queued(workspace))
-                        refreshAvailableActions()
-                        var commandSucceeded = false
-                        try {
-                            withContext(Dispatchers.IO) {
-                                cli.startWorkspace(
-                                    WorkspaceAddress.from(workspace),
-                                    showTextProgress = ::showProgress,
-                                )
-                            }
-                            commandSucceeded = true
-                            workspaceRefreshTrigger.trySend(true)
-                        } finally {
-                            if (!commandSucceeded) {
-                                updateStatus(previousStatus)
-                                refreshAvailableActions()
-                            }
+                        withContext(Dispatchers.IO) {
+                            cli.startWorkspace(WorkspaceAddress.from(workspace))
                         }
                     }
                 })
@@ -229,23 +178,19 @@ class CoderRemoteEnvironment(
             if (workspace.outdated) {
                 actions.add(
                     Action(context, "Update and restart") {
-                        withProgress("Updating and restarting workspace…") {
+                        runWorkspaceBuildAction("Updating and restarting workspace…") {
                             context.logger.debug(currentSessionId(), "Updating and re-starting $id...")
-                            val build = client.updateWorkspace(workspace)
-                            applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
-                            workspaceRefreshTrigger.trySend(true)
+                            client.updateWorkspace(workspace)
                         }
                     }.withCurrentSessionId(::currentSessionId)
                 )
             }
             actions.add(
                 Action(context, "Stop") {
-                    withProgress("Stopping workspace…") {
+                    runWorkspaceBuildAction("Stopping workspace…") {
                         tryStopSshConnection()
                         context.logger.debug(currentSessionId(), "Stopping $id...")
-                        val build = client.stopWorkspace(workspace)
-                        applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
-                        workspaceRefreshTrigger.trySend(true)
+                        client.stopWorkspace(workspace)
                     }
                 }.withCurrentSessionId(::currentSessionId)
             )
@@ -281,6 +226,141 @@ class CoderRemoteEnvironment(
         }
     }
 
+    private suspend fun <T> withProgress(message: String, action: suspend () -> T): T {
+        description.value = EnvironmentDescription.Progress(context.i18n.ptrl(message), indeterminate = true)
+        return try {
+            action()
+        } finally {
+            description.value = environmentStatus.toEnvironmentDescription(context)
+        }
+    }
+
+    private suspend fun runWorkspaceBuildAction(
+        message: String,
+        action: suspend () -> Unit,
+    ) {
+        val previousStatus = environmentStatus
+        val queuedStatus = showWorkspaceAsQueued(message)
+
+        // Start observing before the action, since CLI Start can wait until the build finishes.
+        val watcher = restartProgressWatcher()
+        var succeeded = false
+        try {
+            action()
+            workspaceRefreshTrigger.trySend(true)
+            succeeded = true
+        } catch (ex: Exception) {
+            if (environmentStatus === queuedStatus) {
+                updateStatus(previousStatus)
+                refreshAvailableActions()
+            }
+            throw ex
+        } finally {
+            if (!succeeded) {
+                closeProgressWatcher(watcher)
+                description.value = environmentStatus.toEnvironmentDescription(context)
+            }
+        }
+    }
+
+    private fun restartProgressWatcher(): WorkspaceProgressWatcher {
+        progressWatcher?.close()
+        return WorkspaceProgressWatcher(
+            workspace,
+            client,
+            cli.features.workspaceProgressWebSockets,
+            context.cs,
+            onBuild = ::onBuildProgress,
+            onOutput = ::onProgressOutput,
+            onFailure = { error, message -> context.logger.warn(currentSessionId(), error, message) },
+        ).also { progressWatcher = it }
+    }
+
+    private fun closeProgressWatcher(watcher: WorkspaceProgressWatcher?) {
+        if (progressWatcher !== watcher) return
+        watcher?.close()
+        progressWatcher = null
+    }
+
+    private fun showWorkspaceAsQueued(message: String): WorkspaceAndAgentStatus.Queued {
+        // Actions can perform preparation before Coder creates a build. Show
+        // the workspace as queued until polling observes the new build.
+        val queuedStatus = WorkspaceAndAgentStatus.Queued(workspace)
+        updateStatus(queuedStatus)
+        refreshAvailableActions()
+        description.value = EnvironmentDescription.Progress(context.i18n.ptrl(message), indeterminate = true)
+        return queuedStatus
+    }
+
+    private fun onBuildProgress(build: WorkspaceBuild) {
+        if (build.status in IN_PROGRESS_BUILD_STATUSES) {
+            description.value = EnvironmentDescription.Progress(
+                context.i18n.pnotr("Building ${workspace.name} (${build.status.name.lowercase()})…"),
+                indeterminate = true,
+            )
+        } else {
+            description.value = EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName))
+        }
+    }
+
+    private fun onProgressOutput(output: String) {
+        val progressMessage = output.stripAnsiEscapeSequences().trim()
+        if (progressMessage.isEmpty()) return
+        description.value = EnvironmentDescription.Progress(
+            context.i18n.pnotr(progressMessage),
+            indeterminate = true,
+        )
+    }
+
+    internal fun currentSessionId(): SessionId? =
+        agent?.let { SessionIdRegistry.findSession(workspace.name, it.name) }
+
+    private fun applyWorkspaceSnapshot(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
+        if (workspace.latestBuild == newWorkspace.latestBuild) {
+            return
+        }
+
+        // workspace&agent status can be different from "environment status"
+        // which is forced to queued state when a workspace is scheduled to start
+        updateStatus(WorkspaceAndAgentStatus.from(newWorkspace, newAgent), newAgent)
+        if (newAgent != null) {
+            context.connectionMonitoringService.checkConnectionStatus(newWorkspace, newAgent)
+        }
+
+        // we have to regenerate the action list in order to force a redraw
+        // because the actions don't have a state flow on the enabled property
+        refreshAvailableActions()
+    }
+
+    private fun updateStatus(
+        newState: WorkspaceAndAgentStatus,
+        newAgent: WorkspaceAgent? = agent,
+    ) {
+        val previousEnvironmentStatus = environmentStatus
+        val previousWorkspace = workspace
+        val previousAgent = agent
+        val sessionId = currentSessionId()
+
+        environmentStatus = newState
+        workspace = newState.workspace
+        agent = newAgent
+        name = environmentId(workspace, agent)
+        state.update {
+            environmentStatus.toRemoteEnvironmentState(context)
+        }
+        description.update {
+            environmentStatus.toEnvironmentDescription(context)
+        }
+        val message =
+            "Overall status for workspace $id changed from ${previousEnvironmentStatus.label} " +
+                    "to ${environmentStatus.label}. " +
+                    "Workspace status: ${previousWorkspace.latestBuild.status} -> ${workspace.latestBuild.status}, " +
+                    "agent status: ${previousAgent?.status} -> ${agent?.status}, " +
+                    "agent lifecycle state: ${previousAgent?.lifecycleState} -> ${agent?.lifecycleState}, " +
+                    "login before ready: ${previousAgent?.loginBeforeReady} -> ${agent?.loginBeforeReady}"
+        context.logger.info(sessionId, message)
+    }
+
     private suspend fun tryStopSshConnection() {
         if (isConnected.value) {
             connectionRequest.update {
@@ -296,9 +376,34 @@ class CoderRemoteEnvironment(
         }
     }
 
-    override fun getBeforeConnectionHooks(): List<BeforeConnectionHook> = listOf(this)
+    suspend fun deleteWorkspace() {
+        try {
+            client.removeWorkspace(workspace)
+            // mark the env as deleting otherwise we will have to
+            // wait for the poller to update the status in the next 5 seconds
+            state.update {
+                WorkspaceAndAgentStatus.Deleting(workspace).toRemoteEnvironmentState(context)
+            }
 
-    override fun getAfterDisconnectHooks(): List<AfterDisconnectHook> = listOf(this)
+            context.cs.launch(CoroutineName("Workspace Deletion Poller")) {
+                withTimeout(5.minutes) {
+                    var workspaceStillExists = true
+                    while (context.cs.isActive && workspaceStillExists) {
+                        if (environmentStatus is WorkspaceAndAgentStatus.Deleting || environmentStatus is WorkspaceAndAgentStatus.Deleted) {
+                            workspaceStillExists = false
+                            context.envPageManager.showPluginEnvironmentsPage(false)
+                        } else {
+                            delay(1.seconds)
+                        }
+                    }
+                }
+            }
+        } catch (e: APIResponseException) {
+            context.ui.showErrorInfoPopup(e)
+        }
+    }
+
+    override fun getBeforeConnectionHooks(): List<BeforeConnectionHook> = listOf(this)
 
     override fun beforeConnection() {
         val currentAgent = agent ?: return
@@ -351,29 +456,7 @@ class CoderRemoteEnvironment(
             }
         }
 
-    private fun File.doesNotExists(): Boolean = !this.exists()
-
-    /**
-     * Cancels background work when the provider drops this environment from its
-     * list (e.g. a running workspace stopped and is replaced by a workspace-only
-     * environment with a different id).
-     *
-     * Toolbox reacts to the removal by closing its environment wrapper, which only
-     * cancels the wrapper's own coroutine scope and never invokes the
-     * [AfterDisconnectHook], so the network metrics poller must be stopped and the session
-     * registry entry must be removed here.
-     */
-    fun dispose() {
-        pollJob?.cancel()
-        pollJob = null
-        isConnected.update { false }
-        val removedSessionId = agent?.let {
-            SessionIdRegistry.removeSession(workspace.name, it.name)
-        }
-        removedSessionId?.let { sessionId ->
-            context.logger.info(sessionId, "Removed Toolbox SSH session for $id")
-        }
-    }
+    override fun getAfterDisconnectHooks(): List<AfterDisconnectHook> = listOf(this)
 
     override fun afterDisconnect(isManual: Boolean) {
         val sessionId = currentSessionId()
@@ -415,78 +498,6 @@ class CoderRemoteEnvironment(
     }
 
     /**
-     * Update the workspace/agent status to the listeners, if it has changed.
-     */
-    suspend fun update(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
-        applyWorkspaceSnapshot(newWorkspace, newAgent)
-        updateBuildProgress(newWorkspace)
-    }
-
-    private fun applyWorkspaceSnapshot(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
-        if (workspace.latestBuild == newWorkspace.latestBuild) {
-            return
-        }
-
-        // workspace&agent status can be different from "environment status"
-        // which is forced to queued state when a workspace is scheduled to start
-        updateStatus(WorkspaceAndAgentStatus.from(newWorkspace, newAgent), newAgent)
-        if (newAgent != null) {
-            context.connectionMonitoringService.checkConnectionStatus(newWorkspace, newAgent)
-        }
-
-        // we have to regenerate the action list in order to force a redraw
-        // because the actions don't have a state flow on the enabled property
-        refreshAvailableActions()
-    }
-
-    private suspend fun updateBuildProgress(newWorkspace: Workspace) {
-        val build = newWorkspace.latestBuild
-        if (build.status !in IN_PROGRESS_BUILD_STATUSES) return
-        val latestLog = try {
-            client.workspaceBuildLogs(build.id).lastOrNull()
-        } catch (ex: CancellationException) {
-            throw ex
-        } catch (ex: Exception) {
-            context.logger.warn(
-                currentSessionId(),
-                ex,
-                "Failed to retrieve progress for workspace build ${build.id}",
-            )
-            return
-        }
-        latestLog?.output?.let(::showProgress)
-    }
-
-    private fun updateStatus(
-        newState: WorkspaceAndAgentStatus,
-        newAgent: WorkspaceAgent? = agent,
-    ) {
-        val previousEnvironmentStatus = environmentStatus
-        val previousWorkspace = workspace
-        val previousAgent = agent
-        val sessionId = currentSessionId()
-
-        environmentStatus = newState
-        workspace = newState.workspace
-        agent = newAgent
-        name = environmentId(workspace, agent)
-        state.update {
-            environmentStatus.toRemoteEnvironmentState(context)
-        }
-        description.update {
-            environmentStatus.toEnvironmentDescription(context)
-        }
-        val message =
-            "Overall status for workspace $id changed from ${previousEnvironmentStatus.label} " +
-                    "to ${environmentStatus.label}. " +
-                    "Workspace status: ${previousWorkspace.latestBuild.status} -> ${workspace.latestBuild.status}, " +
-                    "agent status: ${previousAgent?.status} -> ${agent?.status}, " +
-                    "agent lifecycle state: ${previousAgent?.lifecycleState} -> ${agent?.lifecycleState}, " +
-                    "login before ready: ${previousAgent?.loginBeforeReady} -> ${agent?.loginBeforeReady}"
-        context.logger.info(sessionId, message)
-    }
-
-    /**
      * The contents are provided by the SSH view provided by Toolbox, all we
      * have to do is provide it a host name. Workspaces without a resolved agent
      * have no host to connect to yet, so they get an empty contents view instead.
@@ -516,51 +527,6 @@ class CoderRemoteEnvironment(
     }
 
     /**
-     * Schedules the SSH connection to start as soon as possible if the workspace is ready and
-     * there is no connection already established.
-     *
-     * The session is created or reactivated by [beforeConnection], when Toolbox confirms that it
-     * is starting the connection.
-     */
-    fun startSshConnection() {
-        if (agent == null) return
-        if (environmentStatus.ready() && !isConnected.value) {
-            connectionRequest.update {
-                true
-            }
-        }
-    }
-
-    override val deleteActionFlow: StateFlow<(() -> Unit)?> = MutableStateFlow(null)
-
-    suspend fun deleteWorkspace() {
-        try {
-            client.removeWorkspace(workspace)
-            // mark the env as deleting otherwise we will have to
-            // wait for the poller to update the status in the next 5 seconds
-            state.update {
-                WorkspaceAndAgentStatus.Deleting(workspace).toRemoteEnvironmentState(context)
-            }
-
-            context.cs.launch(CoroutineName("Workspace Deletion Poller")) {
-                withTimeout(5.minutes) {
-                    var workspaceStillExists = true
-                    while (context.cs.isActive && workspaceStillExists) {
-                        if (environmentStatus is WorkspaceAndAgentStatus.Deleting || environmentStatus is WorkspaceAndAgentStatus.Deleted) {
-                            workspaceStillExists = false
-                            context.envPageManager.showPluginEnvironmentsPage(false)
-                        } else {
-                            delay(1.seconds)
-                        }
-                    }
-                }
-            }
-        } catch (e: APIResponseException) {
-            context.ui.showErrorInfoPopup(e)
-        }
-    }
-
-    /**
      * An environment is equal if it has the same ID.
      */
     override fun equals(other: Any?): Boolean {
@@ -580,10 +546,76 @@ class CoderRemoteEnvironment(
     }
 
     /**
+     * Cancels background work when the provider drops this environment from its
+     * list (e.g. a running workspace stopped and is replaced by a workspace-only
+     * environment with a different id).
+     *
+     * Toolbox reacts to the removal by closing its environment wrapper, which only
+     * cancels the wrapper's own coroutine scope and never invokes the
+     * [AfterDisconnectHook], so the network metrics poller must be stopped and the session
+     * registry entry must be removed here.
+     */
+    fun dispose() {
+        pollJob?.cancel()
+        pollJob = null
+        closeProgressWatcher(progressWatcher)
+        isConnected.update { false }
+        val removedSessionId = agent?.let {
+            SessionIdRegistry.removeSession(workspace.name, it.name)
+        }
+        removedSessionId?.let { sessionId ->
+            context.logger.info(sessionId, "Removed Toolbox SSH session for $id")
+        }
+    }
+
+    /**
+     * Update the workspace/agent status to the listeners, if it has changed.
+     */
+    suspend fun update(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
+        applyWorkspaceSnapshot(newWorkspace, newAgent)
+        // A finished watcher has already released its resources. Replace it only for an active build.
+        if (newWorkspace.latestBuild.status in IN_PROGRESS_BUILD_STATUSES && progressWatcher?.isActive != true) {
+            restartProgressWatcher()
+        }
+        progressWatcher?.onWorkspacePolled(newWorkspace)
+    }
+
+    /**
      * Update the client and CLI manager for this environment.
      */
     fun updateClientAndCli(client: CoderRestClient, cli: CoderCLIManager) {
+        closeProgressWatcher(progressWatcher)
         this.client = client
         this.cli = cli
     }
+
+    internal fun toWorkspaceAddressOrNull(): WorkspaceAddress? = agent?.let { WorkspaceAddress.from(workspace, it) }
 }
+
+private fun String.stripAnsiEscapeSequences(): String = replace(ANSI_ESCAPE_SEQUENCE, "")
+
+private fun environmentId(workspace: Workspace, agent: WorkspaceAgent?): String =
+    agent?.let { "${workspace.name}.${it.name}" } ?: workspace.name
+
+private fun OS?.displayName(): String = when (this) {
+    OS.LINUX -> "Linux"
+    OS.WINDOWS -> "Windows"
+    OS.MAC -> "macOS"
+    null -> "unknown-OS"
+}
+
+private fun WorkspaceAndAgentStatus.toEnvironmentDescription(
+    context: CoderToolboxContext,
+): EnvironmentDescription {
+    val buildStatus = workspace.latestBuild.status
+    return if (buildStatus in IN_PROGRESS_BUILD_STATUSES) {
+        EnvironmentDescription.Progress(
+            context.i18n.pnotr("Building ${workspace.name} (${buildStatus.name.lowercase()})…"),
+            indeterminate = true,
+        )
+    } else {
+        EnvironmentDescription.General(context.i18n.pnotr(workspace.templateDisplayName))
+    }
+}
+
+private fun File.doesNotExists(): Boolean = !this.exists()

@@ -9,6 +9,8 @@ import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspacesResponse
+import okhttp3.ResponseBody
+import retrofit2.Call
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -46,6 +48,11 @@ interface CoderV2RestFacade {
         @Path("workspaceID") workspaceID: UUID
     ): Response<Workspace>
 
+    @GET("api/v2/workspaces/{workspaceID}/watch-ws")
+    fun streamWorkspace(
+        @Path("workspaceID") workspaceID: UUID,
+    ): Call<ResponseBody>
+
     @GET("api/v2/buildinfo")
     suspend fun buildInfo(): Response<BuildInfo>
 
@@ -63,6 +70,12 @@ interface CoderV2RestFacade {
     suspend fun workspaceBuildLogs(
         @Path("workspaceBuildID") workspaceBuildID: UUID,
     ): Response<List<ProvisionerJobLog>>
+
+    @GET("api/v2/workspacebuilds/{workspaceBuildID}/logs")
+    fun streamWorkspaceBuildLogs(
+        @Path("workspaceBuildID") workspaceBuildID: UUID,
+        @Query("follow") follow: Boolean = true,
+    ): Call<ResponseBody>
 
     /**
      * Retrieves all templates the authenticated user can access.

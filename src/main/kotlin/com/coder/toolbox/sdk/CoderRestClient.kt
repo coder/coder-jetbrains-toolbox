@@ -25,6 +25,7 @@ import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
+import com.coder.toolbox.sdk.v2.models.WorkspaceWatchEvent
 import com.coder.toolbox.util.ReloadableTlsContext
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.hasRefreshToken
@@ -34,6 +35,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import org.zeroturnaround.exec.ProcessExecutor
 import retrofit2.Response
 import retrofit2.Retrofit
@@ -41,6 +45,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
+import okhttp3.Response as OkHttpResponse
 
 private const val INVALID_DEPLOYMENT_DATA_WARNING_TITLE = "Coder returned unsafe workspace data"
 private const val INVALID_DEPLOYMENT_DATA_WARNING =
@@ -216,6 +221,70 @@ open class CoderRestClient(
         return requireNotNull(workspaceResponse.body()) {
             "Successful response returned null body or workspace"
         }.withSafeIdentifiers()
+    }
+
+    internal fun streamWorkspace(
+        workspaceID: UUID,
+        onOpen: () -> Unit = {},
+        onMessage: (WorkspaceWatchEvent) -> Unit,
+        onClosed: (code: Int, reason: String) -> Unit,
+        onFailure: (Throwable) -> Unit,
+    ): WebSocket = openWebSocket(
+        retroRestClient.streamWorkspace(workspaceID).request(),
+        WorkspaceWatchEvent::class.java,
+        onOpen,
+        onMessage,
+        onClosed,
+        onFailure,
+    )
+
+    internal fun streamWorkspaceBuildLogs(
+        workspaceBuildID: UUID,
+        onOpen: () -> Unit = {},
+        onMessage: (ProvisionerJobLog) -> Unit,
+        onClosed: (code: Int, reason: String) -> Unit,
+        onFailure: (Throwable) -> Unit,
+    ): WebSocket = openWebSocket(
+        retroRestClient.streamWorkspaceBuildLogs(workspaceBuildID).request(),
+        ProvisionerJobLog::class.java,
+        onOpen,
+        onMessage,
+        onClosed,
+        onFailure,
+    )
+
+    private fun <T> openWebSocket(
+        request: Request,
+        messageType: Class<T>,
+        onOpen: () -> Unit,
+        onMessage: (T) -> Unit,
+        onClosed: (code: Int, reason: String) -> Unit,
+        onFailure: (Throwable) -> Unit,
+    ): WebSocket {
+        val adapter = moshi.adapter(messageType)
+        return httpClient.newWebSocket(
+            request,
+            object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: OkHttpResponse) {
+                    onOpen()
+                }
+
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    runCatching { adapter.fromJson(text) }
+                        .onFailure(onFailure)
+                        .getOrNull()
+                        ?.let(onMessage)
+                }
+
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    onClosed(code, reason)
+                }
+
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: OkHttpResponse?) {
+                    onFailure(t)
+                }
+            },
+        )
     }
 
     suspend fun buildInfo(): BuildInfo {
