@@ -9,11 +9,11 @@ import com.coder.toolbox.models.WorkspaceAndAgentStatus
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.WorkspaceProgressWatcher
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.sdk.v2.models.IN_PROGRESS_BUILD_STATUSES
 import com.coder.toolbox.sdk.v2.models.NetworkMetrics
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
-import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
 import com.coder.toolbox.util.OS
@@ -54,11 +54,6 @@ import kotlin.time.Duration.Companion.seconds
 
 private val POLL_INTERVAL = 5.seconds
 private val ANSI_ESCAPE_SEQUENCE = Regex("\u001B\\[[0-?]*[ -/]*[@-~]")
-private val IN_PROGRESS_BUILD_STATUSES = setOf(
-    WorkspaceStatus.PENDING,
-    WorkspaceStatus.STARTING,
-    WorkspaceStatus.STOPPING,
-)
 
 /**
  * Represents a workspace, or a workspace and agent combination when an agent is available.
@@ -267,9 +262,9 @@ class CoderRemoteEnvironment(
         progressWatcher?.close()
         return WorkspaceProgressWatcher(
             workspace,
-            client,
             cli.features.workspaceProgressWebSockets,
             context.cs,
+            client,
             onBuild = ::onBuildProgress,
             onOutput = ::onProgressOutput,
             onFailure = { error, message -> context.logger.warn(currentSessionId(), error, message) },
@@ -571,7 +566,7 @@ class CoderRemoteEnvironment(
     /**
      * Update the workspace/agent status to the listeners, if it has changed.
      */
-    suspend fun update(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
+    fun update(newWorkspace: Workspace, newAgent: WorkspaceAgent?) {
         applyWorkspaceSnapshot(newWorkspace, newAgent)
         // A finished watcher has already released its resources. Replace it only for an active build.
         if (newWorkspace.latestBuild.status in IN_PROGRESS_BUILD_STATUSES && progressWatcher?.isActive != true) {
