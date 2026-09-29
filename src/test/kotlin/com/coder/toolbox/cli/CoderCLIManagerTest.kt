@@ -923,7 +923,7 @@ internal class CoderCLIManagerTest {
     @Test
     fun `start workspace streams and captures stdout and stderr`() {
         val ccm = startProgressCli(
-            listOf(echo("Preparing workspace"), echo("Waiting for Git authentication...") + " >&2")
+            listOf(echo("Preparing workspace"), "1>&2 ${echo("Waiting for Git authentication...")}")
                 .joinToString(System.lineSeparator()),
         )
         val messages = mutableListOf<String>()
@@ -937,7 +937,7 @@ internal class CoderCLIManagerTest {
     @Test
     fun `start workspace retains stderr when the CLI exits with an error`() {
         val ccm = startProgressCli(
-            listOf(echo("Authentication failed") + " >&2", exit(1)).joinToString(System.lineSeparator()),
+            listOf("1>&2 ${echo("Authentication failed")}", exit(1)).joinToString(System.lineSeparator()),
         )
         val messages = mutableListOf<String>()
         val failure = assertFailsWith<InvalidExitValueException> {
