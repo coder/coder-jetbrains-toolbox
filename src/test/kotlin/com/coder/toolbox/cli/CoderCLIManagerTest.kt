@@ -51,6 +51,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -74,6 +75,8 @@ import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -918,7 +921,64 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun `start workspace captures CLI output`() {
+    fun `start workspace streams and captures stdout and stderr`() {
+        val ccm = startProgressCli(
+            listOf(echo("Preparing workspace"), echo("Waiting for Git authentication...") + " >&2")
+                .joinToString(System.lineSeparator()),
+        )
+        val messages = mutableListOf<String>()
+        val output = ccm.startWorkspace(WorkspaceAddress.from(workspace("start-progress")), Features(), messages::add)
+
+        assertEquals(listOf("Preparing workspace", "Waiting for Git authentication..."), messages)
+        assertContains(output, "Preparing workspace")
+        assertContains(output, "Waiting for Git authentication...")
+    }
+
+    @Test
+    fun `start workspace retains stderr when the CLI exits with an error`() {
+        val ccm = startProgressCli(
+            listOf(echo("Authentication failed") + " >&2", exit(1)).joinToString(System.lineSeparator()),
+        )
+        val messages = mutableListOf<String>()
+        val failure = assertFailsWith<InvalidExitValueException> {
+            ccm.startWorkspace(WorkspaceAddress.from(workspace("start-failure")), Features(), messages::add)
+        }
+        assertEquals(listOf("Authentication failed"), messages)
+        assertContains(failure.result.outputUTF8(), "Authentication failed")
+    }
+
+    @Test
+    @EnabledOnOs(LINUX, MAC)
+    fun `start workspace delivers both streams before the CLI exits`() = runBlocking {
+        val releaseFile = supportBundleProcessRoot.resolve("release-start")
+        val quotedReleaseFile = "'" + releaseFile.toString().replace("'", "'\\''") + "'"
+        val ccm = startProgressCli(
+            """
+                printf 'Preparing workspace\n'
+                printf 'Waiting for authentication\r' >&2
+                while [ ! -f $quotedReleaseFile ]; do sleep 0.05; done
+                printf 'Ready' >&2
+            """.trimIndent(),
+        )
+        val messages = LinkedBlockingQueue<String>()
+        val command = async(Dispatchers.IO) {
+            ccm.startWorkspace(WorkspaceAddress.from(workspace("live-start")), Features(), messages::add)
+        }
+        try {
+            assertEquals("Preparing workspace", messages.poll(5, TimeUnit.SECONDS))
+            assertEquals("Waiting for authentication", messages.poll(5, TimeUnit.SECONDS))
+            assertFalse(command.isCompleted)
+        } finally {
+            Files.writeString(releaseFile, "continue")
+        }
+        val output = command.await()
+        assertEquals("Ready", messages.poll(5, TimeUnit.SECONDS))
+        assertContains(output, "Preparing workspace")
+        assertContains(output, "Waiting for authentication")
+        assertContains(output, "Ready")
+    }
+
+    private fun startProgressCli(script: String): CoderCLIManager {
         val testDirectory = tmpdir.resolve("start-progress-${UUID.randomUUID()}")
         val binaryPath = if (getOS() == OS.WINDOWS) {
             testDirectory.resolve("coder.bat")
@@ -926,14 +986,7 @@ internal class CoderCLIManagerTest {
             testDirectory.resolve("coder")
         }
         binaryPath.parent.toFile().mkdirs()
-        binaryPath.toFile().writeText(
-            mkbin(
-                listOf(
-                    echo("Queued"),
-                    echo("Waiting for Git authentication..."),
-                ).joinToString(System.lineSeparator())
-            )
-        )
+        binaryPath.toFile().writeText(mkbin(script))
         if (getOS() != OS.WINDOWS) {
             binaryPath.toFile().setExecutable(true)
         }
@@ -945,18 +998,10 @@ internal class CoderCLIManagerTest {
             Environment(),
             context.logger,
         )
-        val ccm = CoderCLIManager(
+        return CoderCLIManager(
             context.copy(settingsStore = settings),
             URI("https://test.coder.invalid").toURL(),
         )
-        val workspace = workspace("start-progress")
-        val output = ccm.startWorkspace(
-            WorkspaceAddress.from(workspace),
-            Features(),
-        )
-
-        assertContains(output, "Queued")
-        assertContains(output, "Waiting for Git authentication...")
     }
 
     @Test

@@ -160,10 +160,13 @@ class CoderRemoteEnvironment(
                 })
             } else {
                 actions.add(Action(context, "Start") {
-                    runWorkspaceBuildAction("Starting workspace…") {
+                    runWorkspaceBuildAction("Starting workspace…") { watcher ->
                         context.logger.debug("Starting $id... ")
                         withContext(Dispatchers.IO) {
-                            cli.startWorkspace(WorkspaceAddress.from(workspace))
+                            cli.startWorkspace(
+                                WorkspaceAddress.from(workspace),
+                                showTextProgress = watcher::onCliOutput,
+                            )
                         }
                     }
                 })
@@ -232,7 +235,7 @@ class CoderRemoteEnvironment(
 
     private suspend fun runWorkspaceBuildAction(
         message: String,
-        action: suspend () -> Unit,
+        action: suspend (WorkspaceProgressWatcher) -> Unit,
     ) {
         val previousStatus = environmentStatus
         val queuedStatus = showWorkspaceAsQueued(message)
@@ -241,7 +244,7 @@ class CoderRemoteEnvironment(
         val watcher = restartProgressWatcher()
         var succeeded = false
         try {
-            action()
+            action(watcher)
             workspaceRefreshTrigger.trySend(true)
             succeeded = true
         } catch (ex: Exception) {

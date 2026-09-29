@@ -374,7 +374,7 @@ class CoderRemoteEnvironmentTest {
 
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun `start action shows initial progress while the CLI runs`() = runTest {
+    fun `start action shows CLI preparation then build progress while the CLI runs`() = runTest {
         val fixture = fixture(
             this,
             workspaceStatus = WorkspaceStatus.STOPPED,
@@ -391,7 +391,8 @@ class CoderRemoteEnvironmentTest {
         } returns mockk<WebSocket>(relaxed = true)
         val commandStarted = CountDownLatch(1)
         val finishCommand = CountDownLatch(1)
-        every { fixture.cli.startWorkspace(any(), any()) } answers {
+        val cliProgress = slot<(String) -> Unit>()
+        every { fixture.cli.startWorkspace(any(), any(), capture(cliProgress)) } answers {
             commandStarted.countDown()
             check(finishCommand.await(5, TimeUnit.SECONDS))
             ""
@@ -406,9 +407,15 @@ class CoderRemoteEnvironmentTest {
         assertTrue(progress.indeterminate)
         assertSame(fixture.localizedStrings.getValue("Starting workspace…"), progress.description)
 
+        cliProgress.captured("Waiting for Git authentication...")
+        runCurrent()
+        val preparation = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(fixture.localizedStrings.getValue("Waiting for Git authentication..."), preparation.description)
+
         // A poll can still see the old completed build while the CLI prepares Start.
         fixture.environment.update(fixture.workspace, null)
         runCurrent()
+        assertSame(preparation, fixture.environment.description.value)
         val newBuild = fixture.workspace.latestBuild.copy(id = UUID.randomUUID(), status = WorkspaceStatus.PENDING)
         workspaceMessage.captured(WorkspaceWatchEvent("data", fixture.workspace.copy(latestBuild = newBuild)))
         runCurrent()
@@ -417,12 +424,15 @@ class CoderRemoteEnvironmentTest {
 
         val streamedProgress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertSame(fixture.localizedStrings.getValue("Provisioning workspace"), streamedProgress.description)
+        cliProgress.captured("Late CLI progress")
+        runCurrent()
+        assertSame(streamedProgress, fixture.environment.description.value)
         val queuedState = assertIs<CustomRemoteEnvironmentStateV2>(fixture.environment.state.value)
         assertSame(fixture.localizedStrings.getValue("Queued"), queuedState.label)
 
         finishCommand.countDown()
         advanceUntilIdle()
-        verify(exactly = 1) { fixture.cli.startWorkspace(any(), any()) }
+        verify(exactly = 1) { fixture.cli.startWorkspace(any(), any(), any()) }
         fixture.environment.dispose()
     }
 
@@ -465,6 +475,43 @@ class CoderRemoteEnvironmentTest {
             buildProgress.description,
         )
         fixture.environment.dispose()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `start failure before a build restores the previous status and closes its watcher`() = runTest {
+        val fixture = fixture(
+            backgroundScope,
+            workspaceStatus = WorkspaceStatus.STOPPED,
+            workspaceProgressWebSockets = true,
+        )
+        val socket = mockk<WebSocket>(relaxed = true)
+        every { fixture.client.streamWorkspace(any(), any(), any(), any(), any()) } returns socket
+        val releaseCommand = CountDownLatch(1)
+        val failure = IllegalStateException("Authentication failed")
+        every { fixture.cli.startWorkspace(any(), any(), any()) } answers {
+            check(releaseCommand.await(5, TimeUnit.SECONDS))
+            thirdArg<(String) -> Unit>()("Authentication failed")
+            throw failure
+        }
+        val errorReported = CompletableDeferred<Unit>()
+        every { fixture.logger.error(match<Throwable> { it.message == failure.message }, any<String>()) } answers {
+            errorReported.complete(Unit)
+            Unit
+        }
+        val previousState = fixture.environment.state.value
+        try {
+            fixture.action("Start").run()
+            runCurrent()
+        } finally {
+            releaseCommand.countDown()
+        }
+        errorReported.await()
+        runCurrent()
+
+        assertEquals(previousState, fixture.environment.state.value)
+        assertIs<EnvironmentDescription.General>(fixture.environment.description.value)
+        verify(exactly = 1) { socket.cancel() }
     }
 
     @Test

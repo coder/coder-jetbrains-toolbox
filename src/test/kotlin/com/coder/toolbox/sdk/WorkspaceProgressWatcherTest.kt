@@ -42,6 +42,56 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class WorkspaceProgressWatcherTest {
     @Test
+    fun `CLI preparation progress survives old snapshots and yields to build progress`() = runTest {
+        for (webSocketsEnabled in listOf(true, false)) {
+            val fixture = Fixture(backgroundScope, webSocketsEnabled, initialStatus = WorkspaceStatus.STOPPED)
+            fixture.watcher.onCliOutput("Waiting for Git authentication")
+            fixture.watcher.onCliOutput("  ")
+            fixture.watcher.onWorkspacePolled(fixture.workspace)
+            runCurrent()
+            assertEquals(listOf("Waiting for Git authentication"), fixture.output)
+            assertEquals(emptyList(), fixture.builds)
+
+            val activeWorkspace = fixture.workspace.copy(
+                latestBuild = fixture.workspace.latestBuild.copy(
+                    id = UUID.randomUUID(),
+                    status = WorkspaceStatus.STARTING,
+                ),
+            )
+            coEvery { fixture.client.workspaceBuildLogs(activeWorkspace.latestBuild.id) } returns listOf(
+                log(1, "Provisioning workspace"),
+            )
+            fixture.watcher.onWorkspacePolled(activeWorkspace)
+            fixture.watcher.onCliOutput("Queued CLI preparation")
+            runCurrent()
+            fixture.watcher.onCliOutput("Late CLI progress")
+            runCurrent()
+            assertEquals(listOf("Waiting for Git authentication", "Provisioning workspace"), fixture.output)
+
+            fixture.watcher.onWorkspacePolled(
+                activeWorkspace.copy(latestBuild = activeWorkspace.latestBuild.copy(status = WorkspaceStatus.RUNNING)),
+            )
+            runCurrent()
+            fixture.watcher.onCliOutput("CLI finished")
+            runCurrent()
+            assertFalse(fixture.watcher.isActive)
+            assertEquals(listOf("Waiting for Git authentication", "Provisioning workspace"), fixture.output)
+        }
+    }
+
+    @Test
+    fun `closed watcher ignores pending and late CLI output`() = runTest {
+        val fixture = Fixture(backgroundScope, initialStatus = WorkspaceStatus.STOPPED)
+        runCurrent()
+        fixture.watcher.onCliOutput("Pending output")
+        fixture.watcher.close()
+        fixture.watcher.onCliOutput("Late output")
+        runCurrent()
+        assertEquals(emptyList(), fixture.output)
+        assertFalse(fixture.watcher.isActive)
+    }
+
+    @Test
     fun `workspace snapshots select the build while build logs provide progress output`() = runTest {
         val fixture = Fixture(backgroundScope, initialStatus = WorkspaceStatus.STOPPED)
         runCurrent()

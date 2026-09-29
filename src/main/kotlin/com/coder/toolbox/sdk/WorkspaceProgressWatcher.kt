@@ -30,7 +30,7 @@ private const val INITIAL_RECONNECT_DELAY_MS = 1_000L
 private const val MAX_RECONNECT_DELAY_MS = 30_000L
 
 /**
- * Provides build progress through WebSockets, with REST polling while a log stream is unavailable.
+ * Provides CLI preparation progress, then build progress through WebSockets with REST polling fallback.
  *
  * Lifecycle states:
  * - [State.AwaitingBuild]: no build has been selected from a snapshot. The previous completed build,
@@ -41,6 +41,7 @@ private const val MAX_RECONNECT_DELAY_MS = 30_000L
  * - [State.Finished]: the build session has been cancelled and further events are ignored.
  *
  * Events:
+ * - [Event.CliOutput] carries the latest nonblank CLI progress line while preparing a build.
  * - [Event.Snapshot] carries a build from the workspace stream or a provider poll. Polled snapshots
  *   are conflated and delivered without waiting for progress processing or a REST request.
  * - [Event.LogStreamUpdate] carries any build-log stream activity: opening, message, failure, or
@@ -50,6 +51,8 @@ private const val MAX_RECONNECT_DELAY_MS = 30_000L
  * - [Event.Stop] finishes the lifecycle when the watch coroutine exits, including cancellation.
  *
  * Transitions:
+ * - AwaitingBuild + CLI output -> remain AwaitingBuild and publish the preparation message.
+ * - FollowingBuild/Finished + CLI output -> ignore it; build progress owns the description.
  * - AwaitingBuild + terminal snapshot of the previous completed build -> AwaitingBuild, with no output.
  * - AwaitingBuild + active snapshot -> FollowingBuild in FALLBACK, starting its log stream if supported.
  * - AwaitingBuild + any other terminal snapshot -> Finished, after publishing the completed build.
@@ -90,6 +93,7 @@ internal class WorkspaceProgressWatcher(
     @Volatile
     private var closed = false
     private val polls = Channel<WorkspaceBuild>(Channel.CONFLATED)
+    private val cliOutput = Channel<String>(Channel.CONFLATED)
     private val job = scope.launch(start = CoroutineStart.LAZY) {
         watch(workspace.latestBuild, workspaceProgressSupportedViaWebSockets)
     }
@@ -98,6 +102,7 @@ internal class WorkspaceProgressWatcher(
         job.invokeOnCompletion {
             synchronized(emissionLock) { closed = true }
             polls.cancel()
+            cliOutput.cancel()
         }
         job.start()
     }
@@ -109,6 +114,10 @@ internal class WorkspaceProgressWatcher(
         // Progress requests must not hold up the provider's refresh of other workspaces.
         // If several snapshots arrive before consumption, only the latest one is needed.
         polls.trySend(workspace.latestBuild)
+    }
+
+    fun onCliOutput(output: String) {
+        if (output.isNotBlank()) cliOutput.trySend(output)
     }
 
     override fun close() {
@@ -165,6 +174,7 @@ internal class WorkspaceProgressWatcher(
                     }
                     polls.onReceive { machine.handle(Event.Snapshot(it, SnapshotSource.POLL)) }
                     session?.pendingLog?.onAwait { machine.handle(Event.PollResult(it)) }
+                    cliOutput.onReceive { machine.handle(Event.CliOutput(it)) }
                 }
             }
         } finally {
@@ -186,6 +196,7 @@ internal class WorkspaceProgressWatcher(
         fun handle(event: Event) {
             if (state == State.Finished) return
             when (event) {
+                is Event.CliOutput -> if (state is State.AwaitingBuild) publish { onOutput(event.output) }
                 is Event.Snapshot -> onSnapshot(event)
                 is Event.LogStreamUpdate -> session?.let { onLogStreamUpdate(it, event.value) }
                 is Event.PollResult -> session?.let { onPollResult(it, event.value) }
@@ -349,6 +360,7 @@ internal class WorkspaceProgressWatcher(
     private enum class SnapshotSource { STREAM, POLL }
 
     private sealed interface Event {
+        data class CliOutput(val output: String) : Event
         data class Snapshot(val build: WorkspaceBuild, val source: SnapshotSource) : Event
         data class LogStreamUpdate(val value: SocketEvent<ProvisionerJobLog>?) : Event
         data class PollResult(val value: Result<ProvisionerJobLog?>) : Event

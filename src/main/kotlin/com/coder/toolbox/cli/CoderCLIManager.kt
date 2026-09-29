@@ -274,11 +274,13 @@ class CoderCLIManager(
     }
 
     /**
-     * Start a workspace. Throws if the command execution fails.
+     * Start a workspace, reporting stdout and stderr lines while retaining the complete output.
+     * Throws if the command execution fails.
      */
     internal fun startWorkspace(
         wsAddress: WorkspaceAddress,
         feats: Features = features,
+        showTextProgress: (String) -> Unit = {},
     ): String {
         val args = mutableListOf(
             "--global-config",
@@ -293,7 +295,7 @@ class CoderCLIManager(
         args.add("--")
         args.add(wsAddress.ownerAndWsName)
 
-        return exec(*args.toTypedArray())
+        return exec(*args.toTypedArray(), showTextProgress = showTextProgress)
     }
 
     /**
@@ -576,21 +578,29 @@ class CoderCLIManager(
         return matches
     }
 
-    private fun exec(vararg args: String): String {
+    private fun exec(
+        vararg args: String,
+        showTextProgress: ((String) -> Unit)? = null,
+    ): String {
         val processExecutor =
             ProcessExecutor()
                 .command(localBinaryPath.toString(), *args)
                 .environment("CODER_HEADER_COMMAND", context.settingsStore.headerCommand)
+                .redirectErrorStream(true)
                 .exitValues(0)
 
-        val stdout =
+        showTextProgress?.let { reportProgress ->
+            processExecutor.redirectOutput(reportProgress::invoke)
+        }
+
+        val output =
             processExecutor
                 .readOutput(true)
                 .execute()
                 .outputUTF8()
         val redactedArgs = listOf(*args).joinToString(" ").replace(tokenRegex, "--token <redacted>")
-        context.logger.info("`$localBinaryPath $redactedArgs`: $stdout")
-        return stdout
+        context.logger.info("`$localBinaryPath $redactedArgs`: $output")
+        return output
     }
 
     /** Generates a support bundle for the workspace and optional agent, saving it to [outputFile]. */
