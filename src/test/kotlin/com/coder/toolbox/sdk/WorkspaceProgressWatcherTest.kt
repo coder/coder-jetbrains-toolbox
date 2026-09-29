@@ -36,6 +36,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -601,6 +602,136 @@ class WorkspaceProgressWatcherTest {
     }
 
     @Test
+    fun `progress callback failures stop only their watcher and release pending work`() = runTest {
+        for (failBuildCallback in listOf(true, false)) {
+            val parent = Job(backgroundScope.coroutineContext[Job])
+            val scope = CoroutineScope(backgroundScope.coroutineContext + parent)
+            val failure = IllegalStateException("Progress callback failed")
+            var rejectCallbacks = false
+            val fixture = Fixture(
+                scope,
+                onBuild = { if (rejectCallbacks && failBuildCallback) throw failure },
+                onOutput = { if (rejectCallbacks && !failBuildCallback) throw failure },
+            )
+            val sibling = Fixture(scope, webSocketsEnabled = false)
+            val response = CompletableDeferred<List<ProvisionerJobLog>>()
+            var requestCancelled = false
+            coEvery { fixture.client.workspaceBuildLogs(any()) } coAnswers {
+                try {
+                    response.await()
+                } finally {
+                    requestCancelled = true
+                }
+            }
+            try {
+                fixture.watcher.onWorkspacePolled(fixture.workspace)
+                runCurrent()
+                val workspaceStream = fixture.workspaceStreams.single()
+                val logs = fixture.buildStreams.getValue(fixture.workspace.latestBuild.id).single()
+                assertFalse(requestCancelled)
+                rejectCallbacks = true
+                if (failBuildCallback) {
+                    fixture.watcher.onWorkspacePolled(fixture.workspace)
+                } else {
+                    logs.onMessage(log(1, "Building"))
+                }
+                runCurrent()
+
+                assertFalse(fixture.watcher.isActive)
+                assertSame(failure, fixture.failures.single())
+                assertTrue(requestCancelled)
+                verify(exactly = 1) { workspaceStream.socket.cancel() }
+                verify(exactly = 1) { logs.socket.cancel() }
+                assertTrue(parent.isActive)
+                coEvery { sibling.client.workspaceBuildLogs(any()) } returns listOf(log(1, "Still building"))
+                sibling.watcher.onWorkspacePolled(sibling.workspace)
+                runCurrent()
+                assertEquals(listOf("Still building"), sibling.output)
+                assertTrue(sibling.watcher.isActive)
+            } finally {
+                parent.cancel()
+            }
+        }
+    }
+
+    @Test
+    fun `a throwing failure callback stops the watcher without recursive reporting or parent cancellation`() = runTest {
+        for (failProgressCallback in listOf(true, false)) {
+            val parent = Job(backgroundScope.coroutineContext[Job])
+            val scope = CoroutineScope(backgroundScope.coroutineContext + parent)
+            val failure = IOException("Progress failed")
+            val reported = mutableListOf<Throwable>()
+            val fixture = Fixture(
+                scope,
+                onOutput = { throw failure },
+                onFailure = { error, _ ->
+                    reported.add(error)
+                    error("Failure callback failed")
+                },
+            )
+            try {
+                fixture.watcher.onWorkspacePolled(fixture.workspace)
+                runCurrent()
+                val workspaceStream = fixture.workspaceStreams.single()
+                val logs = fixture.buildStreams.getValue(fixture.workspace.latestBuild.id).single()
+                if (failProgressCallback) logs.onMessage(log(1, "Building"))
+                else logs.onFailure(failure)
+                runCurrent()
+
+                assertEquals(failure.message, reported.single().message)
+                assertFalse(fixture.watcher.isActive)
+                assertTrue(parent.isActive)
+                verify(exactly = 1) { workspaceStream.socket.cancel() }
+                verify(exactly = 1) { logs.socket.cancel() }
+            } finally {
+                parent.cancel()
+            }
+        }
+    }
+
+    @Test
+    fun `callback cancellation stops the watcher without reporting an error or cancelling its parent`() = runTest {
+        for (callback in listOf("build", "output", "failure")) {
+            val parent = Job(backgroundScope.coroutineContext[Job])
+            val scope = CoroutineScope(backgroundScope.coroutineContext + parent)
+            val cancellation = CancellationException("Callback cancelled")
+            val reported = mutableListOf<Throwable>()
+            val fixture = Fixture(
+                scope,
+                onBuild = { if (callback == "build") throw cancellation },
+                onOutput = { if (callback == "output") throw cancellation },
+                onFailure = { error, _ ->
+                    if (callback == "failure") throw cancellation
+                    reported.add(error)
+                },
+            )
+            try {
+                runCurrent()
+                val workspaceStream = fixture.workspaceStreams.single()
+                when (callback) {
+                    "build" -> fixture.watcher.onWorkspacePolled(fixture.workspace)
+                    "output" -> {
+                        fixture.watcher.onWorkspacePolled(fixture.workspace)
+                        runCurrent()
+                        fixture.buildStreams.getValue(fixture.workspace.latestBuild.id).single()
+                            .onMessage(log(1, "Building"))
+                    }
+
+                    "failure" -> workspaceStream.onFailure(IOException("Stream failed"))
+                }
+                runCurrent()
+
+                assertFalse(fixture.watcher.isActive)
+                assertEquals(emptyList(), reported)
+                assertTrue(parent.isActive)
+                verify(exactly = 1) { workspaceStream.socket.cancel() }
+            } finally {
+                parent.cancel()
+            }
+        }
+    }
+
+    @Test
     fun `close waits for an executing callback and prevents subsequent callbacks`() {
         Executors.newFixedThreadPool(2).asCoroutineDispatcher().use { dispatcher ->
             val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -662,6 +793,9 @@ class WorkspaceProgressWatcherTest {
         scope: CoroutineScope,
         webSocketsEnabled: Boolean = true,
         initialStatus: WorkspaceStatus = WorkspaceStatus.STARTING,
+        onBuild: ((WorkspaceBuild) -> Unit)? = null,
+        onOutput: ((String) -> Unit)? = null,
+        onFailure: ((Throwable, String) -> Unit)? = null,
     ) {
         val client = mockk<CoderRestClient>()
         val workspace = DataGen.workspace("progress").let {
@@ -686,9 +820,11 @@ class WorkspaceProgressWatcherTest {
             }
             watcher = WorkspaceProgressWatcher(
                 workspace, webSocketsEnabled, scope, client,
-                onBuild = builds::add,
-                onOutput = output::add,
-                onFailure = { error, _ -> failures.add(error) },
+                onBuild = { if (onBuild == null) builds.add(it) else onBuild(it) },
+                onOutput = { if (onOutput == null) output.add(it) else onOutput(it) },
+                onFailure = { error, message ->
+                    if (onFailure == null) failures.add(error) else onFailure(error, message)
+                },
             )
         }
     }

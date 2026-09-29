@@ -68,6 +68,9 @@ private const val MAX_RECONNECT_DELAY_MS = 30_000L
  * may finish after streaming resumes; both sources share the same log cursor to reject older output.
  * The emission lock makes [close] a synchronous callback barrier; cancellation then drives Stop and
  * resource cleanup in the coroutine. AwaitingBuild deliberately has no preparation deadline.
+ * A progress callback exception is reported before cancelling this watcher; a failure callback
+ * exception cancels it without another notification. Neither propagates to the owning scope.
+ * Cancellation exceptions retain their normal coroutine behavior.
  */
 internal class WorkspaceProgressWatcher(
     workspace: Workspace,
@@ -115,7 +118,30 @@ internal class WorkspaceProgressWatcher(
 
     private inline fun publish(action: () -> Unit) {
         synchronized(emissionLock) {
-            if (!closed) action()
+            if (closed) return
+            try {
+                action()
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                use {
+                    reportFailure(ex, "Failed to publish workspace progress for $workspaceName")
+                }
+            }
+        }
+    }
+
+    private fun reportFailure(error: Throwable, message: String) {
+        synchronized(emissionLock) {
+            if (closed) return
+            try {
+                onFailure(error, message)
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (_: Exception) {
+                // The failure callback is also caller-owned; retrying it could recurse indefinitely.
+                close()
+            }
         }
     }
 
@@ -163,7 +189,7 @@ internal class WorkspaceProgressWatcher(
                 is Event.Snapshot -> onSnapshot(event)
                 is Event.LogStreamUpdate -> session?.let { onLogStreamUpdate(it, event.value) }
                 is Event.PollResult -> session?.let { onPollResult(it, event.value) }
-                is Event.WorkspaceFailure -> publish { onFailure(event.failure.error, event.failure.message) }
+                is Event.WorkspaceFailure -> reportFailure(event.failure.error, event.failure.message)
                 Event.Stop -> transitionTo(State.Finished)
             }
         }
@@ -178,7 +204,7 @@ internal class WorkspaceProgressWatcher(
                     } else null
                 }
 
-                State.Finished -> close()
+                State.Finished -> this@WorkspaceProgressWatcher.close()
                 is State.AwaitingBuild -> Unit
             }
         }
@@ -217,7 +243,7 @@ internal class WorkspaceProgressWatcher(
 
                 is SocketEvent.Failed -> {
                     session.logMode = LogMode.FALLBACK
-                    publish { onFailure(event.error, event.message) }
+                    reportFailure(event.error, event.message)
                 }
 
                 SocketEvent.Opened -> session.logMode = LogMode.STREAMING
@@ -232,7 +258,7 @@ internal class WorkspaceProgressWatcher(
                     log?.let { emitLog(session, it, allowRepeat = true) }
                 },
                 onFailure = { error ->
-                    publish { onFailure(error, "Failed to retrieve progress for workspace build ${session.id}") }
+                    reportFailure(error, "Failed to retrieve progress for workspace build ${session.id}")
                 },
             )
         }
@@ -249,15 +275,15 @@ internal class WorkspaceProgressWatcher(
     private fun workspaceEvents(): Flow<SocketEvent<WorkspaceBuild>> = socketEvents(
         "Workspace progress WebSocket",
         normalClosureCompletes = false,
-    ) { opened, message, closed, failed ->
-        client.streamWorkspace(workspaceID, opened, { it.data?.latestBuild?.let(message) }, closed, failed)
+    ) { onOpen, onMessage, onClosed, onFailure ->
+        client.streamWorkspace(workspaceID, onOpen, { it.data?.latestBuild?.let(onMessage) }, onClosed, onFailure)
     }
 
     private fun buildLogEvents(buildID: UUID): Flow<SocketEvent<ProvisionerJobLog>> = socketEvents(
         "Workspace build log WebSocket",
         normalClosureCompletes = true,
-    ) { opened, message, closed, failed ->
-        client.streamWorkspaceBuildLogs(buildID, opened, message, closed, failed)
+    ) { onOpen, onMessage, onClosed, onFailure ->
+        client.streamWorkspaceBuildLogs(buildID, onOpen, onMessage, onClosed, onFailure)
     }
 
     private fun <T> socketEvents(
