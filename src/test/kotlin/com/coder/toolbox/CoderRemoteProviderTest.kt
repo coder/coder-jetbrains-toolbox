@@ -1,10 +1,13 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.cli.Features
 import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.DataGen
 import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
+import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
@@ -28,9 +31,11 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -412,7 +417,44 @@ class CoderRemoteProviderTest {
         // then
         assertEquals(1, result.size)
         assertSame(existingEnv, result[0])
-        coVerify(exactly = 1) { existingEnv.update(workspace, agent) }
+        verify(exactly = 1) { existingEnv.update(workspace, agent) }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `slow build logs do not delay resolving other workspaces`() = runTest {
+        every { mockContext.cs } returns backgroundScope
+        every { mockCli.features } returns Features(workspaceProgressWebSockets = false)
+        val workspaces = listOf("slow", "fast").map { name ->
+            DataGen.workspace(name).let {
+                it.copy(latestBuild = it.latestBuild.copy(status = WorkspaceStatus.STARTING))
+            }
+        }
+        val slowBuildID = workspaces[0].latestBuild.id
+        val fastBuildID = workspaces[1].latestBuild.id
+        val slowResponse = CompletableDeferred<List<ProvisionerJobLog>>()
+        coEvery { mockClient.workspaces(any()) } returns workspaces
+        coEvery { mockClient.workspaceBuildLogs(slowBuildID) } coAnswers { slowResponse.await() }
+        coEvery { mockClient.workspaceBuildLogs(fastBuildID) } returns emptyList()
+        val environments = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
+        remoteProvider.lastEnvironments.addAll(environments)
+        try {
+            val refresh = async { remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli) }
+            runCurrent()
+            assertTrue(refresh.isCompleted)
+            assertEquals(listOf("fast", "slow"), refresh.await().map { it.id })
+            assertFalse(slowResponse.isCompleted)
+            coVerify(exactly = 1) { mockClient.workspaceBuildLogs(slowBuildID) }
+            coVerify(exactly = 1) { mockClient.workspaceBuildLogs(fastBuildID) }
+
+            val nextRefresh = async { remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli) }
+            runCurrent()
+            assertTrue(nextRefresh.isCompleted)
+            coVerify(exactly = 1) { mockClient.workspaceBuildLogs(slowBuildID) }
+            coVerify(exactly = 2) { mockClient.workspaceBuildLogs(fastBuildID) }
+        } finally {
+            environments.forEach { it.dispose() }
+        }
     }
 
     @Test

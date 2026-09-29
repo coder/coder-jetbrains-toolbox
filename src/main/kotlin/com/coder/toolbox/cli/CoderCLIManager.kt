@@ -101,6 +101,7 @@ data class Features(
     val disableAutostart: Boolean = false,
     val reportWorkspaceUsage: Boolean = false,
     val wildcardSsh: Boolean = false,
+    val workspaceProgressWebSockets: Boolean = false,
     val buildReason: Boolean = false,
 )
 
@@ -273,7 +274,8 @@ class CoderCLIManager(
     }
 
     /**
-     * Start a workspace. Throws if the command execution fails.
+     * Start a workspace, reporting stdout and stderr lines while retaining the complete output.
+     * Throws if the command execution fails.
      */
     internal fun startWorkspace(
         wsAddress: WorkspaceAddress,
@@ -584,20 +586,21 @@ class CoderCLIManager(
             ProcessExecutor()
                 .command(localBinaryPath.toString(), *args)
                 .environment("CODER_HEADER_COMMAND", context.settingsStore.headerCommand)
+                .redirectErrorStream(true)
                 .exitValues(0)
 
         showTextProgress?.let { reportProgress ->
             processExecutor.redirectOutput(reportProgress::invoke)
         }
 
-        val stdout =
+        val output =
             processExecutor
                 .readOutput(true)
                 .execute()
                 .outputUTF8()
         val redactedArgs = listOf(*args).joinToString(" ").replace(tokenRegex, "--token <redacted>")
-        context.logger.info("`$localBinaryPath $redactedArgs`: $stdout")
-        return stdout
+        context.logger.info("`$localBinaryPath $redactedArgs`: $output")
+        return output
     }
 
     /** Generates a support bundle for the workspace and optional agent, saving it to [outputFile]. */
@@ -645,6 +648,7 @@ class CoderCLIManager(
                     disableAutostart = version >= SemVer(2, 5, 0),
                     reportWorkspaceUsage = version >= SemVer(2, 13, 0),
                     wildcardSsh = version >= SemVer(2, 19, 0),
+                    workspaceProgressWebSockets = version >= SemVer(2, 22, 0),
                     buildReason = version >= SemVer(2, 25, 0),
                 )
             }

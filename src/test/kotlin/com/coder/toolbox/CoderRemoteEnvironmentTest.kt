@@ -1,6 +1,7 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.cli.Features
 import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
@@ -10,6 +11,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.sdk.v2.models.WorkspaceWatchEvent
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
 import com.coder.toolbox.store.CoderSettingsStore
@@ -18,6 +20,7 @@ import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.environments.SshEnvironmentContentsView
+import com.jetbrains.toolbox.api.remoteDev.states.CustomRemoteEnvironmentStateV2
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentDescription
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.ui.ToolboxUi
@@ -27,15 +30,19 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import okhttp3.WebSocket
 import java.nio.file.Files
 import java.time.Instant
 import java.util.UUID
@@ -43,6 +50,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -50,6 +58,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CoderRemoteEnvironmentTest {
     @Test
     fun `diagnostic collector uses current workspace agent and CLI after refresh`() = runTest {
@@ -61,6 +70,7 @@ class CoderRemoteEnvironmentTest {
             fixture.workspace.copy(latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)),
             updatedAgent,
         )
+        runCurrent()
         fixture.environment.updateClientAndCli(mockk(relaxed = true), refreshedCli)
         val root = Files.createTempDirectory("coder-diagnostics-test")
         try {
@@ -79,6 +89,7 @@ class CoderRemoteEnvironmentTest {
                 )
             }
             fixture.environment.update(fixture.workspace, null)
+            runCurrent()
             collector.collectAdditionalDiagnostics(root)
             coVerify(exactly = 1) { refreshedCli.supportBundle(match { it.agentName == null }, any()) }
         } finally {
@@ -277,6 +288,7 @@ class CoderRemoteEnvironmentTest {
                 latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING),
             )
             fixture.environment.update(updatedWorkspace, updatedAgent)
+            runCurrent()
 
             fixture.environment.afterDisconnect(isManual = false)
 
@@ -343,6 +355,7 @@ class CoderRemoteEnvironmentTest {
             )
 
             fixture.environment.update(updatedWorkspace, updatedAgent)
+            runCurrent()
 
             verify(exactly = 1) {
                 fixture.logger.info(match<String> {
@@ -361,12 +374,25 @@ class CoderRemoteEnvironmentTest {
 
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun `start action shows progress until the CLI command finishes`() = runTest {
-        val fixture = fixture(this, workspaceStatus = WorkspaceStatus.STOPPED)
+    fun `start action shows CLI preparation then build progress while the CLI runs`() = runTest {
+        val fixture = fixture(
+            this,
+            workspaceStatus = WorkspaceStatus.STOPPED,
+            workspaceProgressWebSockets = true,
+        )
+        val workspaceMessage = slot<(WorkspaceWatchEvent) -> Unit>()
+        val workspaceOpen = slot<() -> Unit>()
+        val buildLogMessage = slot<(ProvisionerJobLog) -> Unit>()
+        every {
+            fixture.client.streamWorkspace(any(), capture(workspaceOpen), capture(workspaceMessage), any(), any())
+        } returns mockk<WebSocket>(relaxed = true)
+        every {
+            fixture.client.streamWorkspaceBuildLogs(any(), any(), capture(buildLogMessage), any(), any())
+        } returns mockk<WebSocket>(relaxed = true)
         val commandStarted = CountDownLatch(1)
         val finishCommand = CountDownLatch(1)
-        every { fixture.cli.startWorkspace(any(), any(), any()) } answers {
-            thirdArg<(String) -> Unit>()("\u001B[92mProvisioning workspace...\u001B[0m")
+        val cliProgress = slot<(String) -> Unit>()
+        every { fixture.cli.startWorkspace(any(), any(), capture(cliProgress)) } answers {
             commandStarted.countDown()
             check(finishCommand.await(5, TimeUnit.SECONDS))
             ""
@@ -376,13 +402,38 @@ class CoderRemoteEnvironmentTest {
         runCurrent()
 
         assertTrue(commandStarted.await(5, TimeUnit.SECONDS))
+        workspaceOpen.captured()
         val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertTrue(progress.indeterminate)
-        assertSame(fixture.localizedStrings.getValue("Provisioning workspace..."), progress.description)
+        assertSame(fixture.localizedStrings.getValue("Starting workspace…"), progress.description)
+
+        cliProgress.captured("Waiting for Git authentication...")
+        runCurrent()
+        val preparation = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(fixture.localizedStrings.getValue("Waiting for Git authentication..."), preparation.description)
+
+        // A poll can still see the old completed build while the CLI prepares Start.
+        fixture.environment.update(fixture.workspace, null)
+        runCurrent()
+        assertSame(preparation, fixture.environment.description.value)
+        val newBuild = fixture.workspace.latestBuild.copy(id = UUID.randomUUID(), status = WorkspaceStatus.PENDING)
+        workspaceMessage.captured(WorkspaceWatchEvent("data", fixture.workspace.copy(latestBuild = newBuild)))
+        runCurrent()
+        buildLogMessage.captured(buildLog(1, "Provisioning workspace"))
+        runCurrent()
+
+        val streamedProgress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(fixture.localizedStrings.getValue("Provisioning workspace"), streamedProgress.description)
+        cliProgress.captured("Late CLI progress")
+        runCurrent()
+        assertSame(streamedProgress, fixture.environment.description.value)
+        val queuedState = assertIs<CustomRemoteEnvironmentStateV2>(fixture.environment.state.value)
+        assertSame(fixture.localizedStrings.getValue("Queued"), queuedState.label)
 
         finishCommand.countDown()
         advanceUntilIdle()
         verify(exactly = 1) { fixture.cli.startWorkspace(any(), any(), any()) }
+        fixture.environment.dispose()
     }
 
     @Test
@@ -401,18 +452,125 @@ class CoderRemoteEnvironmentTest {
         runCurrent()
 
         assertTrue(requestStarted.isCompleted)
+        val queuedState = assertIs<CustomRemoteEnvironmentStateV2>(fixture.environment.state.value)
+        assertSame(fixture.localizedStrings.getValue("Queued"), queuedState.label)
         val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertTrue(progress.indeterminate)
         assertSame(fixture.localizedStrings.getValue("Updating and restarting workspace…"), progress.description)
 
         finishRequest.complete(Unit)
         advanceUntilIdle()
+        val awaitingBuild = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(fixture.localizedStrings.getValue("Updating and restarting workspace…"), awaitingBuild.description)
+
+        fixture.environment.update(
+            fixture.workspace.copy(latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STARTING)),
+            fixture.agent,
+        )
+        runCurrent()
         val buildProgress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertTrue(buildProgress.indeterminate)
         assertSame(
             fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (starting)…"),
             buildProgress.description,
         )
+        fixture.environment.dispose()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `start failure before a build restores the previous status and closes its watcher`() = runTest {
+        val fixture = fixture(
+            backgroundScope,
+            workspaceStatus = WorkspaceStatus.STOPPED,
+            workspaceProgressWebSockets = true,
+        )
+        val socket = mockk<WebSocket>(relaxed = true)
+        every { fixture.client.streamWorkspace(any(), any(), any(), any(), any()) } returns socket
+        val releaseCommand = CountDownLatch(1)
+        val failure = IllegalStateException("Authentication failed")
+        every { fixture.cli.startWorkspace(any(), any(), any()) } answers {
+            check(releaseCommand.await(5, TimeUnit.SECONDS))
+            thirdArg<(String) -> Unit>()("Authentication failed")
+            throw failure
+        }
+        val errorReported = CompletableDeferred<Unit>()
+        every { fixture.logger.error(match<Throwable> { it.message == failure.message }, any<String>()) } answers {
+            errorReported.complete(Unit)
+            Unit
+        }
+        val previousState = fixture.environment.state.value
+        try {
+            fixture.action("Start").run()
+            runCurrent()
+        } finally {
+            releaseCommand.countDown()
+        }
+        errorReported.await()
+        runCurrent()
+
+        assertEquals(previousState, fixture.environment.state.value)
+        assertIs<EnvironmentDescription.General>(fixture.environment.description.value)
+        verify(exactly = 1) { socket.cancel() }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `failed build action restores status and closes its watcher`() = runTest {
+        val fixture = fixture(backgroundScope, outdated = true, workspaceProgressWebSockets = true)
+        val socket = mockk<WebSocket>(relaxed = true)
+        every { fixture.client.streamWorkspace(any(), any(), any(), any(), any()) } returns socket
+        val finishRequest = CompletableDeferred<Unit>()
+        coEvery { fixture.client.updateWorkspace(any()) } coAnswers {
+            finishRequest.await()
+            throw IllegalStateException("Build request failed")
+        }
+        val previousState = fixture.environment.state.value
+
+        fixture.action("Update and restart").run()
+        runCurrent()
+        finishRequest.complete(Unit)
+        runCurrent()
+
+        assertEquals(previousState, fixture.environment.state.value)
+        assertIs<EnvironmentDescription.General>(fixture.environment.description.value)
+        verify(exactly = 1) { socket.cancel() }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `cancelling a build action cancels its request and closes its watcher`() = runTest {
+        val pluginJob = Job(backgroundScope.coroutineContext[Job])
+        val pluginScope = CoroutineScope(backgroundScope.coroutineContext + pluginJob)
+        val fixture = fixture(pluginScope, outdated = true, workspaceProgressWebSockets = true)
+        val socket = mockk<WebSocket>(relaxed = true)
+        every { fixture.client.streamWorkspace(any(), any(), any(), any(), any()) } returns socket
+        val finishRequest = CompletableDeferred<Unit>()
+        val requestFinished = CompletableDeferred<Unit>()
+        val requestJob = CompletableDeferred<Job>()
+        coEvery { fixture.client.updateWorkspace(any()) } coAnswers {
+            try {
+                requestJob.complete(currentCoroutineContext().job)
+                finishRequest.await()
+                fixture.workspace.latestBuild
+            } finally {
+                requestFinished.complete(Unit)
+            }
+        }
+        val previousState = fixture.environment.state.value
+
+        fixture.action("Update and restart").run()
+        runCurrent()
+        assertFalse(requestFinished.isCompleted)
+        requestJob.await().cancel()
+        runCurrent()
+
+        assertTrue(requestFinished.isCompleted)
+        assertTrue(pluginJob.isActive)
+        assertEquals(previousState, fixture.environment.state.value)
+        assertIs<EnvironmentDescription.General>(fixture.environment.description.value)
+        verify(exactly = 1) { socket.cancel() }
+        pluginJob.cancel()
     }
 
     @Test
@@ -428,27 +586,98 @@ class CoderRemoteEnvironmentTest {
         val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertTrue(progress.indeterminate)
         assertSame(
-            fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (pending)…"),
+            fixture.localizedStrings.getValue("Updating and starting workspace…"),
             progress.description,
         )
+
+        fixture.environment.update(
+            fixture.workspace.copy(latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.PENDING)),
+            null,
+        )
+        runCurrent()
+        val polledProgress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(
+            fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (pending)…"),
+            polledProgress.description
+        )
+        fixture.environment.dispose()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `update and start discovers its build through the workspace stream`() = runTest {
+        val fixture = fixture(
+            this,
+            workspaceStatus = WorkspaceStatus.STOPPED,
+            outdated = true,
+            workspaceProgressWebSockets = true,
+        )
+        val workspaceMessage = slot<(WorkspaceWatchEvent) -> Unit>()
+        val workspaceOpen = slot<() -> Unit>()
+        val buildLogMessage = slot<(ProvisionerJobLog) -> Unit>()
+        every {
+            fixture.client.streamWorkspace(any(), capture(workspaceOpen), capture(workspaceMessage), any(), any())
+        } returns mockk<WebSocket>(relaxed = true)
+        every {
+            fixture.client.streamWorkspaceBuildLogs(any(), any(), capture(buildLogMessage), any(), any())
+        } returns mockk<WebSocket>(relaxed = true)
+        val newBuild = fixture.workspace.latestBuild.copy(id = UUID.randomUUID(), status = WorkspaceStatus.PENDING)
+        coEvery { fixture.client.updateWorkspace(any()) } returns newBuild
+
+        fixture.action("Update and start").run()
+        advanceUntilIdle()
+        workspaceOpen.captured()
+
+        val stateBeforeEvent = fixture.environment.state.value
+        verify(exactly = 0) { fixture.client.streamWorkspaceBuildLogs(any(), any(), any(), any(), any()) }
+        workspaceMessage.captured(WorkspaceWatchEvent("data", fixture.workspace.copy(latestBuild = newBuild)))
+        runCurrent()
+        buildLogMessage.captured(buildLog(1, "Provisioning updated workspace"))
+        runCurrent()
+
+        val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(fixture.localizedStrings.getValue("Provisioning updated workspace"), progress.description)
+        assertSame(stateBeforeEvent, fixture.environment.state.value)
+        fixture.environment.dispose()
     }
 
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
     fun `stop keeps showing progress after the request finishes`() = runTest {
         val fixture = fixture(this)
-        coEvery { fixture.client.stopWorkspace(any()) } returns
-                fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)
+        val finishRequest = CompletableDeferred<Unit>()
+        coEvery { fixture.client.stopWorkspace(any()) } coAnswers {
+            finishRequest.await()
+            fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)
+        }
 
         fixture.action("Stop").run()
+        runCurrent()
+
+        val queuedState = assertIs<CustomRemoteEnvironmentStateV2>(fixture.environment.state.value)
+        assertSame(fixture.localizedStrings.getValue("Queued"), queuedState.label)
+
+        finishRequest.complete(Unit)
         advanceUntilIdle()
 
         val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertTrue(progress.indeterminate)
         assertSame(
-            fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (stopping)…"),
+            fixture.localizedStrings.getValue("Stopping workspace…"),
             progress.description,
         )
+
+        fixture.environment.update(
+            fixture.workspace.copy(latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)),
+            fixture.agent,
+        )
+        runCurrent()
+        val polledProgress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(
+            fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (stopping)…"),
+            polledProgress.description
+        )
+        fixture.environment.dispose()
     }
 
     @Test
@@ -465,6 +694,7 @@ class CoderRemoteEnvironmentTest {
             latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STARTING),
         )
         fixture.environment.update(startingWorkspace, null)
+        runCurrent()
         val starting = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertSame(
             fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (starting)…"),
@@ -475,6 +705,7 @@ class CoderRemoteEnvironmentTest {
             latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING),
         )
         fixture.environment.update(stoppingWorkspace, null)
+        runCurrent()
         val stopping = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertSame(
             fixture.localizedStrings.getValue("Building ${fixture.workspaceName} (stopping)…"),
@@ -485,6 +716,7 @@ class CoderRemoteEnvironmentTest {
             latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPED),
         )
         fixture.environment.update(stoppedWorkspace, null)
+        runCurrent()
         val finished = assertIs<EnvironmentDescription.General>(fixture.environment.description.value)
         assertSame(fixture.localizedStrings.getValue(fixture.workspace.templateDisplayName), finished.description)
     }
@@ -494,8 +726,64 @@ class CoderRemoteEnvironmentTest {
         val fixture = fixture(backgroundScope)
 
         fixture.environment.update(fixture.workspace, fixture.agent)
+        runCurrent()
 
         coVerify(exactly = 0) { fixture.client.workspaceBuildLogs(any()) }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `finished watchers are replaced only when another active build is polled`() = runTest {
+        for (completeThroughStream in listOf(false, true)) {
+            val fixture = fixture(
+                backgroundScope,
+                workspaceStatus = WorkspaceStatus.STARTING,
+                workspaceProgressWebSockets = true,
+            )
+            val workspaceSocket = mockk<WebSocket>(relaxed = true)
+            val workspaceMessage = slot<(WorkspaceWatchEvent) -> Unit>()
+            val workspaceOpen = slot<() -> Unit>()
+            every {
+                fixture.client.streamWorkspace(any(), capture(workspaceOpen), capture(workspaceMessage), any(), any())
+            } returns workspaceSocket
+            every {
+                fixture.client.streamWorkspaceBuildLogs(any(), any(), any(), any(), any())
+            } returns mockk<WebSocket>(relaxed = true)
+
+            fixture.environment.update(fixture.workspace, fixture.agent)
+            runCurrent()
+            workspaceOpen.captured()
+            val completedWorkspace = fixture.workspace.copy(
+                latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.RUNNING),
+            )
+            if (completeThroughStream) {
+                workspaceMessage.captured(WorkspaceWatchEvent("data", completedWorkspace))
+            }
+            fixture.environment.update(completedWorkspace, fixture.agent)
+            runCurrent()
+            fixture.environment.update(completedWorkspace, fixture.agent)
+            runCurrent()
+
+            assertIs<EnvironmentDescription.General>(fixture.environment.description.value)
+            verify(exactly = 1) { workspaceSocket.cancel() }
+            verify(exactly = 1) { fixture.client.streamWorkspace(any(), any(), any(), any(), any()) }
+
+            val nextWorkspace = completedWorkspace.copy(
+                latestBuild = completedWorkspace.latestBuild.copy(
+                    id = UUID.randomUUID(),
+                    status = WorkspaceStatus.STOPPING
+                ),
+            )
+            coEvery { fixture.client.workspaceBuildLogs(nextWorkspace.latestBuild.id) } returns
+                    listOf(buildLog(1, "Stopping the next build"))
+            fixture.environment.update(nextWorkspace, fixture.agent)
+            runCurrent()
+
+            val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+            assertSame(fixture.localizedStrings.getValue("Stopping the next build"), progress.description)
+            verify(exactly = 2) { fixture.client.streamWorkspace(any(), any(), any(), any(), any()) }
+            fixture.environment.dispose()
+        }
     }
 
     @Test
@@ -518,6 +806,7 @@ class CoderRemoteEnvironmentTest {
         val workspaceSnapshot = fixture.workspace.copy(latestBuild = build)
 
         fixture.environment.update(workspaceSnapshot, null)
+        runCurrent()
         val firstProgress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertSame(
             fixture.localizedStrings.getValue("Applying workspace resources"),
@@ -525,18 +814,133 @@ class CoderRemoteEnvironmentTest {
         )
 
         fixture.environment.update(workspaceSnapshot, null)
+        runCurrent()
         val nextProgress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
         assertSame(
             fixture.localizedStrings.getValue("Starting workspace applications"),
             nextProgress.description,
         )
+        verify(exactly = 0) {
+            fixture.client.streamWorkspace(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        }
 
         fixture.environment.update(
             workspaceSnapshot.copy(latestBuild = build.copy(status = WorkspaceStatus.RUNNING)),
             fixture.agent,
         )
+        runCurrent()
         assertIs<EnvironmentDescription.General>(fixture.environment.description.value)
         coVerify(exactly = 2) { fixture.client.workspaceBuildLogs(build.id) }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `websocket progress changes the description without changing polled state`() = runTest {
+        val fixture = fixture(
+            this,
+            workspaceStatus = WorkspaceStatus.STOPPED,
+            outdated = true,
+            workspaceProgressWebSockets = true,
+        )
+        val workspaceMessage = slot<(WorkspaceWatchEvent) -> Unit>()
+        val workspaceOpen = slot<() -> Unit>()
+        val buildLogMessage = slot<(ProvisionerJobLog) -> Unit>()
+        every {
+            fixture.client.streamWorkspace(
+                any(),
+                capture(workspaceOpen),
+                capture(workspaceMessage),
+                any(),
+                any(),
+            )
+        } returns mockk<WebSocket>(relaxed = true)
+        every {
+            fixture.client.streamWorkspaceBuildLogs(
+                any(),
+                any(),
+                capture(buildLogMessage),
+                any(),
+                any(),
+            )
+        } returns mockk<WebSocket>(relaxed = true)
+        val newBuild = fixture.workspace.latestBuild.copy(id = UUID.randomUUID(), status = WorkspaceStatus.PENDING)
+        coEvery { fixture.client.updateWorkspace(any()) } returns newBuild
+        fixture.action("Update and start").run()
+        advanceUntilIdle()
+        workspaceOpen.captured()
+        val polledState = fixture.environment.state.value
+
+        fixture.environment.update(fixture.workspace, null)
+        runCurrent()
+        workspaceMessage.captured(
+            WorkspaceWatchEvent(
+                "data",
+                fixture.workspace.copy(latestBuild = newBuild.copy(status = WorkspaceStatus.STARTING)),
+            ),
+        )
+        runCurrent()
+        buildLogMessage.captured(buildLog(1, "\u001B[92mApplying workspace resources\u001B[0m"))
+        runCurrent()
+
+        assertSame(polledState, fixture.environment.state.value)
+        val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(fixture.localizedStrings.getValue("Applying workspace resources"), progress.description)
+        coVerify(exactly = 0) { fixture.client.workspaceBuildLogs(any()) }
+        fixture.environment.dispose()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `workspace polling resumes progress requests after websocket failure`() = runTest {
+        val fixture = fixture(
+            this,
+            workspaceStatus = WorkspaceStatus.STOPPED,
+            outdated = true,
+            workspaceProgressWebSockets = true,
+        )
+        val onFailure = slot<(Throwable) -> Unit>()
+        every {
+            fixture.client.streamWorkspace(
+                any(),
+                any(),
+                any(),
+                any(),
+                capture(onFailure),
+            )
+        } returns mockk<WebSocket>(relaxed = true)
+        every {
+            fixture.client.streamWorkspaceBuildLogs(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        } returns mockk<WebSocket>(relaxed = true)
+        val build = fixture.workspace.latestBuild.copy(id = UUID.randomUUID(), status = WorkspaceStatus.PENDING)
+        coEvery { fixture.client.updateWorkspace(any()) } returns build
+        coEvery { fixture.client.workspaceBuildLogs(build.id) } returns listOf(buildLog(1, "Polling fallback"))
+
+        fixture.action("Update and start").run()
+        advanceUntilIdle()
+        onFailure.captured(IllegalStateException("WebSockets blocked"))
+        val activeWorkspace = fixture.workspace.copy(latestBuild = build)
+        fixture.environment.update(activeWorkspace, null)
+        runCurrent()
+        fixture.environment.update(activeWorkspace, null)
+        runCurrent()
+
+        val progress = assertIs<EnvironmentDescription.Progress>(fixture.environment.description.value)
+        assertSame(fixture.localizedStrings.getValue("Polling fallback"), progress.description)
+        coVerify(exactly = 2) { fixture.client.workspaceBuildLogs(build.id) }
+        verify(exactly = 1) { fixture.client.streamWorkspace(any(), any(), any(), any(), any()) }
+        fixture.environment.dispose()
     }
 
     @Test
@@ -551,6 +955,7 @@ class CoderRemoteEnvironmentTest {
             coEvery { fixture.client.workspaceBuildLogs(build.id) } throws failure
 
             fixture.environment.update(fixture.workspace.copy(latestBuild = build), fixture.agent)
+            runCurrent()
 
             verify(exactly = 1) {
                 fixture.logger.warn(
@@ -580,6 +985,7 @@ class CoderRemoteEnvironmentTest {
         autoConnect: Boolean = false,
         workspaceStatus: WorkspaceStatus = WorkspaceStatus.RUNNING,
         outdated: Boolean = false,
+        workspaceProgressWebSockets: Boolean = false,
     ): Fixture {
         val suffix = UUID.randomUUID().toString().take(8)
         val workspaceName = "workspace-$suffix"
@@ -616,6 +1022,7 @@ class CoderRemoteEnvironmentTest {
 
         val client = mockk<CoderRestClient>(relaxed = true)
         val cli = mockk<CoderCLIManager>(relaxed = true)
+        every { cli.features } returns Features(workspaceProgressWebSockets = workspaceProgressWebSockets)
         val environment = CoderRemoteEnvironment(
             context = context,
             client = client,
