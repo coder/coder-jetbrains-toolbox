@@ -140,6 +140,9 @@ fun runProcess(
         }
         val interrupted = Thread.interrupted()
         try {
+            // destroyForcibly only sends the signal;
+            // wait so callers never observe a child that is still exiting.
+            process.waitFor(1, TimeUnit.SECONDS)
             readers.forEach { it.join(1000) }
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
