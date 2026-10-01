@@ -46,6 +46,7 @@ import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -115,8 +116,10 @@ class CoderRemoteProvider(
     private val linkHandler =
         CoderProtocolHandler(context, IdeFeedManager(context), workspaceRefreshTrigger, environments)
     private val accountDropdownField = dropDownFactory(context.i18n.pnotr("")) {
-        logout()
-        context.envPageManager.showPluginEnvironmentsPage(false)
+        context.cs.launch(CoroutineName("Logout")) {
+            logout()
+            context.envPageManager.showPluginEnvironmentsPage(false)
+        }
     }.apply {
         visibility.update { false }
     }
@@ -350,15 +353,32 @@ class CoderRemoteProvider(
         }.sortedBy { it.id }
     }
 
-    /**
-     * Stop polling, clear the client and environments, then go back to the
-     * first page.
-     */
-    private fun logout() {
+    /** Sign out explicitly; provider shutdown alone must preserve credentials. */
+    internal suspend fun logout() {
         val sessionIds = lastEnvironments.currentSessionIds()
-        context.logger.info(sessionIds, "Logging out ${client?.me?.username}...")
-        close()
-        context.logger.info(sessionIds, "User ${client?.me?.username} logged out successfully")
+        val activeClient = client
+        val activeCli = cli
+        context.logger.info(sessionIds, "Logging out ${activeClient?.me?.username}...")
+        try {
+            pollJob?.cancelAndJoin()
+            activeClient?.close()
+            if (activeClient != null) {
+                context.secrets.clearSessionFor(activeClient.url)
+                if (activeCli?.usesTokenAuth == true) activeCli.logout()
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            context.logger.logAndShowWarning(
+                sessionIds,
+                "CLI logout failed",
+                "Toolbox has signed out, but the CLI credential may remain stored. " +
+                        "Sign in and try logging out again to remove it.",
+                ex,
+            )
+        } finally {
+            close()
+        }
     }
 
     /**

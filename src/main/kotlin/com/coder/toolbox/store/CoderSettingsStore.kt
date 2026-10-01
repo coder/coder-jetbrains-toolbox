@@ -57,6 +57,7 @@ class CoderSettingsStore(
     override val headerCommand: String?
         get() = store[HEADER_COMMAND].takeUnless { it.isNullOrEmpty() }
             ?: env.get(CODER_HEADER_COMMAND).takeUnless { it.isEmpty() }
+    override val useKeyring: Boolean get() = store[USE_KEYRING]?.toBooleanStrictOrNull() ?: true
     override val tls: ReadOnlyTLSSettings
         get() = TLSSettings(
             certPath = store[TLS_CERT_PATH],
@@ -214,6 +215,10 @@ class CoderSettingsStore(
 
     fun updateHeaderCommand(cmd: String) {
         store[HEADER_COMMAND] = cmd
+    }
+
+    fun updateUseKeyring(useKeyring: Boolean) {
+        store[USE_KEYRING] = useKeyring.toString()
     }
 
     fun updateCertPath(path: String) {

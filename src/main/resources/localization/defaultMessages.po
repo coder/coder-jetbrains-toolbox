@@ -85,6 +85,9 @@ msgstr ""
 msgid "Header command"
 msgstr ""
 
+msgid "Store CLI session in OS keyring when supported (CLI >= 2.29.0)"
+msgstr ""
+
 msgid "TLS cert path"
 msgstr ""
 

@@ -70,7 +70,8 @@ interface ReadOnlyCoderSettings {
 
     /**
      * Where to save plugin data like the Coder binary (if not configured with
-     * binaryDestination) and the deployment URL and session token.
+     * binaryDestination) and the deployment URL. When keyring storage is not
+     * enabled, this also stores the CLI session token.
      */
     val dataDirectory: String?
 
@@ -97,6 +98,14 @@ interface ReadOnlyCoderSettings {
      * variable (the same variable the Coder CLI reads) is used instead, if set.
      */
     val headerCommand: String?
+
+    /**
+     * Whether CLI login should allow the Coder CLI to persist the session in
+     * the operating system keyring when supported. This only takes effect on
+     * macOS and Windows. Defaults to true when unset; false opts out.
+     * Changes apply on the next sign-in or plugin restart.
+     */
+    val useKeyring: Boolean
 
     /**
      * Optional TLS settings

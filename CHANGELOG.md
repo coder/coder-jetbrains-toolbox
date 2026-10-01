@@ -9,6 +9,11 @@
 
 ### Changed
 
+- store CLI session tokens in the OS keyring by default on supported platforms; set `useKeyring` to `false` to opt out
+- share the same session token between REST and CLI authentication, passing it through the environment and sanitizing logs
+- remove stored credentials on explicit logout, and remove old plaintext session files after successful keyring login
+- bound credential and header commands to 60 seconds while preserving unbounded workspace starts and complete progress lines
+
 - upgraded the Toolbox plugin API, dropping support for Toolbox versions older than 3.7.2
 - display live workspace start output from the Coder CLI and poll build status and provisioner output while updating,
   restarting, or stopping workspaces
