@@ -7,8 +7,9 @@ private val sensitivePatterns = listOf(
     Regex("""([?&]token=)([^&\s]+)""", RegexOption.IGNORE_CASE),
 )
 
-fun String.sanitizeSecrets(): String {
-    return sensitivePatterns.fold(this) { acc, regex ->
+fun String.sanitizeSecrets(sessionToken: String? = null): String {
+    val redacted = if (sessionToken.isNullOrEmpty()) this else replace(sessionToken, "<redacted>")
+    return sensitivePatterns.fold(redacted) { acc, regex ->
         acc.replace(regex, "$1<redacted>")
     }
 }

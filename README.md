@@ -26,13 +26,13 @@ Alternatively, you can paste `jetbrains://gateway/com.coder.toolbox` into a brow
 
 ### Manual install
 
-There are two ways Coder Toolbox plugin can be installed. The first option is to manually download the plugin
-artifact from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/26968-coder/versions)
+There are two ways Coder Toolbox plugin can be installed. The first option is to manually download the plugin artifact
+from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/26968-coder/versions)
 or from [Coder's Github Release page](https://github.com/coder/coder-jetbrains-toolbox/releases).
 
 The next step is to copy the zip content to one of the following locations, depending on your OS:
 
-* Windows: `%LocalAppData%/JetBrains/Toolbox/plugins/com.coder.toolbox`
+* Windows: `%LocalAppData%/JetBrains/Toolbox/cache/plugins/com.coder.toolbox`
 * macOS: `~/Library/Caches/JetBrains/Toolbox/plugins/com.coder.toolbox`
 * Linux: `~/.local/share/JetBrains/Toolbox/plugins/com.coder.toolbox`
 
@@ -40,7 +40,7 @@ Alternatively, you can install it using the _Gradle_ tasks included in the proje
 
 ```shell
 
-./gradlew cleanAll build copyPlugin
+./gradlew cleanAll build installPlugin
 ```
 
 Make sure Toolbox is closed before running the command.
@@ -76,6 +76,7 @@ jetbrains://gateway/com.coder.toolbox
   ?url=http(s)://<your-coder-deployment>
   &token=<auth-token>
   &workspace=<workspace-name>
+  &owner=<workspace-owner>
   &agent_name=<agent-name>
   &ide_product_code=<IDE-code>
   &ide_build_number=<IDE-build>
@@ -90,14 +91,19 @@ jetbrains://gateway/coder?url=http(s)://<your-coder-deployment>
 ```
 
 | Query param      | 	Description                                                                                       | Mandatory |
-|------------------|----------------------------------------------------------------------------------------------------|-----------|
+|------------------|---------------------------------------------------------------------------------------------------|-----------|
 | url              | 	Your Coder deployment URL (encoded)                                                               | Yes       |
 | token            | 	Coder authentication token                                                                        | Yes       |
 | workspace        | 	Name of the Coder workspace to connect to.                                                        | Yes       |
+| owner            | 	Owner username, UUID, or `me` used to disambiguate the workspace lookup.                          | No        |
 | agent_name       | 	The name of the agent with the workspace                                                          | No        |
 | ide_product_code | 	JetBrains IDE product code (e.g., GO for GoLand, RR for Rider)                                    | No        |
 | ide_build_number | 	Specific build number or placeholder (see below) of the JetBrains IDE to install on the workspace | No        |
 | folder           | 	Absolute path to the project folder to open in the remote IDE (URL-encoded)                       | No        |
+
+When `owner` is present, the URI handler sends `owner:<owner>` as the workspace lookup query and then exact-matches the
+`workspace` value in the returned list. This lookup is independent of the workspace list filtering controls in the
+header. When `owner` is omitted, the URI handler sends no workspace lookup query.
 
 > [!NOTE]
 > If only a single agent is available, specifying an agent name is optional. However, if multiple agents exist, you must
@@ -275,8 +281,8 @@ protecting against supply chain attacks and ensuring binary integrity.
 
 ## Configuring and Testing workspace polling with HTTP & SOCKS5 Proxy
 
-This section explains how to set up a local proxy and verify that
-the plugin’s REST client works correctly when routed through it.
+This section explains how to set up a local proxy and verify that the plugin’s REST client works correctly when routed
+through it.
 
 We’ll use [mitmproxy](https://mitmproxy.org/) for this — it can act as both an HTTP and SOCKS5 proxy with SSL
 interception.
@@ -311,8 +317,8 @@ mitmweb --ssl-insecure --set stream_large_bodies="10m" --mode socks5
 2. From Toolbox hexagonal menu icon go to `Settings -> Proxy`
 3. There are two options, to use system proxy settings or to manually configure the proxy details.
 4. If we go manually, add `127.0.0.1` to the host and port `8080` for HTTP/HTTPS or `1080` for SOCKS5.
-5. Before authenticating to the Coder deployment we need to tell the plugin where can we find mitmproxy
-   certificates. In Coder's Settings page, set the `TLS CA path` to `~/.mitmproxy/mitmproxy-ca-cert.pem`
+5. Before authenticating to the Coder deployment we need to tell the plugin where can we find mitmproxy certificates. In
+   Coder's Settings page, set the `TLS CA path` to `~/.mitmproxy/mitmproxy-ca-cert.pem`
 
 > [!NOTE]
 > Coder Toolbox plugin handles only HTTP/HTTPS proxy authentication.
@@ -324,16 +330,14 @@ in: https://youtrack.jetbrains.com/issue/TBX-14532/Missing-proxy-authentication-
 ### Mitmproxy returns 502 Bad Gateway to the client
 
 When running traffic through mitmproxy, you may encounter 502 Bad Gateway errors that mention HTTP/2 protocol error: *
-*Received header value surrounded by whitespace**.
-This happens because some upstream servers (including dev.coder.com) send back headers such as Content-Security-Policy
-with leading or trailing spaces.
-While browsers and many HTTP clients accept these headers, mitmproxy enforces the stricter HTTP/2 and HTTP/1.1 RFCs,
-which forbid whitespace around header values.
-As a result, mitmproxy rejects the response and surfaces a 502 to the client.
+*Received header value surrounded by whitespace**. This happens because some upstream servers (including dev.coder.com)
+send back headers such as Content-Security-Policy with leading or trailing spaces. While browsers and many HTTP clients
+accept these headers, mitmproxy enforces the stricter HTTP/2 and HTTP/1.1 RFCs, which forbid whitespace around header
+values. As a result, mitmproxy rejects the response and surfaces a 502 to the client.
 
 The workaround is to disable HTTP/2 in mitmproxy and force HTTP/1.1 on both the client and upstream sides. This avoids
-the strict header validation path and allows
-mitmproxy to pass responses through unchanged. You can do this by starting mitmproxy with:
+the strict header validation path and allows mitmproxy to pass responses through unchanged. You can do this by starting
+mitmproxy with:
 
 ```bash
 mitmproxy --set http2=false --set upstream_http_version=HTTP/1.1
@@ -344,17 +348,17 @@ error.
 
 ## Debugging and Reporting issues
 
-Enabling debug logging is essential for diagnosing issues with the Toolbox plugin, especially when SSH
-connections to the remote environment fail — it provides detailed output that includes SSH negotiation
-and command execution, which is not visible at the default log level.
+Enabling debug logging is essential for diagnosing issues with the Toolbox plugin, especially when SSH connections to
+the remote environment fail — it provides detailed output that includes SSH negotiation and command execution, which is
+not visible at the default log level.
 
-If you encounter a problem with Coder's JetBrains Toolbox plugin, follow the steps below to gather more
-information and help us diagnose and resolve it quickly.
+If you encounter a problem with Coder's JetBrains Toolbox plugin, follow the steps below to gather more information and
+help us diagnose and resolve it quickly.
 
 ### Enable Debug Logging
 
-To help with troubleshooting or to gain more insight into the behavior of the plugin and the SSH connection to
-the workspace, you can increase the log level to _DEBUG_.
+To help with troubleshooting or to gain more insight into the behavior of the plugin and the SSH connection to the
+workspace, you can increase the log level to _DEBUG_.
 
 Steps to enable debug logging:
 
@@ -373,17 +377,52 @@ There is no need to restart Toolbox, as it will begin logging at the __DEBUG__ l
 
 #### Viewing the Logs
 
-Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly
-via Toolbox App Menu > About > Show log files.
+Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly via Toolbox App Menu >
+About > Show log files.
 
-Alternatively, you can generate a ZIP file using the Workspace action menu, available either on the main
-Workspaces page in Coder or within the individual workspace view, under the option labeled _Collect logs_.
+Alternatively, use the workspace environment's _Collect logs_ action to generate a ZIP file with Toolbox diagnostics
+and a Coder support bundle. See [Coder Support Bundles](#coder-support-bundles) below for the navigation steps and
+collection requirements.
+
+### Coder Support Bundles
+
+The plugin includes a Coder support bundle **only when you use the workspace environment's _Collect logs_ action**
+in JetBrains Toolbox.
+
+> [!IMPORTANT]
+> When reporting an issue, we recommend using this action so the log archive includes both Toolbox diagnostics and a
+> Coder support bundle, giving the support team more information to investigate.
+
+To collect logs with a Coder support bundle:
+
+1. Open JetBrains Toolbox and navigate to the Coder plugin's **Workspaces** page.
+2. Find the workspace environment you want to troubleshoot and open **that environment's action menu**.
+   You can also open the workspace view and use its environment action menu there.
+3. Select **Collect logs** to generate the Toolbox log archive, including the Coder support bundle when collection
+   succeeds.
+
+> [!NOTE]
+> The general Toolbox **Settings > About > Collect logs and diagnostic data** action does **not** generate a Coder
+> support bundle.
+
+The plugin runs `coder support bundle` using the deployment's existing CLI login and targets the selected workspace
+and its agent, when available. It places `coder-support.zip` inside the environment's diagnostic directory in the
+Toolbox log archive. Collection does not start a stopped workspace.
+
+The bundle can contain deployment health and configuration, network diagnostics, workspace build logs, template
+source, and agent diagnostics. Available information depends on your permissions and workspace connectivity.
+Review the bundle before sharing, following
+[Coder's support-bundle guidance](https://coder.com/docs/support/support-bundle).
+
+Support bundles require a Coder CLI that supports `coder support bundle` (Coder 2.10 or newer). Collection runs until
+the CLI finishes or you cancel log collection. If the CLI is unavailable or unsupported, or authentication or
+connectivity fails, the plugin removes any partial bundle and attempts to include
+`coder-support-error.txt` instead. Toolbox's other diagnostics remain available.
 
 ### HTTP Request Logging
 
 The Coder Toolbox plugin includes comprehensive HTTP request logging capabilities to help diagnose API communication
-issues with Coder deployments.
-This feature allows you to monitor all HTTP requests and responses made by the plugin.
+issues with Coder deployments. This feature allows you to monitor all HTTP requests and responses made by the plugin.
 
 #### Configuring HTTP Logging
 
@@ -439,99 +478,158 @@ When reporting issues, include HTTP logs to help diagnose:
 
 ## Coder Settings
 
-The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data
-storage paths. The options can be configured from the plugin's main Workspaces page > deployment action menu > Settings.
+The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data storage
+paths. The options can be configured from the plugin's main Workspaces page > deployment action menu > Settings.
+
+### Workspace list filtering
+
+The expandable header on the Coder Workspaces page mirrors the workspace filtering in the Coder web dashboard. The first
+row is a free-form search field; the second row holds three dropdowns: **Filters** (presets), **Template**, and
+**Status**.
+
+- The search field holds
+  a [Coder workspace filter query](https://coder.com/docs/user-guides/workspace-management#workspace-filtering)
+  and is sent to the server verbatim as the `q` parameter. The server parses and validates it.
+- The list defaults to `owner:me` (your own workspaces) on each load. Nothing is persisted between sessions.
+- The dropdowns are shortcuts that edit the search text, exactly like the dashboard:
+    - **Filters** replaces the whole query with the chosen preset: `My workspaces` (`owner:me`), `All workspaces`
+      (empty), `Running workspaces` (`status:running`), `Failed workspaces` (`status:failed`),
+      `Outdated workspaces` (`outdated:true`), `Shared workspaces` (`shared:true`), and `Dormant workspaces`
+      (`dormant:true`). When the search text matches no preset, the dropdown shows `Custom`.
+    - **Template** sets or replaces the `template:` term.
+    - **Status** sets or replaces the `status:` term.
+- The dropdowns and the search text stay in sync: editing the text updates the dropdowns, and selecting a dropdown value
+  updates the text. Because each key appears at most once, the dropdowns never produce a duplicate-key query.
+- If the server rejects the query (for example a duplicate key, or a malformed term), the validation message is shown in
+  a secondary label after the dropdowns.
+
+Examples of what is sent as the `q` parameter:
+
+| Search field              | Sent as `q`               |
+|---------------------------|---------------------------|
+| empty                     | no `q` parameter          |
+| `owner:me` (default)      | `owner:me`                |
+| `owner:me name:bobiverse` | `owner:me name:bobiverse` |
+| `template:"Heaven 3"`     | `template:"Heaven 3"`     |
+| `status:running`          | `status:running`          |
+
+The Template dropdown is populated from the deployment's templates, fetched each time the header becomes visible.
+Changing the search or a dropdown refreshes the workspace list and regenerates SSH configuration from the refreshed
+workspace set. With wildcard SSH enabled, the generated block uses the deployment wildcard host pattern. With wildcard
+SSH disabled, the generated block contains entries for the currently resolved workspace/agent pairs. Agents are resolved
+only for running workspaces, so stopped workspaces have no SSH entries until they are started and picked up by the next
+workspace refresh.
+
+SSH hostnames include the workspace owner so workspaces with the same name owned by different users remain distinct.
+With wildcard SSH enabled, the SSH config contains a deployment-wide `Host coder-jetbrains-toolbox-<host>--*` entry, and
+the plugin connects through hostnames shaped like
+`coder-jetbrains-toolbox-<host>--<owner>--<workspace>.<agent>`. With wildcard SSH disabled, the SSH config writes one
+explicit entry per resolved workspace/agent using
+`Host coder-jetbrains-toolbox--<owner>--<workspace>.<agent>--<host>`, and its proxy command targets
+`<owner>/<workspace>.<agent>`.
 
 ### CLI related settings
 
-- `Binary source` specifies the source URL or relative path from which the Coder CLI should be downloaded.
-  If a relative path is provided, it is resolved against the deployment domain.
+- `Binary source` specifies the source URL or relative path from which the Coder CLI should be downloaded. If a relative
+  path is provided, it is resolved against the deployment domain.
 
 - `Enable downloads` allows automatic downloading of the CLI if the current version is missing or outdated. Enabled by
   default.
 
-- `Binary destination` specifies where the CLI binary is placed. This can be a path to an existing
-  executable (used as-is) or a base directory (the CLI is placed under a host-specific subdirectory).
-  If blank, the data directory is used. Supports `~` and `$HOME` expansion.
+- `Binary destination` specifies where the CLI binary is placed. This can be a path to an existing executable (used
+  as-is) or a base directory (the CLI is placed under a host-specific subdirectory). If blank, the data directory is
+  used. Supports `~` and `$HOME` expansion.
 
 - `Data directory` directory where deployment-specific data such as session tokens and CLI binaries
   are stored. Each deployment gets a host-specific subdirectory (e.g. `coder.example.com`). Supports `~` and `$HOME`
   expansion. When keyring-backed CLI storage is enabled, the session token is no longer persisted in this directory.
 
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
-  The environment variable CODER_URL will be available to the command process.
+  When this setting is left blank, the `CODER_HEADER_COMMAND` environment variable is used instead, if set.
 
-- `Store CLI session in OS keyring when supported (CLI >= 2.29.0)` is an opt-in setting to force the CLI to use its
-  default credential backend on supported platforms instead of forcing a custom `--global-config` login path.
-  On macOS and Windows, that allows newer CLIs to persist the token in the OS keyring. On Linux, we continue to use
-  the plugin-managed `--global-config` flow even if this setting is enabled. Disabled by default.
+- `Store CLI session in OS keyring when supported (CLI >= 2.29.0)` is enabled by default on macOS and Windows.
+  An unset or `true` `useKeyring` setting uses the OS keyring; `false` opts out and stores the CLI session in the
+  plugin's deployment-specific data directory. Linux and older CLIs use file storage. Changes apply on the next
+  sign-in or plugin restart.
 
 - `lastDeploymentURL` the last Coder deployment URL that Coder Toolbox successfully authenticated to.
 
-- `workspaceViewUrl` specifies the dashboard page full URL where users can view details about a workspace.
-  Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment workspace page.
-  This setting supports `$workspaceOwner` and `$workspaceName` as placeholders.
+- `workspaceViewUrl` specifies the dashboard page full URL where users can view details about a workspace. Helpful for
+  customers that have their own in-house dashboards. Defaults to the Coder deployment workspace page. This setting
+  supports `$workspaceOwner` and `$workspaceName` as placeholders.
 
-- `workspaceCreateUrl` specifies the dashboard page full URL where users can create new workspaces.
-  Helpful for customers that have their own in-house dashboards. Defaults to the Coder deployment templates page.
-  This setting supports `$workspaceOwner` as placeholder with the replacing value being the username that logged in.
+- `workspaceCreateUrl` specifies the dashboard page full URL where users can create new workspaces. Helpful for
+  customers that have their own in-house dashboards. Defaults to the Coder deployment templates page. This setting
+  supports `$workspaceOwner` as placeholder with the replacing value being the username that logged in.
 
 #### How CLI resolution works
 
-When connecting to a deployment the plugin ensures a compatible CLI binary is available.
-The binary location is resolved as follows:
+When connecting to a deployment the plugin ensures a compatible CLI binary is available. The binary location is resolved
+as follows:
 
 - If **binary destination** points to an existing executable file, it is used as-is.
-- If **binary destination** is set but is not an executable file, it is treated as a base
-  directory and the CLI is placed under a host-specific subdirectory (e.g.
+- If **binary destination** is set but is not an executable file, it is treated as a base directory and the CLI is
+  placed under a host-specific subdirectory (e.g.
   `<binary destination>/coder.example.com/<default-cli-name>`).
 - If **binary destination** is not set, the data directory is used instead.
 
 Once the binary location is resolved:
 
 1. If a CLI already exists there and its version matches the deployment, it is used immediately.
-2. Otherwise, if **downloads are enabled**, the plugin downloads the matching version to that location.
-   Any download error is reported to the user.
-3. If **downloads are disabled** and the CLI exists but its version does not match, the stale
-   CLI is used with a warning. If no CLI exists at all, an error is raised.
+2. Otherwise, if **downloads are enabled**, the plugin downloads the matching version to that location. Any download
+   error is reported to the user.
+3. If **downloads are disabled** and the CLI exists but its version does not match, the stale CLI is used with a
+   warning. If no CLI exists at all, an error is raised.
 
 #### How keyring-backed CLI login works
 
-When **Store CLI session in OS keyring when supported (CLI >= 2.29.0)** is disabled, Toolbox logs the CLI in with a
-deployment-specific `--global-config` directory under the configured data directory. That keeps the CLI session
-isolated inside the plugin-managed config tree.
+Toolbox passes session tokens to `coder login` through `CODER_SESSION_TOKEN` and uses `--use-token-as-session` so
+REST requests and CLI commands share the same token. The token is not passed in command-line arguments.
 
-When the setting is enabled, Toolbox still logs in with `CODER_SESSION_TOKEN` and `--use-token-as-session`, but it
-stops forcing `--global-config` for authenticated CLI commands and relies on deployment URL-based auth resolution
-instead. On supported platforms, this lets newer Coder CLIs use their default OS-backed storage instead of the
-plugin-managed config directory.
+On macOS and Windows with Coder CLI `2.29.0` or newer, Toolbox enables the OS keyring by default. It passes
+`--use-keyring=true` and the deployment URL, and omits the plugin-specific `--global-config` directory. After a
+successful keyring login, Toolbox removes any old plaintext session file from that deployment's plugin data directory.
+A keyring write failure is reported as a login failure; Toolbox does not retry the write using file storage.
 
-This matters for two reasons:
+To opt out, uncheck **Store CLI session in OS keyring when supported (CLI >= 2.29.0)** or set `useKeyring` to `false`.
+Toolbox then uses its deployment-specific `--global-config` directory and passes `--use-keyring=false` to CLIs that
+support the flag. Linux also uses this file storage. On older CLIs, Toolbox omits the unsupported flag and warns at
+login on macOS and Windows when the requested keyring storage is unavailable. Certificate-based authentication
+continues to use the plugin-specific CLI configuration without storing a session token.
 
-- the CLI persists the same token that Toolbox already uses for REST API calls, instead of minting a separate token
-- REST and CLI flows share one credential, so revoking or rotating the token affects both consistently
+Saving the setting does not change the current session's credential backend or rewrite its SSH commands to use a
+new backend. The change takes effect on the next sign-in or plugin restart, when Toolbox stores the token and
+regenerates SSH configuration. Workspace starts, SSH connections, support bundles, token refreshes, and logout use
+the active session's storage choice consistently.
 
-Keyring-backed storage requires Coder CLI `2.29.0` or newer and is only supported on macOS and Windows. The setting is
-opt-in and defaults to disabled. On Linux, enabling the setting does not switch the
-CLI to keyring-backed auth; Toolbox keeps using the deployment-specific `--global-config` directory.
+The OS keyring entry is shared with the Coder CLI and VS Code extension for the same deployment. Explicitly logging
+out of Toolbox runs `coder logout --yes`, which revokes the session and removes its stored credential, and clears
+Toolbox's saved API token and OAuth credentials. Other clients using that shared session will need to sign in again.
+If CLI cleanup fails, Toolbox still signs out and displays a warning. Closing the plugin alone preserves credentials.
+
+Credential commands and header commands have a 60-second timeout. Workspace starts and SSH sessions are not subject
+to that limit. Workspace start progress is reported one complete line at a time, including carriage-return updates.
+
+Toolbox retains its own credentials in the Toolbox secret store for automatic sign-in. Importing a token created by
+an independent terminal login is tracked separately in DEVEX-403.
 
 ### TLS settings
 
 The following options control the secure communication behavior of the plugin with Coder deployment and its available
 API.
 
-- `TLS cert path` path to a client certificate file for TLS authentication with Coder deployment.
-  The certificate should be in X.509 PEM format.
+- `TLS cert path` path to a client certificate file for TLS authentication with Coder deployment. The certificate should
+  be in X.509 PEM format.
 
-- `TLS key path` path to the private key corresponding to the TLS certificate from above.
-  The certificate should be in X.509 PEM format.
+- `TLS key path` path to the private key corresponding to the TLS certificate from above. The certificate should be in
+  X.509 PEM format.
 
 - `TLS CA path` the path of a file containing certificates for an alternate certificate authority used to verify TLS
   certs returned by the Coder deployment. The file should be in X.509 PEM format. This option can also be used to verify
   proxy certificates.
 
-- `TLS alternate hostname` overrides the hostname used in TLS verification. This is useful when the hostname
-  used to connect to the Coder deployment does not match the hostname in the TLS certificate.
+- `TLS alternate hostname` overrides the hostname used in TLS verification. This is useful when the hostname used to
+  connect to the Coder deployment does not match the hostname in the TLS certificate.
 
 ### SSH settings
 
@@ -540,8 +638,11 @@ The following options control the SSH behavior of the Coder CLI.
 - `Disable autostart` adds the --disable-autostart flag to the SSH proxy command, preventing the CLI from keeping
   workspaces constantly active.
 
-- `Enable SSH wildcard config` enables or disables wildcard entries in the SSH configuration, which allow generic
-  rules for matching multiple workspaces.
+- `Enable SSH wildcard config` enables or disables wildcard entries in the SSH configuration, which allow generic rules
+  for matching multiple workspaces.
+
+- `SSH config path` is the SSH configuration file managed by the plugin and used for Toolbox connections. It defaults to
+  `~/.ssh/config`; choose a separate writable file to keep the primary SSH configuration read-only.
 
 - `SSH connnection timeout (seconds)` controls how long the SSH client will wait while trying to establish a TCP
   connection to the remote host before giving up. Defaults to 0 seconds which means it uses the system’s TCP timeout
@@ -551,8 +652,8 @@ The following options control the SSH behavior of the Coder CLI.
 
 - `SSH network metrics directory` directory where network information used by the SSH proxy is stored.
 
-- `Extra SSH options` additional options appended to the SSH configuration. Can be used to customize the behavior of
-  SSH connections.
+- `Extra SSH options` additional options appended to the SSH configuration. Can be used to customize the behavior of SSH
+  connections.
 
 ### Saving Changes
 
@@ -578,7 +679,7 @@ process listings, shell history, or command-line audit logs.
    JetBrains enabled auto-approval for the plugin, so we need to ensure we continue to meet the following requirements:
     - do **not** use Kotlin experimental APIs.
     - do **not** add any lambdas, handlers, or class handles to Java runtime hooks.
-   - do **not** create threads manually (including via libraries). If you must, ensure they are properly cleaned up in
-     the plugin's `CoderRemoteProvider#close()` method.
+    - do **not** create threads manually (including via libraries). If you must, ensure they are properly cleaned up in
+      the plugin's `CoderRemoteProvider#close()` method.
     - do **not** bundle libraries that are already provided by Toolbox.
     - do **not** perform any ill-intentioned actions.

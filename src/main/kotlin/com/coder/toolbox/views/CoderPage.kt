@@ -2,6 +2,7 @@ package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.ex.APIResponseException
+import com.coder.toolbox.session.SessionId
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon
 import com.jetbrains.toolbox.api.core.ui.icons.SvgIcon.IconType
 import com.jetbrains.toolbox.api.localization.LocalizableString
@@ -60,12 +61,27 @@ class Action(
     closesPage: Boolean = false,
     highlightInRed: Boolean = false,
     enabled: () -> Boolean = { true },
+    private val validateBlock: () -> Boolean = { true },
     private val actionBlock: suspend () -> Unit,
 ) : RunnableActionDescription {
+    private var currentSessionId: () -> SessionId? = { null }
+
     override val label: LocalizableString = context.i18n.ptrl(description)
     override val shouldClosePage: Boolean = closesPage
     override val isEnabled: Boolean = enabled()
     override val isDangerous: Boolean = highlightInRed
+
+    /**
+     * Toolbox calls this before [run], and only calls [run] (and closes the
+     * page, if [shouldClosePage]) when this returns true.
+     */
+    override fun validate(): Boolean = validateBlock()
+
+    /** Associates failures from this action with its current Toolbox SSH session, when one exists. */
+    fun withCurrentSessionId(currentSessionId: () -> SessionId?): Action = apply {
+        this.currentSessionId = currentSessionId
+    }
+
     override fun run() {
         context.cs.launch(CoroutineName("$description Action")) {
             try {
@@ -76,7 +92,12 @@ class Action(
                         ex.reason
                     } else ex.message
                 } else ex.message
-                context.logAndShowError("Error while running `$description`", textError ?: "", ex)
+                context.logger.logAndShowError(
+                    currentSessionId(),
+                    "Error while running `$description`",
+                    textError ?: "",
+                    ex,
+                )
             }
         }
     }

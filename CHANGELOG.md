@@ -2,19 +2,87 @@
 
 ## Unreleased
 
+### Added
+
+- include a Coder support bundle for the selected workspace and agent only when using the environment's
+  _Collect logs_ action in Toolbox
+
+### Changed
+
+- store CLI session tokens in the OS keyring by default on supported platforms; set `useKeyring` to `false` to opt out
+- share the same session token between REST and CLI authentication, passing it through the environment and sanitizing logs
+- remove stored credentials on explicit logout, and remove old plaintext session files after successful keyring login
+- bound credential and header commands to 60 seconds while preserving unbounded workspace starts and complete progress lines
+
+- upgraded the Toolbox plugin API, dropping support for Toolbox versions older than 3.7.2
+- display live workspace start output from the Coder CLI and poll build status and provisioner output while updating,
+  restarting, or stopping workspaces
+
+## 0.9.4 - 2026-08-26
+
+### Added
+
+- support for configuring the SSH config path, letting Toolbox manage a separate SSH config file instead of always
+  writing to `~/.ssh/config`
+- the header command falls back to the `CODER_HEADER_COMMAND` environment variable when the setting is blank, matching
+  the Coder CLI and the VS Code extension
+
+### Fixed
+
+- pass the workspace agent's operating system to Toolbox before it deploys the remote agent
+
+## 0.9.3 - 2026-08-11
+
+### Changed
+
+- deployment target OS is now derived from the workspace agent's reported OS, falling back to automatic detection when
+  unknown
+
+## 0.9.2 - 2026-08-06
+
+### Fixed
+
+- keep workspace polling alive when SSH config updates fail
+- improved validation and handling of workspace connection data
+- expand `~` and `$HOME` in the SSH log directory and network info directory settings, consistent with how the data and
+  binary directories are already resolved
+
+### Changed
+
+- migrated plugin packaging to the new marketplace compatible structure
+
+## 0.9.2-alpha2 - 2026-07-24
+
+### Changed
+
+- migrated plugin packaging to the new marketplace compatible structure
+
+## 0.9.2-alpha1 - 2026-07-22
+
+### Changed
+
+- migrated plugin packaging to the new marketplace compatible structure
+
+## 0.9.1 - 2026-07-07
+
+### Added
+
+- support Toolbox 3.5 provider header behavior
+- workspace list filtering that mirrors the Coder web dashboard
+
 ### Fixed
 
 - snackbar dismissal no longer cancels the calling coroutine, so error popups during URI handling don't leave the page
   stuck in a busy state
+- faster workspace list refresh: agents are no longer fetched for stopped workspaces
 
 ### Changed
 
 - skip the Coder TLS alternate hostname when fetching IDE metadata from JetBrains
-- reduce token exposure in process arguments and command logs
-- replaced the external process execution dependency with a lightweight internal runner, reducing plugin dependencies
-  and improving error sanitization.
-- updated CLI login to keep REST client and CLI auth on the same persisted token, reducing credential drift.
-- added an opt-in keyring-backed CLI login mode to securely store the session token on supported platforms.
+- notifications are now persistent popups instead of snackbars, so they survive a hidden window and no longer get
+  dropped
+- workspace lists now default to `My workspaces`, so users initially see only workspaces they own. Users can switch to
+  `All workspaces`, and that selection is persisted per Coder deployment hostname.
 
 ## 0.9.0 - 2026-05-14
 
@@ -237,8 +305,8 @@
 
 ### Changed
 
-- the plugin will now remember the SSH connection state for each workspace, and it will try to automatically
-  establish it after an expired token was refreshed.
+- the plugin will now remember the SSH connection state for each workspace, and it will try to automatically establish
+  it after an expired token was refreshed.
 
 ### Fixed
 

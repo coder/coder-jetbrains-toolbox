@@ -1,22 +1,39 @@
 package com.coder.toolbox.util
 
+import com.coder.toolbox.CoderRemoteEnvironment
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.feed.Ide
 import com.coder.toolbox.feed.IdeFeedManager
 import com.coder.toolbox.feed.IdeType
 import com.coder.toolbox.feed.JetBrainsFeedService
+import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
+import com.coder.toolbox.session.SessionId
+import com.coder.toolbox.session.SessionIdRegistry
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.core.util.LoadableState
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.remoteDev.connection.RemoteToolsHelper
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
+import java.net.URI
 import java.util.UUID
 import kotlin.test.Test
 
@@ -27,6 +44,9 @@ class CoderProtocolHandlerTest {
     private lateinit var ideFeedManager: IdeFeedManager
     private lateinit var handler: CoderProtocolHandler
     private lateinit var remoteToolsHelper: RemoteToolsHelper
+    private lateinit var logger: CoderLogger
+    private lateinit var underlyingLogger: Logger
+    private lateinit var environment: CoderRemoteEnvironment
 
     // Test Coroutine Scope
     private val dispatcher = StandardTestDispatcher()
@@ -52,11 +72,85 @@ class CoderProtocolHandlerTest {
         feedService = mockk(relaxed = true)
         ideFeedManager = IdeFeedManager(context, feedService)
         remoteToolsHelper = mockk(relaxed = true)
+        underlyingLogger = mockk(relaxed = true)
+        logger = CoderLogger(
+            underlyingLogger,
+            mockk<ToolboxUi>(relaxed = true),
+            CoroutineScope(dispatcher),
+            mockk<LocalizableStringFactory>(relaxed = true),
+        )
+        environment = mockk {
+            every { id } returns "env-1"
+            every { currentSessionId() } returns null
+        }
 
         every { context.cs } returns CoroutineScope(dispatcher)
         every { context.remoteIdeOrchestrator } returns remoteToolsHelper
+        every { context.logger } returns logger
 
-        handler = CoderProtocolHandler(context, ideFeedManager)
+        handler = CoderProtocolHandler(
+            context,
+            ideFeedManager,
+            Channel(Channel.CONFLATED),
+            MutableStateFlow(LoadableState.Value(emptyList()))
+        )
+    }
+
+    @Test
+    fun `returns an owner-only search query when an owner is provided`() {
+        assertNull(handler.workspaceOwnerSearchQuery(mapOf("workspace" to "delta-eridani")))
+        assertEquals(
+            "owner:bill",
+            handler.workspaceOwnerSearchQuery(mapOf("workspace" to "delta-eridani", "owner" to "bill"))
+        )
+    }
+
+    @Test
+    fun `builds the search query from the owner and ignores the workspace name`() {
+        assertEquals(
+            "owner:riker",
+            handler.workspaceOwnerSearchQuery(mapOf("workspace" to "omicron-eridani", "owner" to "riker"))
+        )
+    }
+
+    @Test
+    fun `handle lists all workspaces when no owner is provided`() = runTest(dispatcher) {
+        val restClient = mockk<CoderRestClient>(relaxed = true)
+        val cli = mockk<CoderCLIManager>(relaxed = true)
+        val url = URI("https://coder.example.com").toURL()
+        val workspace = DataGen.workspace("delta-eridani", agents = SINGLE_AGENT)
+
+        coEvery { restClient.workspaces(null) } returns listOf(workspace)
+        coEvery { restClient.workspace(workspace.id) } returns workspace
+
+        handler.handle(
+            mapOf("workspace" to "delta-eridani"),
+            url,
+            restClient,
+            cli
+        )
+
+        coVerify(exactly = 1) { restClient.workspaces(null) }
+    }
+
+    @Test
+    fun `handle filters workspaces by owner when an owner is provided`() = runTest(dispatcher) {
+        val restClient = mockk<CoderRestClient>(relaxed = true)
+        val cli = mockk<CoderCLIManager>(relaxed = true)
+        val url = URI("https://coder.example.com").toURL()
+        val workspace = DataGen.workspace("epsilon-eridani", agents = SINGLE_AGENT).copy(ownerName = "homer")
+
+        coEvery { restClient.workspaces("owner:homer") } returns listOf(workspace)
+        coEvery { restClient.workspace(workspace.id) } returns workspace
+
+        handler.handle(
+            mapOf("workspace" to "epsilon-eridani", "owner" to "homer"),
+            url,
+            restClient,
+            cli
+        )
+
+        coVerify(exactly = 1) { restClient.workspaces("owner:homer") }
     }
 
     @Test
@@ -218,7 +312,7 @@ class CoderProtocolHandlerTest {
     fun `given empty available tools when resolving latest eap then returns null`() = runTest(dispatcher) {
         coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns emptyList()
 
-        assertNull(handler.resolveIdeIdentifier("env-1", "RR", "latest_eap"))
+        assertNull(handler.resolveIdeIdentifier(environment, "RR", "latest_eap"))
     }
 
     @Test
@@ -228,7 +322,7 @@ class CoderProtocolHandlerTest {
             // Feed returns empty or irrelevant EAPs
             coEvery { feedService.fetchEapFeed() } returns emptyList()
 
-            assertEquals("RR-241.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_eap"))
+            assertEquals("RR-241.1", handler.resolveIdeIdentifier(environment, "RR", "latest_eap"))
         }
 
     @Test
@@ -241,14 +335,14 @@ class CoderProtocolHandlerTest {
                 Ide("RR", "243.1", "2024.3", IdeType.EAP)
             )
 
-            assertEquals("RR-243.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_eap"))
+            assertEquals("RR-243.1", handler.resolveIdeIdentifier(environment, "RR", "latest_eap"))
         }
 
     @Test
     fun `given empty available tools when resolving latest release then returns null`() = runTest(dispatcher) {
         coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns emptyList()
 
-        assertNull(handler.resolveIdeIdentifier("env-1", "RR", "latest_release"))
+        assertNull(handler.resolveIdeIdentifier(environment, "RR", "latest_release"))
     }
 
     @Test
@@ -257,7 +351,7 @@ class CoderProtocolHandlerTest {
             coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns listOf("RR-243.1", "RR-242.1")
             coEvery { feedService.fetchReleaseFeed() } returns emptyList()
 
-            assertEquals("RR-243.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_release"))
+            assertEquals("RR-243.1", handler.resolveIdeIdentifier(environment, "RR", "latest_release"))
         }
 
     @Test
@@ -270,7 +364,7 @@ class CoderProtocolHandlerTest {
                 Ide("RR", "242.1", "2024.2", IdeType.RELEASE)
             )
 
-            assertEquals("RR-242.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_release"))
+            assertEquals("RR-242.1", handler.resolveIdeIdentifier(environment, "RR", "latest_release"))
         }
 
     @Test
@@ -278,7 +372,7 @@ class CoderProtocolHandlerTest {
         runTest(dispatcher) {
             coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns listOf("RR-240.1", "RR-241.1")
 
-            assertEquals("RR-241.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_installed"))
+            assertEquals("RR-241.1", handler.resolveIdeIdentifier(environment, "RR", "latest_installed"))
         }
 
     @Test
@@ -287,7 +381,7 @@ class CoderProtocolHandlerTest {
             coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns emptyList()
             coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns listOf("RR-243.1", "RR-242.1")
 
-            assertEquals("RR-243.1", handler.resolveIdeIdentifier("env-1", "RR", "latest_installed"))
+            assertEquals("RR-243.1", handler.resolveIdeIdentifier(environment, "RR", "latest_installed"))
         }
 
     @Test
@@ -296,7 +390,7 @@ class CoderProtocolHandlerTest {
             coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns emptyList()
             coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns emptyList()
 
-            assertNull(handler.resolveIdeIdentifier("env-1", "RR", "latest_installed"))
+            assertNull(handler.resolveIdeIdentifier(environment, "RR", "latest_installed"))
         }
 
     @Test
@@ -305,7 +399,7 @@ class CoderProtocolHandlerTest {
             coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns listOf("RR-241.1", "RR-242.1")
             coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns listOf("RR-251.1", "RR-252.1")
 
-            assertEquals("RR-251.1", handler.resolveIdeIdentifier("env-1", "RR", "251.1"))
+            assertEquals("RR-251.1", handler.resolveIdeIdentifier(environment, "RR", "251.1"))
         }
 
     @Test
@@ -314,7 +408,7 @@ class CoderProtocolHandlerTest {
             coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns listOf("RR-241.1", "RR-242.1")
             coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns listOf("RR-251.1", "RR-252.1")
 
-            assertEquals("RR-241.1", handler.resolveIdeIdentifier("env-1", "RR", "241.1"))
+            assertEquals("RR-241.1", handler.resolveIdeIdentifier(environment, "RR", "241.1"))
         }
 
     @Test
@@ -323,7 +417,7 @@ class CoderProtocolHandlerTest {
             coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns listOf("RR-241.1", "RR-242.1")
             coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns listOf("RR-251.1", "RR-252.1")
 
-            assertNull(handler.resolveIdeIdentifier("env-1", "RR", "221.1"))
+            assertNull(handler.resolveIdeIdentifier(environment, "RR", "221.1"))
         }
 
     @Test
@@ -338,8 +432,93 @@ class CoderProtocolHandlerTest {
                 "RR-252.1"
             )
 
-            assertEquals("RR-241.1.2", handler.resolveIdeIdentifier("env-1", "RR", "241.1"))
+            assertEquals("RR-241.1.2", handler.resolveIdeIdentifier(environment, "RR", "241.1"))
         }
+
+    @Test
+    fun `IDE resolution logs use the current environment session`() = runTest(dispatcher) {
+        val sessionId = SessionId.generate()
+        val environment = mockk<CoderRemoteEnvironment> {
+            every { id } returns "env-1"
+            every { currentSessionId() } returns sessionId
+        }
+        coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns listOf("RR-241.1")
+        coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns emptyList()
+
+        assertEquals("RR-241.1", handler.resolveIdeIdentifier(environment, "RR", "241.1"))
+
+        verify(exactly = 1) { underlyingLogger.info("client_session_id=$sessionId Available RR IDEs: [241.1]") }
+        verify(exactly = 1) { underlyingLogger.info("client_session_id=$sessionId Installed RR IDEs: []") }
+        verify(exactly = 0) { underlyingLogger.info("Available RR IDEs: [241.1]") }
+        verify(exactly = 0) { underlyingLogger.info("Installed RR IDEs: []") }
+    }
+
+    @Test
+    fun `IDE resolution errors use the current environment session`() = runTest(dispatcher) {
+        val sessionId = SessionId.generate()
+        val environment = mockk<CoderRemoteEnvironment> {
+            every { id } returns "env-1"
+            every { currentSessionId() } returns sessionId
+        }
+        coEvery { remoteToolsHelper.getAvailableRemoteTools("env-1", "RR") } returns emptyList()
+        coEvery { remoteToolsHelper.getInstalledRemoteTools("env-1", "RR") } returns emptyList()
+        val message = "Can't launch EAP for RR because no version is available on env-1"
+
+        assertNull(handler.resolveIdeIdentifier(environment, "RR", "latest_eap"))
+
+        verify(exactly = 1) { underlyingLogger.error("client_session_id=$sessionId $message") }
+        verify(exactly = 0) { underlyingLogger.error(message) }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `URI IDE launch observes the session activated after requesting SSH`() = runTest(dispatcher) {
+        val workspace = DataGen.workspace("delta-eridani", agents = SINGLE_AGENT)
+        val environmentId = "${workspace.name}.${AGENT_BOB.name}"
+        val environment = mockk<CoderRemoteEnvironment>(relaxed = true)
+        every { environment.id } returns environmentId
+        every { environment.currentSessionId() } answers {
+            SessionIdRegistry.findSession(workspace.name, AGENT_BOB.name)
+        }
+        coEvery { remoteToolsHelper.getAvailableRemoteTools(environmentId, "RR") } returns emptyList()
+        coEvery { remoteToolsHelper.getInstalledRemoteTools(environmentId, "RR") } returns listOf("RR-241.1")
+        val correlatedHandler = CoderProtocolHandler(
+            context,
+            ideFeedManager,
+            Channel(Channel.CONFLATED),
+            MutableStateFlow(LoadableState.Value(listOf(environment))),
+        )
+        val restClient = mockk<CoderRestClient>(relaxed = true)
+        val cli = mockk<CoderCLIManager>(relaxed = true)
+        coEvery { restClient.workspaces(null) } returns listOf(workspace)
+        coEvery { restClient.workspace(workspace.id) } returns workspace
+
+        correlatedHandler.handle(
+            mapOf(
+                "workspace" to workspace.name,
+                "ide_product_code" to "RR",
+                "ide_build_number" to "241.1",
+            ),
+            URI("https://coder.example.com").toURL(),
+            restClient,
+            cli,
+        )
+        val sessionId = SessionIdRegistry.startSession(context, workspace.name, AGENT_BOB.name)
+        try {
+            advanceUntilIdle()
+
+            verify(exactly = 1) { environment.startSshConnection() }
+            verify(exactly = 1) {
+                underlyingLogger.info("client_session_id=$sessionId Selected IDE RR-241.1 for RR with hint 241.1")
+            }
+            verify(exactly = 1) {
+                underlyingLogger.info("client_session_id=$sessionId Launching RR-241.1 on $environmentId")
+            }
+            verify(exactly = 0) { underlyingLogger.info("Launching RR-241.1 on $environmentId") }
+        } finally {
+            SessionIdRegistry.removeSession(workspace.name, AGENT_BOB.name)
+        }
+    }
 
     internal data class AgentTestData(val name: String, val id: String) {
         val uuid: UUID get() = UUID.fromString(id)

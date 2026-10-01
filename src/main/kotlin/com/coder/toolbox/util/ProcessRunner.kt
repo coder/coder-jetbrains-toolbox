@@ -1,7 +1,9 @@
 package com.coder.toolbox.util
 
 import java.io.IOException
-import java.nio.charset.Charset
+import java.io.InputStream
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
 data class ProcessResult(
@@ -26,6 +28,9 @@ class ProcessExecutionException(
     cause: Throwable? = null
 ) : ProcessRunnerException(message, cause)
 
+class ProcessTimeoutException(command: List<String>, timeoutMillis: Long) :
+    ProcessRunnerException("Process timed out after $timeoutMillis ms: $command")
+
 class ProcessExitException(
     val result: ProcessResult,
     private val expectedExitCodes: IntRange,
@@ -43,71 +48,130 @@ class ProcessExitException(
 )
 
 /**
- * Runs a process and waits for it to finish.
- *
- * The wait is intentionally unbounded. Only exit code 0 is accepted by default.
- * Pass [expectedExitCodes] when a command has additional valid exit codes.
- *
- * Standard output is always captured and returned in [ProcessResult.stdout] while
- * standard error is captured by default and returned in [ProcessResult.stderr]. Use
- * [ProcessStderrMode.DISCARD_ON_SUCCESS] in order to ignore it.
- * Stderr is ignored for successful results, but preserved in [ProcessExitException] when the process fails.
+ * Runs a non-interactive process, capturing both output streams. Only exit code 0 is accepted by default.
+ * [timeoutMillis] bounds short commands; null leaves workspace starts unbounded.
+ * [onOutputLine] receives complete, sanitized stdout/stderr lines, including carriage-return progress updates
+ * and a final unterminated line. The captured output retains its original line endings.
+ * [ProcessStderrMode.DISCARD_ON_SUCCESS] discards stderr only for successful commands.
  */
 fun runProcess(
     command: List<String>,
     environment: Map<String, String> = emptyMap(),
     expectedExitCodes: IntRange = 0..0,
     stderrMode: ProcessStderrMode = ProcessStderrMode.CAPTURE,
-    charset: Charset = Charsets.UTF_8,
+    timeoutMillis: Long? = null,
+    onOutputLine: ((String) -> Unit)? = null,
 ): ProcessResult {
-    val process =
-        try {
-            ProcessBuilder(command)
-                .apply { environment().putAll(environment) }
-                .start()
-        } catch (ex: IOException) {
-            throw ProcessExecutionException("Failed to start process $command: ${ex.message}", ex)
-        }
-
+    require(timeoutMillis == null || timeoutMillis > 0) { "Process timeout must be positive" }
+    val sessionToken = environment["CODER_SESSION_TOKEN"]
+    val safeCommand = command.mapIndexed { index, arg ->
+        if (index > 0 && command[index - 1] == "--token") "<redacted>" else arg.sanitizeSecrets(sessionToken)
+    }
+    val process = try {
+        ProcessBuilder(command).apply { environment().putAll(environment) }.start()
+    } catch (ex: IOException) {
+        throw ProcessExecutionException(
+            "Failed to start process $safeCommand: ${ex.message.orEmpty().sanitizeSecrets(sessionToken)}"
+        )
+    }
+    val deadline = timeoutMillis?.let { System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(it) }
     val stdout = StringBuilder()
     val stderr = StringBuilder()
-    val stdoutReader = thread(start = true, name = "process-stdout-reader") {
-        process.inputStream.bufferedReader(charset).use { stdout.append(it.readText()) }
-    }
-    val stderrReader = thread(start = true, name = "process-stderr-reader") {
-        process.errorStream.bufferedReader(charset).use { stderr.append(it.readText()) }
-    }
+    val readerFailure = AtomicReference<Throwable?>()
+    val callbackLock = Any()
+    val readers = mutableListOf<Thread>()
 
-    val exitCode =
-        try {
-            process.waitFor()
-        } catch (ex: InterruptedException) {
-            process.destroyForcibly()
-            Thread.currentThread().interrupt()
-            throw ProcessExecutionException("Interrupted while waiting for process $command", ex)
+    fun readOutput(stream: InputStream, output: StringBuilder, name: String): Thread =
+        thread(name = name, isDaemon = true) {
+            try {
+                captureOutput(stream, output, onOutputLine?.let { report ->
+                    { line -> synchronized(callbackLock) { report(line.sanitizeSecrets(sessionToken)) } }
+                })
+            } catch (ex: Exception) {
+                readerFailure.compareAndSet(null, ex)
+                process.destroyForcibly()
+            }
         }
 
     try {
-        stdoutReader.join()
-        stderrReader.join()
+        // An unexpected prompt must see EOF rather than waiting for input forever.
+        process.outputStream.close()
+        readers += readOutput(process.inputStream, stdout, "process-stdout-reader")
+        readers += readOutput(process.errorStream, stderr, "process-stderr-reader")
+        if (deadline == null) {
+            process.waitFor()
+        } else if (!process.waitFor((deadline - System.nanoTime()).coerceAtLeast(0), TimeUnit.NANOSECONDS)) {
+            throw ProcessTimeoutException(safeCommand, timeoutMillis)
+        }
+        for (reader in readers) {
+            if (deadline == null) {
+                reader.join()
+            } else {
+                val remaining = deadline - System.nanoTime()
+                if (remaining > 0) TimeUnit.NANOSECONDS.timedJoin(reader, remaining)
+                if (reader.isAlive) throw ProcessTimeoutException(safeCommand, timeoutMillis)
+            }
+        }
+        readerFailure.get()?.let {
+            throw ProcessExecutionException(
+                "Failed to read output for $safeCommand: ${it.message.orEmpty().sanitizeSecrets(sessionToken)}"
+            )
+        }
+        val result = ProcessResult(safeCommand, process.exitValue(), stdout.toString(), stderr.toString())
+        if (result.exitCode !in expectedExitCodes) {
+            throw ProcessExitException(
+                result.copy(
+                    stdout = result.stdout.sanitizeSecrets(sessionToken),
+                    stderr = result.stderr.sanitizeSecrets(sessionToken),
+                ),
+                expectedExitCodes,
+            )
+        }
+        return if (stderrMode == ProcessStderrMode.DISCARD_ON_SUCCESS) result.copy(stderr = "") else result
     } catch (ex: InterruptedException) {
         Thread.currentThread().interrupt()
-        throw ProcessExecutionException("Interrupted while reading process output for $command", ex)
+        // runInterruptible translates this to coroutine cancellation after cleanup.
+        throw ex
+    } finally {
+        // Kill child commands too, so inherited output pipes cannot keep the readers alive.
+        if (process.isAlive || readers.any { it.isAlive }) {
+            process.descendants().use { children -> children.forEach { it.destroyForcibly() } }
+            process.destroyForcibly()
+        }
+        val interrupted = Thread.interrupted()
+        try {
+            readers.forEach { it.join(1000) }
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt()
+        }
     }
+}
 
-    val stderrText = stderr.toString()
-    val result = ProcessResult(
-        command = command,
-        exitCode = exitCode,
-        stdout = stdout.toString(),
-        stderr = if (exitCode in expectedExitCodes && stderrMode == ProcessStderrMode.DISCARD_ON_SUCCESS) {
-            ""
-        } else {
-            stderrText
-        },
-    )
-    if (exitCode !in expectedExitCodes) {
-        throw ProcessExitException(result, expectedExitCodes)
+private fun captureOutput(stream: InputStream, output: StringBuilder, onOutputLine: ((String) -> Unit)?) {
+    stream.bufferedReader(Charsets.UTF_8).use { reader ->
+        val buffer = CharArray(DEFAULT_BUFFER_SIZE)
+        val line = StringBuilder()
+        fun reportLine() {
+            if (line.isNotEmpty()) {
+                onOutputLine?.invoke(line.toString())
+                line.setLength(0)
+            }
+        }
+        while (true) {
+            val count = reader.read(buffer)
+            if (count < 0) break
+            output.append(buffer, 0, count)
+            if (onOutputLine != null) {
+                for (i in 0 until count) {
+                    when (val char = buffer[i]) {
+                        '\r', '\n' -> reportLine()
+                        else -> line.append(char)
+                    }
+                }
+            }
+        }
+        reportLine()
     }
-    return result
 }

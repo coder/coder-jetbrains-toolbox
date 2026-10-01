@@ -8,18 +8,22 @@ import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.ex.OAuthTokenResponseException
+import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.util.TOKEN
 import com.coder.toolbox.util.URL
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
+import com.coder.toolbox.util.owner
 import com.coder.toolbox.util.toQueryParameters
 import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.token
 import com.coder.toolbox.util.url
 import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.util.withPath
+import com.coder.toolbox.util.workspace
 import com.coder.toolbox.views.Action
 import com.coder.toolbox.views.CoderDelimiter
 import com.coder.toolbox.views.CoderSettingsPage
@@ -42,6 +46,7 @@ import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +57,7 @@ import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.net.URI
 import java.net.URL
+import java.nio.file.Path
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -60,6 +66,10 @@ import com.jetbrains.toolbox.api.ui.components.AccountDropdownField as dropDownF
 private val POLL_INTERVAL = 5.seconds
 private const val CAN_T_HANDLE_URI_TITLE = "Can't handle URI"
 private const val FAILED_TO_HANDLE_OAUTH2_TITLE = "Failed to handle OAuth2 request"
+private const val SSH_CONFIGURATION_WARNING_TITLE = "SSH configuration could not be updated"
+
+private fun List<CoderRemoteEnvironment>.currentSessionIds(): Set<SessionId> =
+    mapNotNull(CoderRemoteEnvironment::currentSessionId).toSet()
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CoderRemoteProvider(
@@ -68,9 +78,11 @@ class CoderRemoteProvider(
     // Current polling job.
     private var pollJob: Job? = null
     internal val lastEnvironments = mutableListOf<CoderRemoteEnvironment>()
+    private var isSshConfigurationWarningShown = false
 
-    private val triggerSshConfig = Channel<Boolean>(Channel.CONFLATED)
-    private val triggerProviderVisible = Channel<Boolean>(Channel.CONFLATED)
+    private val sshConfigTrigger = Channel<String?>(Channel.CONFLATED)
+    private val workspaceRefreshTrigger = Channel<Boolean>(Channel.CONFLATED)
+    private val providerVisibleTrigger = Channel<Boolean>(Channel.CONFLATED)
     private val dialogUi = DialogUi(context)
 
     // The REST client, if we are signed in
@@ -82,8 +94,13 @@ class CoderRemoteProvider(
 
     private val isInitialized: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
-    private val coderHeaderPage = NewEnvironmentPage(context.i18n.pnotr(context.deploymentUrl.toString()))
-    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, triggerSshConfig, { cli?.features }) {
+    private val coderHeaderPage = NewEnvironmentPage(
+        context,
+        context.i18n.pnotr(context.deploymentUrl.toString()),
+        workspaceRefreshTrigger,
+        templatesProvider = { client?.templates() ?: emptyList() }
+    )
+    private val settingsPage: CoderSettingsPage = CoderSettingsPage(context, sshConfigTrigger) {
         client?.let { restClient ->
             if (context.settingsStore.useAppNameAsTitle) {
                 coderHeaderPage.setTitle(context.i18n.pnotr(restClient.appName))
@@ -92,24 +109,20 @@ class CoderRemoteProvider(
             }
         }
     }
-    private val visibilityState = MutableStateFlow(
-        ProviderVisibilityState(
-            applicationVisible = false,
-            providerVisible = false
-        )
-    )
-    private val linkHandler = CoderProtocolHandler(context, IdeFeedManager(context))
-
     override val loadingEnvironmentsDescription: LocalizableString = context.i18n.ptrl("Loading workspaces...")
     override val environments: MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>> = MutableStateFlow(
         LoadableState.Loading
     )
+    private val linkHandler =
+        CoderProtocolHandler(context, IdeFeedManager(context), workspaceRefreshTrigger, environments)
     private val accountDropdownField = dropDownFactory(context.i18n.pnotr("")) {
-        logout()
-        context.envPageManager.showPluginEnvironmentsPage()
+        context.cs.launch(CoroutineName("Logout")) {
+            logout()
+            context.envPageManager.showPluginEnvironmentsPage(false)
+        }
+    }.apply {
+        visibility.update { false }
     }
-
-    private val errorBuffer = mutableListOf<Throwable>()
 
     private val router = PageRouter()
 
@@ -118,12 +131,13 @@ class CoderRemoteProvider(
      * workspace is added, reconfigure SSH using the provided cli (including the
      * first time).
      */
-    private fun poll(client: CoderRestClient, cli: CoderCLIManager): Job =
+    internal fun poll(client: CoderRestClient, cli: CoderCLIManager): Job =
         context.cs.launch(CoroutineName("Workspace Poller")) {
             var lastPollTime = TimeSource.Monotonic.markNow()
             while (isActive) {
+                var sessionIds = lastEnvironments.currentSessionIds()
                 try {
-                    context.logger.debug("Fetching workspace agents from ${client.url}")
+                    context.logger.debug(sessionIds, "Fetching workspace agents from ${client.url}")
                     val resolvedEnvironments = resolveWorkspaceEnvironments(client, cli)
 
                     // In case we logged out while running the query.
@@ -131,11 +145,25 @@ class CoderRemoteProvider(
                         return@launch
                     }
 
+                    // Sessions can start while the workspace request is in flight. Refresh the
+                    // snapshot before disposal so it includes those sessions and retains the IDs
+                    // of environments removed by this result.
+                    sessionIds = lastEnvironments.currentSessionIds()
+
+                    val removedEnvironments = lastEnvironments.filter { it !in resolvedEnvironments }
+
                     // Reconfigure if environments changed.
                     if (lastEnvironments.size != resolvedEnvironments.size || lastEnvironments != resolvedEnvironments) {
-                        context.logger.info("Workspaces have changed, reconfiguring CLI: $resolvedEnvironments")
-                        cli.configSsh(resolvedEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
+                        context.logger.info(
+                            sessionIds,
+                            "Workspaces have changed, reconfiguring CLI: $resolvedEnvironments",
+                        )
+                        configureSsh(cli, resolvedEnvironments)
                     }
+
+                    // Toolbox closes removed environments without firing their disconnect hooks.
+                    // Dispose them after SSH configuration has captured their session IDs.
+                    removedEnvironments.forEach { it.dispose() }
 
                     environments.update {
                         LoadableState.Value(resolvedEnvironments)
@@ -151,36 +179,61 @@ class CoderRemoteProvider(
                         addAll(resolvedEnvironments)
                     }
                 } catch (_: CancellationException) {
-                    context.logger.debug("${client.url} polling loop canceled")
+                    context.logger.debug(sessionIds, "${client.url} polling loop canceled")
                     break
                 } catch (ex: Exception) {
                     val elapsed = lastPollTime.elapsedNow()
                     if (elapsed > POLL_INTERVAL * 2) {
-                        context.logger.info("wake-up from an OS sleep was detected")
+                        context.logger.info(sessionIds, "wake-up from an OS sleep was detected")
                     } else {
-                        context.logger.error(ex, "workspace polling error encountered")
                         if ((ex is APIResponseException && ex.isTokenExpired) || ex is OAuthTokenResponseException) {
                             close()
-                            context.envPageManager.showPluginEnvironmentsPage()
-                            errorBuffer.add(ex)
+                            context.envPageManager.showPluginEnvironmentsPage(false)
+                            context.logger.logAndShowError(
+                                sessionIds,
+                                "Error encountered while setting up Coder",
+                                "Your Coder session has expired. Please re-authenticate and try again.",
+                                ex
+                            )
                             break
                         }
+                        context.logger.error(sessionIds, ex, "workspace polling error encountered")
                     }
                 }
 
                 select {
                     onTimeout(POLL_INTERVAL) {
-                        context.logger.debug("workspace poller waked up by the $POLL_INTERVAL timeout")
+                        context.logger.debug(
+                            lastEnvironments.currentSessionIds(),
+                            "workspace poller waked up by the $POLL_INTERVAL timeout",
+                        )
                     }
-                    triggerSshConfig.onReceive { shouldTrigger ->
+                    sshConfigTrigger.onReceive { staleSshConfigPath ->
+                        val currentSessionIds = lastEnvironments.currentSessionIds()
+                        context.logger.debug(
+                            currentSessionIds,
+                            "workspace poller waked up because it should reconfigure the ssh configurations",
+                        )
+                        configureSsh(
+                            cli,
+                            lastEnvironments,
+                            staleSshConfigPath,
+                        )
+                    }
+                    workspaceRefreshTrigger.onReceive { shouldTrigger ->
                         if (shouldTrigger) {
-                            context.logger.debug("workspace poller waked up because it should reconfigure the ssh configurations")
-                            cli.configSsh(lastEnvironments.map { it.asPairOfWorkspaceAndAgent() }.toSet())
+                            context.logger.debug(
+                                lastEnvironments.currentSessionIds(),
+                                "workspace poller waked up to fetch workspaces from the latest header settings",
+                            )
                         }
                     }
-                    triggerProviderVisible.onReceive { isCoderProviderVisible ->
+                    providerVisibleTrigger.onReceive { isCoderProviderVisible ->
                         if (isCoderProviderVisible) {
-                            context.logger.debug("workspace poller waked up by Coder Toolbox which is currently visible, fetching latest workspace statuses")
+                            context.logger.debug(
+                                lastEnvironments.currentSessionIds(),
+                                "workspace poller waked up by Coder Toolbox which is currently visible, fetching latest workspace statuses",
+                            )
                         }
                     }
                 }
@@ -189,11 +242,76 @@ class CoderRemoteProvider(
         }
 
     /**
+     * Keep SSH configuration failures separate from workspace discovery.  SSH
+     * configuration is necessary to connect, but a read-only or malformed SSH
+     * config must not prevent Toolbox from showing the workspaces it resolved.
+     *
+     * The affected sessions are captured from [lastEnvironments] before removed environments are
+     * disposed. They cannot be reconstructed from [resolvedEnvironments], which no longer contains
+     * those environments.
+     */
+    private fun configureSsh(
+        cli: CoderCLIManager,
+        resolvedEnvironments: List<CoderRemoteEnvironment>,
+        staleSshConfigPath: String? = null,
+    ) {
+        val sessionIds = lastEnvironments.currentSessionIds()
+        try {
+            cli.configSsh(
+                resolvedEnvironments.mapNotNull { it.toWorkspaceAddressOrNull() }.toSet(),
+                sessionIds = sessionIds,
+                sshConfigPath = context.settingsStore.sshConfigPath,
+            )
+            isSshConfigurationWarningShown = false
+
+            // Only attempt cleanup if the previous file actually exists; configSsh would
+            // otherwise create a stray file there just to hold an empty managed block.
+            if (staleSshConfigPath != null && Path.of(staleSshConfigPath).toFile().exists()) {
+                runCatching {
+                    cli.configSsh(
+                        emptySet(),
+                        sessionIds = sessionIds,
+                        sshConfigPath = staleSshConfigPath,
+                    )
+                }.onFailure { ex ->
+                    context.logger.warn(
+                        sessionIds,
+                        ex,
+                        "Failed to remove the managed SSH config block from the previous location: $staleSshConfigPath"
+                    )
+                }
+            }
+        } catch (ex: Exception) {
+            // Identifier failures are security boundary violations, not recoverable file-system errors.
+            // Let the outer poll handler reject the response before it publishes the environments.
+            if (ex.hasInvalidCoderIdentifierCause()) throw ex
+
+            if (!isSshConfigurationWarningShown) {
+                isSshConfigurationWarningShown = true
+                val reason = ex.message?.takeIf { it.isNotBlank() } ?: ex.javaClass.simpleName
+                context.logger.logAndShowWarning(
+                    sessionIds,
+                    SSH_CONFIGURATION_WARNING_TITLE,
+                    "Workspaces remain available, but SSH connections are unavailable: $reason. " +
+                            "Update ${context.settingsStore.sshConfigPath} and try again.",
+                    ex,
+                )
+            } else {
+                context.logger.warn(
+                    sessionIds,
+                    ex,
+                    "Failed to update SSH configuration at ${context.settingsStore.sshConfigPath}"
+                )
+            }
+        }
+    }
+
+    /**
      * Resolves workspace agents into remote environments.
      *
      * For each workspace:
-     * - If running, uses agents from the latest build resources
-     * - If not running, fetches resources separately
+     * - If running, uses agents from the latest build resources.
+     * - If not running, creates a workspace-only environment without resolving agents.
      *
      * @return a sorted list of resolved remote environments
      */
@@ -201,16 +319,27 @@ class CoderRemoteProvider(
         client: CoderRestClient,
         cli: CoderCLIManager,
     ): List<CoderRemoteEnvironment> {
-        return client.workspaces().flatMap { ws ->
-            // Agents are not included in workspaces that are off
-            // so fetch them separately.
-            val resources = when (ws.latestBuild.status) {
-                WorkspaceStatus.RUNNING -> ws.latestBuild.resources
-                else -> emptyList()
-            }.ifEmpty {
-                client.resources(ws)
+        val workspaces = try {
+            client.workspaces(coderHeaderPage.workspaceSearchQuery.value)
+        } catch (ex: APIResponseException) {
+            // Surface invalid search queries on the header instead of failing the whole poll.
+            if (ex.isValidationError) {
+                coderHeaderPage.reportFilterError(ex.validationMessage)
+                return emptyList()
             }
-            resources
+            throw ex
+        }
+        coderHeaderPage.resetError()
+        return workspaces.flatMap { ws ->
+            if (ws.latestBuild.status != WorkspaceStatus.RUNNING) {
+                return@flatMap listOf(
+                    lastEnvironments.firstOrNull { it.id == ws.name }
+                        ?.also { it.update(ws, null) }
+                        ?: CoderRemoteEnvironment(context, client, cli, workspaceRefreshTrigger, ws, null)
+                )
+            }
+
+            ws.latestBuild.resources
                 .flatMap { it.agents ?: emptyList() }
                 .distinctBy { it.name }
                 .map { agent ->
@@ -218,20 +347,38 @@ class CoderRemoteProvider(
                         ?.also {
                             // If we have an environment already, update that.
                             it.update(ws, agent)
-                        } ?: CoderRemoteEnvironment(context, client, cli, ws, agent)
+                        } ?: CoderRemoteEnvironment(context, client, cli, workspaceRefreshTrigger, ws, agent)
                 }
 
         }.sortedBy { it.id }
     }
 
-    /**
-     * Stop polling, clear the client and environments, then go back to the
-     * first page.
-     */
-    private fun logout() {
-        context.logger.info("Logging out ${client?.me?.username}...")
-        close()
-        context.logger.info("User ${client?.me?.username} logged out successfully")
+    /** Sign out explicitly; provider shutdown alone must preserve credentials. */
+    internal suspend fun logout() {
+        val sessionIds = lastEnvironments.currentSessionIds()
+        val activeClient = client
+        val activeCli = cli
+        context.logger.info(sessionIds, "Logging out ${activeClient?.me?.username}...")
+        try {
+            pollJob?.cancelAndJoin()
+            activeClient?.close()
+            if (activeClient != null) {
+                context.secrets.clearSessionFor(activeClient.url)
+                if (activeCli?.usesTokenAuth == true) activeCli.logout()
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            context.logger.logAndShowWarning(
+                sessionIds,
+                "CLI logout failed",
+                "Toolbox has signed out, but the CLI credential may remain stored. " +
+                        "Sign in and try logging out again to remove it.",
+                ex,
+            )
+        } finally {
+            close()
+        }
     }
 
     /**
@@ -263,25 +410,30 @@ class CoderRemoteProvider(
      * Also called as part of our own logout.
      */
     override fun close() {
+        val sessionIds = lastEnvironments.currentSessionIds()
         softClose()
         client = null
         cli = null
+        lastEnvironments.forEach { it.dispose() }
         lastEnvironments.clear()
+        isSshConfigurationWarningShown = false
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
+        accountDropdownField.visibility.update { false }
         router.clear()
-        context.logger.info("Coder plugin is now closed")
+        context.logger.info(sessionIds, "Coder plugin is now closed")
     }
 
     private fun softClose() {
+        val sessionIds = lastEnvironments.currentSessionIds()
         pollJob?.let {
             it.cancel()
-            context.logger.info("Cancelled workspace poll job ${pollJob.toString()}")
+            context.logger.info(sessionIds, "Cancelled workspace poll job ${pollJob.toString()}")
         }
         pollJob = null
         client?.let {
             it.close()
-            context.logger.info("REST API client closed and resources released")
+            context.logger.info(sessionIds, "REST API client closed and resources released")
         }
     }
 
@@ -303,15 +455,12 @@ class CoderRemoteProvider(
      */
     override val noEnvironmentsDescription: String? = "No workspaces yet"
 
-
     /**
-     * TODO@JB: Supposedly, setting this to false causes the new environment
-     *          page to not show but it shows anyway.  For now we have it
-     *          displaying the deployment URL, which is actually useful, so if
-     *          this changes it would be nice to have a new spot to show the
-     *          URL.
+     * Toolbox 3.5 removes the entire top section when this is false. Coder uses
+     * the new-environment page as a provider header so the deployment URL and
+     * account dropdown remain visible above the workspace list.
      */
-    override val canCreateNewEnvironments: Boolean = false
+    override val canCreateNewEnvironments: Boolean = true
 
     /**
      * Just displays the deployment URL at the moment, but we could use this as
@@ -331,12 +480,9 @@ class CoderRemoteProvider(
      *        and a manual refresh button.
      */
     override fun setVisible(visibility: ProviderVisibilityState) {
-        visibilityState.update {
-            visibility
-        }
         if (visibility.providerVisible) {
             context.cs.launch(CoroutineName("Notify Plugin Visibility")) {
-                triggerProviderVisible.send(true)
+                providerVisibleTrigger.send(true)
             }
         }
     }
@@ -354,7 +500,7 @@ class CoderRemoteProvider(
             val params = uri.toQueryParameters()
             if (params.isEmpty()) {
                 // probably a plugin installation scenario
-                context.logAndShowInfo("URI will not be handled", "No query parameters were provided")
+                context.logger.logAndShowInfo("URI will not be handled", "No query parameters were provided")
                 return
             }
             context.logger.info("Handling $uri...")
@@ -363,12 +509,14 @@ class CoderRemoteProvider(
             if (sameUrl(newUrl, client?.url)) {
                 coderHeaderPage.isBusy.update { true }
                 try {
-                    if (context.settingsStore.requiresTokenAuth) {
+                    val activeSession = if (context.settingsStore.requiresTokenAuth) {
                         newToken?.let {
                             refreshSession(newUrl, it)
-                        }
+                        } ?: (this.client!! to this.cli!!)
+                    } else {
+                        this.client!! to this.cli!!
                     }
-                    linkHandler.handle(params, newUrl, this.client!!, this.cli!!)
+                    handleLink(params, newUrl, activeSession.first, activeSession.second)
                 } finally {
                     coderHeaderPage.isBusy.update { false }
                 }
@@ -378,7 +526,7 @@ class CoderRemoteProvider(
                 // showPluginEnvironmentsPage() pull it through getOverrideUiPage.
                 val credentials = newToken?.let { Credentials.Token(it) } ?: Credentials.MTls
                 val wizard = CoderSetupWizardPage.connectStep(
-                    context, settingsPage, visibilityState,
+                    context, settingsPage,
                     url = newUrl,
                     credentials = credentials,
                     onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl)),
@@ -393,7 +541,7 @@ class CoderRemoteProvider(
                     ex.reason
                 } else ex.message
             } else ex.message
-            context.logAndShowError(
+            context.logger.logAndShowError(
                 "Error encountered while handling Coder URI",
                 textError ?: ""
             )
@@ -411,35 +559,35 @@ class CoderRemoteProvider(
         val error = params["error"]
         if (error != null) {
             val description = params["error_description"]?.let { " - $it" } ?: ""
-            return context.logAndShowError(
+            return context.logger.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "OAuth2 authorization error: $error$description"
             )
         }
 
         if (!router.hasActiveWizard) {
-            return context.logAndShowError(
+            return context.logger.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "OAuth2 callback arrived but the setup wizard is no longer active"
             )
         }
-        val pendingOAuthConnection = router.pendingOAuthConnection ?: return context.logAndShowError(
+        val pendingOAuthConnection = router.pendingOAuthConnection ?: return context.logger.logAndShowError(
             FAILED_TO_HANDLE_OAUTH2_TITLE,
             "OAuth2 callback arrived but no OAuth session was started"
         )
         params["state"]?.takeIf { it == pendingOAuthConnection.session.state }
-            ?: return context.logAndShowError(
+            ?: return context.logger.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "Server responded back with an invalid state that does not match the initial authorization state sent to the server"
             )
 
-        val code = params["code"] ?: return context.logAndShowError(
+        val code = params["code"] ?: return context.logger.logAndShowError(
             FAILED_TO_HANDLE_OAUTH2_TITLE,
             "OAuth2 server did not respond back with an access token"
         )
         // before going forward we check to make sure OAuth is not disabled in the meantime
         if (!context.settingsStore.preferOAuth2IfAvailable) {
-            context.logAndShowError(
+            context.logger.logAndShowError(
                 FAILED_TO_HANDLE_OAUTH2_TITLE,
                 "OAuth based authentication is not enabled for Coder plugin in Toolbox. Please enable it in plugin settings or use the API token instead."
             )
@@ -458,7 +606,7 @@ class CoderRemoteProvider(
             val oauthSessionContext = pendingOAuthConnection.session
             val tokenResponse = OAuth2Client(context).exchangeCode(oauthSessionContext, code)
             val wizard = CoderSetupWizardPage.connectStep(
-                context, settingsPage, visibilityState,
+                context, settingsPage,
                 url = pendingOAuthConnection.url,
                 credentials = Credentials.OAuth(oauthSessionContext.copy(tokenResponse = tokenResponse)),
                 onConnect = onConnect,
@@ -466,22 +614,22 @@ class CoderRemoteProvider(
             )
             router.navigate(wizard)
 
-            context.envPageManager.showPluginEnvironmentsPage(true)
+            context.envPageManager.showPluginEnvironmentsPage(false)
             context.ui.showUiPage(wizard)
         } catch (e: Exception) {
-            context.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
+            context.logger.logAndShowError("OAuth Error", "Exception during token exchange: ${e.message}", e)
         }
     }
 
     private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
         val deploymentURL = params.url() ?: askUrl()
         if (deploymentURL.isNullOrBlank()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"${URL}\" is missing from URI")
+            context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"${URL}\" is missing from URI")
             return null
         }
         val validationResult = deploymentURL.validateStrictWebUrl()
         if (validationResult is Invalid) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
+            context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
             return null
         }
         return deploymentURL
@@ -490,7 +638,7 @@ class CoderRemoteProvider(
     private suspend fun resolveToken(params: Map<String, String>): String? {
         val token = params.token()
         if (token.isNullOrBlank()) {
-            context.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")
+            context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")
             return null
         }
         return token
@@ -499,7 +647,10 @@ class CoderRemoteProvider(
     private fun sameUrl(first: URL, second: URL?): Boolean = first.toURI().normalize() == second?.toURI()?.normalize()
 
     private suspend fun refreshSession(url: URL, token: String): Pair<CoderRestClient, CoderCLIManager> {
-        context.logger.info("Stopping workspace polling and re-initializing the http client and cli with a new token")
+        context.logger.info(
+            lastEnvironments.currentSessionIds(),
+            "Stopping workspace polling and re-initializing the http client and cli with a new token",
+        )
         softClose()
         val newRestClient = CoderRestClient(
             context,
@@ -514,8 +665,15 @@ class CoderRemoteProvider(
         this.client = newRestClient
         this.cli = newCli
         lastEnvironments.forEach { it.updateClientAndCli(newRestClient, newCli) }
+        accountDropdownField.labelState.update { context.i18n.pnotr(newRestClient.me.username) }
+        accountDropdownField.visibility.update { true }
+        coderHeaderPage.resetFilter()
+        context.cs.launch(CoroutineName("Load Templates")) { coderHeaderPage.reloadTemplates() }
         pollJob = poll(newRestClient, newCli)
-        context.logger.info("Workspace poll job with name ${pollJob.toString()} was created while handling URI")
+        context.logger.info(
+            lastEnvironments.currentSessionIds(),
+            "Workspace poll job with name ${pollJob.toString()} was created while handling URI",
+        )
         return newRestClient to newCli
     }
 
@@ -555,36 +713,34 @@ class CoderRemoteProvider(
             try {
                 val url = context.deploymentUrl
                 val credentials = autoSetupCredentials(url) ?: return CoderSetupWizardPage.deploymentUrlStep(
-                    context, settingsPage, visibilityState,
+                    context, settingsPage,
                     onConnect = onConnect,
                     onTokenRefreshed = ::onTokenRefreshed,
                 )
                 return CoderSetupWizardPage.connectStep(
-                    context, settingsPage, visibilityState,
+                    context, settingsPage,
                     url = url,
                     credentials = credentials,
                     onConnect = onConnect,
                     onTokenRefreshed = ::onTokenRefreshed,
                 )
             } catch (ex: Exception) {
-                errorBuffer.add(ex)
+                context.logger.logAndShowError(
+                    "Error encountered while setting up Coder",
+                    "Failed to set up Coder: ${ex.message}",
+                    ex
+                )
             } finally {
                 firstRun = false
             }
         }
 
         // Login flow.
-        val setupWizardPage = CoderSetupWizardPage.deploymentUrlStep(
-            context, settingsPage, visibilityState,
+        return CoderSetupWizardPage.deploymentUrlStep(
+            context, settingsPage,
             onConnect = onConnect,
             onTokenRefreshed = ::onTokenRefreshed,
         )
-        // We might have navigated here due to a polling error.
-        errorBuffer.forEach {
-            setupWizardPage.notify("Error encountered", it)
-        }
-        errorBuffer.clear()
-        return setupWizardPage
     }
 
     /**
@@ -639,15 +795,36 @@ class CoderRemoteProvider(
         accountDropdownField.labelState.update {
             context.i18n.pnotr(client.me.username)
         }
+        accountDropdownField.visibility.update { true }
+        coderHeaderPage.resetFilter()
+        context.cs.launch(CoroutineName("Load Templates")) { coderHeaderPage.reloadTemplates() }
         pollJob = poll(client, cli)
         context.logger.info("Workspace poll job with name ${pollJob.toString()} was created")
     }
 
     /**
-     * Returns a [SuspendBiConsumer] that handles the given link parameters.
-     * Runs in a background coroutine so it doesn't block the connect step's
-     * post-connection flow.
+     * Applies the appropriate workspace filter for the URI then delegates to [linkHandler].
+     * Scopes the filter to the target workspace when it is owned by a different user so the poll
+     * fetches and registers it before the IDE launch runs. For own workspaces, resets to the
+     * default filter, clearing any leftover non-owned filter from a previous URI.
      */
+    private suspend fun handleLink(
+        params: Map<String, String>,
+        url: URL,
+        client: CoderRestClient,
+        cli: CoderCLIManager,
+    ) {
+        val uriOwner = params.owner()
+        val uriWorkspace = params.workspace()
+        if (!uriOwner.isNullOrBlank() && !uriWorkspace.isNullOrBlank() && uriOwner != client.me.username) {
+            coderHeaderPage.setFilter("owner:$uriOwner name:$uriWorkspace")
+        } else {
+            coderHeaderPage.resetFilter()
+        }
+        linkHandler.handle(params, url, client, cli)
+    }
+
+    /** Returns a [SuspendBiConsumer] that handles the given link parameters in a background coroutine. */
     private fun deferredLinkHandler(
         params: Map<String, String>,
         deploymentUrl: URL,
@@ -655,9 +832,9 @@ class CoderRemoteProvider(
         context.cs.launch(CoroutineName("Deferred Link Handler")) {
             coderHeaderPage.isBusy.update { true }
             try {
-                linkHandler.handle(params, deploymentUrl, client, cli)
+                handleLink(params, deploymentUrl, client, cli)
             } catch (ex: Exception) {
-                context.logAndShowError(
+                context.logger.logAndShowError(
                     "Error handling deferred link",
                     ex.message ?: ""
                 )
@@ -673,3 +850,6 @@ class CoderRemoteProvider(
         }
     }
 }
+
+private fun Throwable.hasInvalidCoderIdentifierCause(): Boolean =
+    this is InvalidCoderIdentifierException || cause is InvalidCoderIdentifierException

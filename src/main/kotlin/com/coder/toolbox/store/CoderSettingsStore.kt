@@ -54,8 +54,10 @@ class CoderSettingsStore(
     override val globalDataDirectory: String get() = getDefaultGlobalDataDir().normalize().toString()
     override val globalConfigDir: String get() = getDefaultGlobalConfigDir().normalize().toString()
     override val enableDownloads: Boolean get() = store[ENABLE_DOWNLOADS]?.toBooleanStrictOrNull() ?: true
-    override val headerCommand: String? get() = store[HEADER_COMMAND]
-    override val useKeyring: Boolean get() = store[USE_KEYRING]?.toBooleanStrictOrNull() ?: false
+    override val headerCommand: String?
+        get() = store[HEADER_COMMAND].takeUnless { it.isNullOrEmpty() }
+            ?: env.get(CODER_HEADER_COMMAND).takeUnless { it.isEmpty() }
+    override val useKeyring: Boolean get() = store[USE_KEYRING]?.toBooleanStrictOrNull() ?: true
     override val tls: ReadOnlyTLSSettings
         get() = TLSSettings(
             certPath = store[TLS_CERT_PATH],
@@ -73,13 +75,13 @@ class CoderSettingsStore(
     override val isSshWildcardConfigEnabled: Boolean
         get() = store[ENABLE_SSH_WILDCARD_CONFIG]?.toBooleanStrictOrNull() ?: true
     override val sshConfigPath: String
-        get() = store[SSH_CONFIG_PATH].takeUnless { it.isNullOrEmpty() }
+        get() = store[SSH_CONFIG_PATH]?.takeIf { it.isNotBlank() }?.let { expand(it) }
             ?: Path.of(System.getProperty("user.home")).resolve(".ssh/config").normalize().toString()
-    override val sshLogDirectory: String? get() = store[SSH_LOG_DIR]
+    override val sshLogDirectory: String? get() = store[SSH_LOG_DIR]?.takeIf { it.isNotBlank() }?.let { expand(it) }
     override val sshConfigOptions: String?
         get() = store[SSH_CONFIG_OPTIONS].takeUnless { it.isNullOrEmpty() } ?: env.get(CODER_SSH_CONFIG_OPTIONS)
     override val networkInfoDir: String
-        get() = store[NETWORK_INFO_DIR].takeUnless { it.isNullOrEmpty() } ?: getDefaultGlobalDataDir()
+        get() = store[NETWORK_INFO_DIR]?.takeIf { it.isNotBlank() }?.let { expand(it) } ?: getDefaultGlobalDataDir()
             .resolve("ssh-network-metrics")
             .normalize()
             .toString()
@@ -245,6 +247,10 @@ class CoderSettingsStore(
 
     fun updateEnableSshWildcardConfig(enable: Boolean) {
         store[ENABLE_SSH_WILDCARD_CONFIG] = enable.toString()
+    }
+
+    fun updateSshConfigPath(path: String) {
+        store[SSH_CONFIG_PATH] = path
     }
 
     fun updateSshLogDir(path: String) {

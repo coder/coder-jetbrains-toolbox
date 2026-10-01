@@ -21,6 +21,7 @@ fun getHeaders(
         runProcess(
             listOf(shell, caller, headerCommand),
             environment = mapOf("CODER_URL" to url.toString()),
+            timeoutMillis = 60_000,
             stderrMode = ProcessStderrMode.DISCARD_ON_SUCCESS,
         ).stdout
 

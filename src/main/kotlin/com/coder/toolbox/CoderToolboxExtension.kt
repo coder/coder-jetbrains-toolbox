@@ -3,7 +3,6 @@ package com.coder.toolbox
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
-import com.coder.toolbox.util.ConnectionMonitoringService
 import com.jetbrains.toolbox.api.core.PluginSecretStore
 import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.ServiceLocator
@@ -19,6 +18,7 @@ import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
+import com.jetbrains.toolbox.api.ui.components.UiComponents
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -34,6 +34,7 @@ class CoderToolboxExtension : RemoteDevExtension {
         return CoderRemoteProvider(
             CoderToolboxContext(
                 ui,
+                serviceLocator.getService<UiComponents>(),
                 serviceLocator.getService<EnvironmentUiPageManager>(),
                 serviceLocator.getService<EnvironmentStateColorPalette>(),
                 serviceLocator.getService<RemoteToolsHelper>(),
@@ -45,12 +46,6 @@ class CoderToolboxExtension : RemoteDevExtension {
                 CoderSettingsStore(serviceLocator.getService<PluginSettingsStore>(), Environment(), logger),
                 CoderSecretsStore(serviceLocator.getService<PluginSecretStore>()),
                 serviceLocator.getService<ToolboxProxySettings>(),
-                ConnectionMonitoringService(
-                    cs,
-                    ui,
-                    logger,
-                    i18n
-                )
             )
         )
     }

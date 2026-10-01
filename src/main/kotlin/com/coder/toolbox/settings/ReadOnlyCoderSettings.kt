@@ -94,15 +94,16 @@ interface ReadOnlyCoderSettings {
     /**
      * An external command that outputs additional HTTP headers added to all
      * requests. The command must output each header as `key=value` on its own
-     * line. The following environment variables will be available to the
-     * process: CODER_URL.
+     * line. When this setting is blank, the CODER_HEADER_COMMAND environment
+     * variable (the same variable the Coder CLI reads) is used instead, if set.
      */
     val headerCommand: String?
 
     /**
      * Whether CLI login should allow the Coder CLI to persist the session in
      * the operating system keyring when supported. This only takes effect on
-     * macOS and Windows.
+     * macOS and Windows. Defaults to true when unset; false opts out.
+     * Changes apply on the next sign-in or plugin restart.
      */
     val useKeyring: Boolean
 

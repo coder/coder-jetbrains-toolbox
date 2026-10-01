@@ -2,13 +2,17 @@ plugins {
     `kotlin-dsl`
 }
 
+kotlin {
+    jvmToolchain(21)
+}
+
 repositories {
     mavenCentral()
     maven("https://packages.jetbrains.team/maven/p/tbx/toolbox-api")
 }
 
 dependencies {
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.2")
-    implementation("org.jetbrains.intellij.plugins:structure-toolbox:3.329")
-    implementation("org.jetbrains.intellij:plugin-repository-rest-client:2.0.51")
+    implementation(libs.jackson.module.kotlin)
+    implementation(libs.plugin.structure)
+    implementation(libs.marketplace.client)
 }

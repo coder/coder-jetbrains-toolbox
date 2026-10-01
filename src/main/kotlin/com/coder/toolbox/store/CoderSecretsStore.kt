@@ -28,6 +28,16 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
         store[url.host] = apiToken
     }
 
+    fun clearSessionFor(url: URL) {
+        store.clear(url.host)
+        listOf(
+            OAUTH_CLIENT_ID_PREFIX, OAUTH_CLIENT_SECRET_PREFIX, OAUTH_REFRESH_TOKEN,
+            OAUTH_TOKEN_AUTH_METHOD, OAUTH_TOKEN_ENDPOINT
+        ).forEach { prefix ->
+            store.clear("$prefix-$url")
+        }
+    }
+
     fun oauthSessionFor(url: String): StoredOAuthSession? {
         val clientId = store["$OAUTH_CLIENT_ID_PREFIX-$url"]
         val clientSecret = store["$OAUTH_CLIENT_SECRET_PREFIX-$url"]

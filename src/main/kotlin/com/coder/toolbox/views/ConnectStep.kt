@@ -8,7 +8,6 @@ import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.WizardModel
-import com.jetbrains.toolbox.api.remoteDev.ProviderVisibilityState
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
@@ -16,7 +15,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
@@ -31,7 +29,6 @@ private const val WIZARD_WAS_DISPOSED = "Wizard was disposed"
 class ConnectStep(
     private val context: CoderToolboxContext,
     private val model: WizardModel,
-    visibilityState: StateFlow<ProviderVisibilityState>,
     private val navigateBack: () -> Unit,
     private val onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
     private val onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
@@ -40,7 +37,6 @@ class ConnectStep(
 
     private val statusField = LabelField(context.i18n.pnotr(""))
     private val errorField = ValidationErrorField(context.i18n.pnotr(""))
-    private val errorReporter = ErrorReporter.create(context, visibilityState, this.javaClass)
 
     override val panel: RowGroup = RowGroup(
         RowGroup.RowField(statusField),
@@ -48,7 +44,6 @@ class ConnectStep(
     )
 
     override fun onVisible() {
-        errorReporter.flush()
         errorField.textState.update {
             context.i18n.pnotr("")
         }
@@ -143,17 +138,25 @@ class ConnectStep(
                 }
                 // The provider's onConnect ran close() which clears the router; combined
                 // with client now being non-null this drops the wizard from getOverrideUiPage.
-                context.envPageManager.showPluginEnvironmentsPage()
+                context.envPageManager.showPluginEnvironmentsPage(false)
             } catch (ex: CancellationException) {
                 // Back-button cancellation already navigates in onBack(), while
                 // dispose() must cancel without navigating. Treat these control-flow
                 // cancellations separately so we do not run navigateBack() twice.
                 if (ex.message != USER_HIT_THE_BACK_BUTTON && ex.message != WIZARD_WAS_DISPOSED) {
-                    errorReporter.report("Failed to configure $hostName", ex)
+                    context.logger.logAndShowError(
+                        "Error encountered while setting up Coder",
+                        "Failed to configure $hostName. ${ex.message}",
+                        ex
+                    )
                     navigateBack()
                 }
             } catch (ex: Exception) {
-                errorReporter.report("Failed to configure $hostName", ex)
+                context.logger.logAndShowError(
+                    "Error encountered while setting up Coder",
+                    "Failed to configure $hostName. ${ex.message}",
+                    ex
+                )
                 navigateBack()
             }
         }

@@ -15,13 +15,15 @@ import com.coder.toolbox.sdk.v2.CoderV2RestFacade
 import com.coder.toolbox.sdk.v2.models.ApiErrorResponse
 import com.coder.toolbox.sdk.v2.models.Appearance
 import com.coder.toolbox.sdk.v2.models.BuildInfo
+import com.coder.toolbox.sdk.v2.models.CoderIdentifierPolicy
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
+import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
+import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
-import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.util.ReloadableTlsContext
 import com.coder.toolbox.util.runProcess
@@ -39,6 +41,11 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
+
+private const val INVALID_DEPLOYMENT_DATA_WARNING_TITLE = "Coder returned unsafe workspace data"
+private const val INVALID_DEPLOYMENT_DATA_WARNING =
+    "The deployment returned an invalid workspace, owner, or agent name. " +
+            "Unsafe entries were ignored and will not be available for SSH connections."
 
 /**
  * An HTTP client that can make requests to the Coder API.
@@ -59,6 +66,7 @@ open class CoderRestClient(
     private lateinit var retroRestClient: CoderV2RestFacade
 
     private val refreshMutex = Mutex()
+    private var isInvalidDeploymentDataWarningShown = false
 
     lateinit var me: User
     lateinit var buildVersion: String
@@ -115,6 +123,7 @@ open class CoderRestClient(
      * @throws [APIResponseException].
      */
     suspend fun initializeSession(): User {
+        isInvalidDeploymentDataWarningShown = false
         me = me()
         buildVersion = buildInfo().version
         appName = appearance().applicationName
@@ -161,11 +170,13 @@ open class CoderRestClient(
     }
 
     /**
-     * Retrieves the available workspaces created by the user.
+     * Retrieves workspaces matching the provided Coder search query.
      * @throws [APIResponseException].
      */
-    suspend fun workspaces(): List<Workspace> {
-        val workspacesResponse = callWithRetry { retroRestClient.workspaces("owner:me") }
+    suspend fun workspaces(searchQuery: String? = null): List<Workspace> {
+        val workspacesResponse = callWithRetry {
+            retroRestClient.workspaces(searchQuery)
+        }
         if (!workspacesResponse.isSuccessful) {
             throw APIResponseException(
                 "retrieve workspaces",
@@ -177,6 +188,13 @@ open class CoderRestClient(
 
         return requireNotNull(workspacesResponse.body()?.workspaces) {
             "Successful response returned null body or workspaces"
+        }.mapNotNull { workspace ->
+            try {
+                workspace.withSafeIdentifiers()
+            } catch (ex: InvalidCoderIdentifierException) {
+                reportInvalidDeploymentData(ex)
+                null
+            }
         }
     }
 
@@ -197,32 +215,7 @@ open class CoderRestClient(
 
         return requireNotNull(workspaceResponse.body()) {
             "Successful response returned null body or workspace"
-        }
-    }
-
-    /**
-     * Retrieves resources for the specified workspace.  The workspaces response
-     * does not include agents when the workspace is off so this can be used to
-     * get them instead, just like `coder config-ssh` does (otherwise we risk
-     * removing hosts from the SSH config when they are off).
-     * @throws [APIResponseException].
-     */
-    suspend fun resources(workspace: Workspace): List<WorkspaceResource> {
-        val resourcesResponse = callWithRetry {
-            retroRestClient.templateVersionResources(workspace.latestBuild.templateVersionID)
-        }
-        if (!resourcesResponse.isSuccessful) {
-            throw APIResponseException(
-                "retrieve resources for ${workspace.name}",
-                url,
-                resourcesResponse.code(),
-                resourcesResponse.parseErrorBody(moshi)
-            )
-        }
-
-        return requireNotNull(resourcesResponse.body()) {
-            "Successful response returned null body or workspace resources"
-        }
+        }.withSafeIdentifiers()
     }
 
     suspend fun buildInfo(): BuildInfo {
@@ -238,6 +231,26 @@ open class CoderRestClient(
 
         return requireNotNull(buildInfoResponse.body()) {
             "Successful response returned null body or build info"
+        }
+    }
+
+    /**
+     * Retrieves all templates the authenticated user can access.
+     * @throws [APIResponseException].
+     */
+    suspend fun templates(): List<Template> {
+        val templatesResponse = callWithRetry { retroRestClient.templates() }
+        if (!templatesResponse.isSuccessful) {
+            throw APIResponseException(
+                "retrieve templates",
+                url,
+                templatesResponse.code(),
+                templatesResponse.parseErrorBody(moshi)
+            )
+        }
+
+        return requireNotNull(templatesResponse.body()) {
+            "Successful response returned null body or templates"
         }
     }
 
@@ -283,7 +296,7 @@ open class CoderRestClient(
 
         return requireNotNull(buildResponse.body()) {
             "Successful response returned null body or workspace build"
-        }
+        }.withoutUnsafeAgents()
     }
 
     /**
@@ -302,6 +315,25 @@ open class CoderRestClient(
 
         return requireNotNull(buildResponse.body()) {
             "Successful response returned null body or workspace build"
+        }.withoutUnsafeAgents()
+    }
+
+    /** Retrieves the provisioner logs for [workspaceBuildID]. */
+    suspend fun workspaceBuildLogs(workspaceBuildID: UUID): List<ProvisionerJobLog> {
+        val logsResponse = callWithRetry {
+            retroRestClient.workspaceBuildLogs(workspaceBuildID)
+        }
+        if (!logsResponse.isSuccessful) {
+            throw APIResponseException(
+                "retrieve logs for workspace build $workspaceBuildID",
+                url,
+                logsResponse.code(),
+                logsResponse.parseErrorBody(moshi),
+            )
+        }
+
+        return requireNotNull(logsResponse.body()) {
+            "Successful response returned null body for workspace build logs"
         }
     }
 
@@ -347,7 +379,53 @@ open class CoderRestClient(
 
         return requireNotNull(buildResponse.body()) {
             "Successful response returned null body or workspace build"
+        }.withoutUnsafeAgents()
+    }
+
+    private fun Workspace.withSafeIdentifiers(): Workspace {
+        CoderIdentifierPolicy.requireOwner(ownerName)
+        CoderIdentifierPolicy.requireWorkspace(name)
+
+        val safeBuild = latestBuild.withoutUnsafeAgents()
+        return if (safeBuild === latestBuild) this else copy(latestBuild = safeBuild)
+    }
+
+    private fun WorkspaceBuild.withoutUnsafeAgents(): WorkspaceBuild {
+        var changed = false
+        val safeResources = resources.map { resource ->
+            val agents = resource.agents ?: return@map resource
+            val safeAgents = agents.filter { agent ->
+                try {
+                    CoderIdentifierPolicy.requireAgent(agent.name)
+                    true
+                } catch (ex: InvalidCoderIdentifierException) {
+                    reportInvalidDeploymentData(ex)
+                    false
+                }
+            }
+            if (safeAgents.size == agents.size) {
+                resource
+            } else {
+                changed = true
+                resource.copy(agents = safeAgents)
+            }
         }
+
+        return if (changed) copy(resources = safeResources) else this
+    }
+
+    private fun reportInvalidDeploymentData(ex: InvalidCoderIdentifierException) {
+        if (isInvalidDeploymentDataWarningShown) {
+            context.logger.warn(ex, "Ignoring invalid deployment-controlled identifiers")
+            return
+        }
+
+        isInvalidDeploymentDataWarningShown = true
+        context.logger.logAndShowWarning(
+            INVALID_DEPLOYMENT_DATA_WARNING_TITLE,
+            INVALID_DEPLOYMENT_DATA_WARNING,
+            ex,
+        )
     }
 
     /**

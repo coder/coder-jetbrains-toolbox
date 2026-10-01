@@ -9,7 +9,6 @@ import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.DATA_DIRECTORY
 import com.coder.toolbox.store.DISABLE_SIGNATURE_VALIDATION
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
-import com.coder.toolbox.util.ConnectionMonitoringService
 import com.coder.toolbox.util.IgnoreOnWindows
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
@@ -26,6 +25,7 @@ import com.jetbrains.toolbox.api.remoteDev.connection.ToolboxProxySettings
 import com.jetbrains.toolbox.api.remoteDev.states.EnvironmentStateColorPalette
 import com.jetbrains.toolbox.api.remoteDev.ui.EnvironmentUiPageManager
 import com.jetbrains.toolbox.api.ui.ToolboxUi
+import com.jetbrains.toolbox.api.ui.components.UiComponents
 import com.sun.net.httpserver.HttpServer
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -62,6 +62,7 @@ internal class EnsureCLITest {
     private val ui = mockk<ToolboxUi>(relaxed = true)
     private val baseContext = CoderToolboxContext(
         ui,
+        mockk<UiComponents>(relaxed = true),
         mockk<EnvironmentUiPageManager>(),
         mockk<EnvironmentStateColorPalette>(),
         mockk<RemoteToolsHelper>(),
@@ -79,7 +80,6 @@ internal class EnsureCLITest {
             override fun addProxyChangeListener(listener: Runnable) {}
             override fun removeProxyChangeListener(listener: Runnable) {}
         },
-        mockk<ConnectionMonitoringService>(),
     )
 
     @BeforeTest

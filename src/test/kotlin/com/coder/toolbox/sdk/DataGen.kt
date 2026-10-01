@@ -69,9 +69,16 @@ class DataGen {
             status = WorkspaceStatus.RUNNING,
         )
 
-        fun template(): Template = Template(
+        fun template(
+            name: String = "template",
+            displayName: String = "Template",
+            deprecated: Boolean = false,
+        ): Template = Template(
             id = UUID.randomUUID(),
             activeVersionID = UUID.randomUUID(),
+            name = name,
+            displayName = displayName,
+            deprecated = deprecated,
         )
 
         fun user(): User = User(

@@ -1,5 +1,12 @@
 package com.coder.toolbox.util
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -7,6 +14,88 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
 internal class ProcessRunnerTest {
+    @Test
+    @IgnoreOnWindows
+    fun `cancellation terminates a running process after delivering live progress`() = runBlocking {
+        val pid = CompletableDeferred<Long>()
+        val job = launch(Dispatchers.Default) {
+            runInterruptible {
+                runProcess(listOf("sh", "-c", "echo $$; exec sleep 30"), onOutputLine = { pid.complete(it.toLong()) })
+            }
+        }
+        var process: ProcessHandle? = null
+        try {
+            process = ProcessHandle.of(withTimeout(5000) { pid.await() }).orElseThrow()
+            withTimeout(5000) { job.cancelAndJoin() }
+            assertFalse(process.isAlive)
+        } finally {
+            job.cancelAndJoin()
+            process?.destroyForcibly()
+        }
+    }
+
+    @Test
+    @IgnoreOnWindows
+    fun `runProcess closes stdin so unexpected prompts see EOF`() {
+        val result = runProcess(listOf("sh", "-c", "read value || printf eof"), timeoutMillis = 2000)
+        assertEquals("eof", result.stdout)
+    }
+
+    @Test
+    @IgnoreOnWindows
+    fun `runProcess streams complete lines and retains original output`() {
+        val lines = mutableListOf<String>()
+        val text = "x".repeat(8193)
+        val result = runProcess(
+            listOf("sh", "-c", "printf '%s' '$text'; printf ' done\\r\\nsecond\\rfinal'"),
+            onOutputLine = lines::add,
+        )
+        assertEquals(listOf("$text done", "second", "final"), lines)
+        assertEquals("$text done\r\nsecond\rfinal", result.stdout)
+    }
+
+    @Test
+    @IgnoreOnWindows
+    fun `runProcess terminates the process on timeout`() {
+        val pidFile = java.nio.file.Files.createTempFile("coder-process-timeout", ".pid")
+        try {
+            assertFailsWith<ProcessTimeoutException> {
+                runProcess(
+                    listOf("sh", "-c", "echo $$ > '$pidFile'; exec sleep 30"),
+                    timeoutMillis = 1000,
+                )
+            }
+            val pid = pidFile.toFile().readText().trim().toLong()
+            assertFalse(ProcessHandle.of(pid).map { it.isAlive }.orElse(false))
+        } finally {
+            java.nio.file.Files.deleteIfExists(pidFile)
+        }
+    }
+
+    @Test
+    @IgnoreOnWindows
+    fun `runProcess reports reader callback failure`() {
+        val error = assertFailsWith<ProcessExecutionException> {
+            runProcess(listOf("sh", "-c", "printf 'progress\\n'"), onOutputLine = { error("callback failed") })
+        }
+        assertContains(error.message.orEmpty(), "callback failed")
+    }
+
+    @Test
+    @IgnoreOnWindows
+    fun `runProcess redacts unlabeled token output in progress and failures`() {
+        val lines = mutableListOf<String>()
+        val error = assertFailsWith<ProcessExitException> {
+            runProcess(
+                listOf("sh", "-c", "printf '%s\\n' \"${'$'}CODER_SESSION_TOKEN\"; exit 1"),
+                environment = mapOf("CODER_SESSION_TOKEN" to "secret-value"),
+                onOutputLine = lines::add,
+            )
+        }
+        assertEquals(listOf("<redacted>"), lines)
+        assertFalse(error.message.orEmpty().contains("secret-value"))
+    }
+
     @Test
     @IgnoreOnWindows
     fun `runProcess captures stdout and stderr`() {

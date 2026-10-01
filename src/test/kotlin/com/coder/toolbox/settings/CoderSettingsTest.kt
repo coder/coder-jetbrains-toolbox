@@ -1,10 +1,12 @@
 package com.coder.toolbox.settings
 
+import com.coder.toolbox.store.CODER_HEADER_COMMAND
 import com.coder.toolbox.store.CODER_SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.DISABLE_AUTOSTART
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
 import com.coder.toolbox.store.HEADER_COMMAND
+import com.coder.toolbox.store.NETWORK_INFO_DIR
 import com.coder.toolbox.store.SSH_CONFIG_OPTIONS
 import com.coder.toolbox.store.SSH_LOG_DIR
 import com.coder.toolbox.store.TLS_ALTERNATE_HOSTNAME
@@ -40,6 +42,14 @@ internal class CoderSettingsTest {
         settings.updateDataDirectory(Path.of("~/coder-toolbox-test/expand-data-dir").toString())
         expected = home.resolve("coder-toolbox-test/expand-data-dir/localhost")
         assertEquals(expected.toAbsolutePath(), settings.readOnly().dataDir(url))
+
+        settings.updateSshLogDir(Path.of("~/coder-toolbox-test/expand-ssh-log-dir").toString())
+        var expectedDir = home.resolve("coder-toolbox-test/expand-ssh-log-dir")
+        assertEquals(expectedDir.toString(), settings.readOnly().sshLogDirectory)
+
+        settings.updateNetworkInfoDir(Path.of("~/coder-toolbox-test/expand-network-info-dir").toString())
+        expectedDir = home.resolve("coder-toolbox-test/expand-network-info-dir")
+        assertEquals(expectedDir.toString(), settings.readOnly().networkInfoDir)
     }
 
     @Test
@@ -229,6 +239,30 @@ internal class CoderSettingsTest {
     }
 
     @Test
+    fun testHeaderCommand() {
+        var settings = CoderSettingsStore(
+            pluginTestSettingsStore(HEADER_COMMAND to "header command from state"),
+            Environment(), logger
+        )
+        assertEquals("header command from state", settings.readOnly().headerCommand)
+
+        settings = CoderSettingsStore(
+            pluginTestSettingsStore(),
+            env = Environment(mapOf(CODER_HEADER_COMMAND to "header command from env")),
+            logger
+        )
+        assertEquals("header command from env", settings.readOnly().headerCommand)
+
+        // State has precedence.
+        settings = CoderSettingsStore(
+            pluginTestSettingsStore(HEADER_COMMAND to "header command from state"),
+            env = Environment(mapOf(CODER_HEADER_COMMAND to "header command from env")),
+            logger
+        )
+        assertEquals("header command from state", settings.readOnly().headerCommand)
+    }
+
+    @Test
     fun testSSHConfigOptions() {
         var settings = CoderSettingsStore(
             pluginTestSettingsStore(SSH_CONFIG_OPTIONS to "ssh config options from state"),
@@ -276,12 +310,29 @@ internal class CoderSettingsTest {
         val settings = CoderSettingsStore(pluginTestSettingsStore(), Environment(), logger)
         assertEquals(true, settings.readOnly().enableDownloads)
         assertEquals(null, settings.readOnly().headerCommand)
-        assertEquals(false, settings.readOnly().useKeyring)
+        assertEquals(true, settings.readOnly().useKeyring)
         assertEquals(null, settings.readOnly().tls.certPath)
         assertEquals(null, settings.readOnly().tls.keyPath)
         assertEquals(null, settings.readOnly().tls.caPath)
         assertEquals(null, settings.readOnly().tls.altHostname)
         assertEquals(getOS() == OS.MAC, settings.readOnly().disableAutostart)
+        assertEquals(null, settings.readOnly().sshLogDirectory)
+    }
+
+    @Test
+    fun testSshLogDirAndNetworkInfoDirBlankFallBackToDefaults() {
+        // A blank value should be treated the same as unset, not expanded or
+        // passed through literally.
+        val settings = CoderSettingsStore(
+            pluginTestSettingsStore(SSH_LOG_DIR to "", NETWORK_INFO_DIR to ""),
+            Environment(),
+            logger,
+        )
+        assertEquals(null, settings.readOnly().sshLogDirectory)
+        assertEquals(
+            Path.of(settings.readOnly().globalDataDirectory).resolve("ssh-network-metrics").toString(),
+            settings.readOnly().networkInfoDir,
+        )
     }
 
     @Test

@@ -12,6 +12,17 @@ class APIResponseException(action: String, url: URL, code: Int, errorResponse: A
     val isUnauthorized = HttpURLConnection.HTTP_UNAUTHORIZED == code
     val isTokenExpired = isUnauthorized && reason?.contains("API key expired") == true
 
+    /** True when the server rejected the request because of bad input (e.g. an invalid search query). */
+    val isValidationError = HttpURLConnection.HTTP_BAD_REQUEST == code && !errorResponse?.validations.isNullOrEmpty()
+
+    /**
+     * A short, user-facing description of a validation failure, combining the server message with the
+     * individual field details. Null when the response carried no validation errors.
+     */
+    val validationMessage: String? = errorResponse?.validations
+        ?.takeIf { it.isNotEmpty() }
+        ?.joinToString(separator = " ", prefix = "${errorResponse.message} ") { it.detail }
+
     companion object {
         private fun formatToPretty(
             action: String,

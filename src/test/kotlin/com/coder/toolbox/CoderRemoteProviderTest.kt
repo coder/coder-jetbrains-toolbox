@@ -1,8 +1,10 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.sdk.CoderRestClient
+import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
@@ -10,23 +12,37 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
 import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
+import com.coder.toolbox.session.SessionId
+import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.state.StoredOAuthSession
 import com.coder.toolbox.views.state.WizardStep
+import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.jetbrains.toolbox.api.core.util.LoadableState
+import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
+import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertTrue
+import java.io.FileNotFoundException
 import java.net.URI
 import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -36,6 +52,8 @@ class CoderRemoteProviderTest {
     private lateinit var mockClient: CoderRestClient
     private lateinit var mockCli: CoderCLIManager
     private lateinit var mockContext: CoderToolboxContext
+    private lateinit var mockLogger: CoderLogger
+    private lateinit var underlyingLogger: Logger
     private lateinit var remoteProvider: CoderRemoteProvider
 
     @BeforeTest
@@ -43,6 +61,17 @@ class CoderRemoteProviderTest {
         mockClient = mockk(relaxed = true)
         mockCli = mockk(relaxed = true)
         mockContext = mockk(relaxed = true)
+        underlyingLogger = mockk(relaxed = true)
+        mockLogger = CoderLogger(
+            underlyingLogger,
+            mockk<ToolboxUi>(relaxed = true),
+            CoroutineScope(Dispatchers.Unconfined),
+            mockk<LocalizableStringFactory>(relaxed = true),
+        )
+        val settingsStore = mockk<CoderSettingsStore>(relaxed = true)
+        every { mockContext.settingsStore } returns settingsStore
+        every { mockContext.logger } returns mockLogger
+        every { mockClient.url } returns URI("https://coder.example.com").toURL()
         remoteProvider = CoderRemoteProvider(mockContext)
     }
 
@@ -52,13 +81,230 @@ class CoderRemoteProviderTest {
     }
 
     @Test
+    fun `explicit logout clears saved credentials and CLI session`() = runTest {
+        every { mockCli.usesTokenAuth } returns true
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+
+        remoteProvider.logout()
+
+        verify { mockContext.secrets.clearSessionFor(match { it.toString() == "https://coder.example.com" }) }
+        coVerify(exactly = 1) { mockCli.logout(any()) }
+        assertFalse(remoteProvider.getAccountDropDown().visibility.value)
+    }
+
+    @Test
+    fun `CLI logout failure still clears Toolbox session and warns`() = runTest {
+        every { mockCli.usesTokenAuth } returns true
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+        coEvery { mockCli.logout(any()) } throws IllegalStateException("keyring unavailable")
+
+        remoteProvider.logout()
+
+        verify { mockContext.secrets.clearSessionFor(match { it.toString() == "https://coder.example.com" }) }
+        verify { underlyingLogger.warn(any<Throwable>(), match<String> { it.contains("CLI credential may remain") }) }
+        assertFalse(remoteProvider.getAccountDropDown().visibility.value)
+    }
+
+    @Test
+    fun `provider shutdown preserves credentials`() {
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+
+        remoteProvider.close()
+
+        coVerify(exactly = 0) { mockCli.logout(any()) }
+        verify(exactly = 0) { mockContext.secrets.clearSessionFor(any()) }
+    }
+
+    @Test
+    fun `certificate logout does not remove a shared token session`() = runTest {
+        every { mockCli.usesTokenAuth } returns false
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+
+        remoteProvider.logout()
+
+        coVerify(exactly = 0) { mockCli.logout(any()) }
+    }
+
+    @Test
     fun `given an empty workspace list expect an empty list of environments`() = runTest {
         // given
-        coEvery { mockClient.workspaces() } returns emptyList()
+        coEvery { mockClient.workspaces(any()) } returns emptyList()
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
         // then
         assertTrue(result.isEmpty())
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `SSH configuration failure does not prevent resolved workspaces from being published`() = runTest {
+        // given
+        every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
+        every { mockContext.settingsStore.sshConfigPath } returns "/Users/test/.ssh/config"
+        val agent = mockAgent("agent1")
+        val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
+        val failure = FileNotFoundException("Permission denied")
+        every { mockCli.configSsh(any(), any(), any(), any()) } throws failure
+
+        // when
+        val pollJob = remoteProvider.poll(mockClient, mockCli)
+        runCurrent()
+
+        // then
+        val environments = remoteProvider.environments.value
+        when (environments) {
+            is LoadableState.Value -> assertEquals("ws1.agent1", environments.value.single().id)
+            else -> error("Expected resolved workspaces to be published, but got $environments")
+        }
+        val warningText = slot<String>()
+        verify(exactly = 1) {
+            underlyingLogger.warn(failure, capture(warningText))
+        }
+        assertTrue(warningText.captured.contains("Permission denied"))
+
+        pollJob.cancel()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `workspace change refreshes sessions after the workspace request`() = runTest {
+        every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
+        val firstSessionId = SessionId.generate()
+        val secondSessionId = SessionId.generate()
+        var sessionsStarted = false
+        val firstEnvironment = mockk<CoderRemoteEnvironment>(relaxed = true) {
+            every { id } returns "ws1.agent1"
+            every { currentSessionId() } answers { firstSessionId.takeIf { sessionsStarted } }
+        }
+        val secondEnvironment = mockk<CoderRemoteEnvironment>(relaxed = true) {
+            every { id } returns "ws1.agent2"
+            every { currentSessionId() } answers { secondSessionId.takeIf { sessionsStarted } }
+        }
+        remoteProvider.lastEnvironments.addAll(listOf(secondEnvironment, firstEnvironment))
+        val workspace = mockWorkspace(
+            "ws1",
+            WorkspaceStatus.RUNNING,
+            listOf(mockResource(listOf(mockAgent("agent1"), mockAgent("agent2")))),
+        )
+        coEvery { mockClient.workspaces(any()) } answers {
+            sessionsStarted = true
+            listOf(workspace)
+        }
+
+        val pollJob = remoteProvider.poll(mockClient, mockCli)
+        runCurrent()
+
+        verify(exactly = 1) {
+            underlyingLogger.info(match<String> {
+                it.startsWith("client_session_id=$firstSessionId Workspaces have changed, reconfiguring CLI:")
+            })
+        }
+        verify(exactly = 1) {
+            underlyingLogger.info(match<String> {
+                it.startsWith("client_session_id=$secondSessionId Workspaces have changed, reconfiguring CLI:")
+            })
+        }
+
+        pollJob.cancel()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `workspace poll failure is emitted for every current Toolbox SSH session`() = runTest {
+        every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
+        val firstSessionId = SessionId.generate()
+        val secondSessionId = SessionId.generate()
+        remoteProvider.lastEnvironments.addAll(
+            listOf(
+                mockk<CoderRemoteEnvironment>(relaxed = true) {
+                    every { currentSessionId() } returns firstSessionId
+                },
+                mockk<CoderRemoteEnvironment>(relaxed = true) {
+                    every { currentSessionId() } returns secondSessionId
+                },
+            )
+        )
+        val failure = IllegalStateException("poll failed")
+        coEvery { mockClient.workspaces(any()) } throws failure
+
+        val pollJob = remoteProvider.poll(mockClient, mockCli)
+        runCurrent()
+
+        verify(exactly = 1) {
+            underlyingLogger.error(failure, "client_session_id=$firstSessionId workspace polling error encountered")
+        }
+        verify(exactly = 1) {
+            underlyingLogger.error(failure, "client_session_id=$secondSessionId workspace polling error encountered")
+        }
+
+        pollJob.cancel()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `removed environment session is retained for its final shared configuration logs`() = runTest {
+        every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
+        val sessionId = SessionId.generate()
+        var disposed = false
+        val existingEnvironment = mockk<CoderRemoteEnvironment>(relaxed = true) {
+            every { id } returns "ws1.agent1"
+            every { currentSessionId() } answers { sessionId.takeUnless { disposed } }
+            every { dispose() } answers { disposed = true }
+        }
+        remoteProvider.lastEnvironments.add(existingEnvironment)
+        val stoppedWorkspace = mockWorkspace("ws1", WorkspaceStatus.STOPPED, emptyList())
+        coEvery { mockClient.workspaces(any()) } returns listOf(stoppedWorkspace)
+
+        val pollJob = remoteProvider.poll(mockClient, mockCli)
+        runCurrent()
+
+        verify(exactly = 1) { existingEnvironment.dispose() }
+        verify(exactly = 1) {
+            underlyingLogger.info(match<String> {
+                it.startsWith("client_session_id=$sessionId Workspaces have changed, reconfiguring CLI:")
+            })
+        }
+        verify(exactly = 1) {
+            mockCli.configSsh(any(), setOf(sessionId), any(), any())
+        }
+
+        pollJob.cancel()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `identifier failures from SSH rendering are not treated as writable config errors`() = runTest {
+        every { mockContext.cs } returns CoroutineScope(StandardTestDispatcher(testScheduler))
+        val agent = mockAgent("agent1")
+        val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
+        every { mockCli.configSsh(any(), any(), any(), any()) } throws
+                InvalidCoderIdentifierException("The deployment returned an invalid workspace name")
+
+        val pollJob = remoteProvider.poll(mockClient, mockCli)
+        runCurrent()
+
+        assertTrue(remoteProvider.environments.value is LoadableState.Loading)
+        verify(exactly = 0) {
+            underlyingLogger.warn(any<Throwable>(), match<String> { it.startsWith("Workspaces remain available") })
+        }
+
+        pollJob.cancel()
+    }
+
+    @Test
+    fun `workspace resolution passes the default owner filter query`() = runTest {
+        coEvery { mockClient.workspaces("owner:me") } returns emptyList()
+
+        val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
+
+        assertTrue(result.isEmpty())
+        coVerify(exactly = 1) { mockClient.workspaces("owner:me") }
     }
 
     @Test
@@ -69,8 +315,7 @@ class CoderRemoteProviderTest {
         val resource = mockResource(agents = listOf(agent1, agent2))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
-        coEvery { mockClient.resources(any()) } returns emptyList()
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -79,64 +324,52 @@ class CoderRemoteProviderTest {
         assertEquals(2, result.size)
         assertEquals("ws1.agent1", result[0].id)
         assertEquals("ws1.agent2", result[1].id)
-        coVerify(exactly = 0) { mockClient.resources(workspace) }
     }
 
     @Test
-    fun `given a stopped workspace then resources are fetched separately`() = runTest {
+    fun `given a stopped workspace then a workspace only environment is returned`() = runTest {
         // given
-        val agent = mockAgent("agent1")
-        val resource = mockResource(agents = listOf(agent))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.STOPPED, emptyList())
 
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
-        coEvery { mockClient.resources(any()) } returns listOf(resource)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
 
         // then
         assertEquals(1, result.size)
-        assertEquals("ws1.agent1", result[0].id)
-        coVerify(exactly = 1) { mockClient.resources(workspace) }
+        assertEquals("ws1", result[0].id)
+        assertNull(result[0].toWorkspaceAddressOrNull())
     }
 
     @Test
-    fun `given a pending workspace then resources are fetched separately`() = runTest {
+    fun `given a pending workspace then a workspace only environment is returned`() = runTest {
         // given
-        val agent = mockAgent("agent1")
-        val resource = mockResource(agents = listOf(agent))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.PENDING, emptyList())
 
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
-        coEvery { mockClient.resources(workspace) } returns listOf(resource)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
 
         // then
         assertEquals(1, result.size)
-        coVerify(exactly = 1) { mockClient.resources(workspace) }
+        assertEquals("ws1", result[0].id)
     }
 
     @Test
-    fun `given a running workspace with empty resources then resources are fetched separately`() = runTest {
+    fun `given a running workspace with empty resources then no environment is returned`() = runTest {
         // given
-        val agent = mockAgent("agent1")
-        val resource = mockResource(agents = listOf(agent))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, emptyList())
 
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
-        coEvery { mockClient.resources(workspace) } returns listOf(resource)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
 
         // then
-        assertEquals(1, result.size)
-        coVerify(exactly = 1) { mockClient.resources(workspace) }
+        assertTrue(result.isEmpty())
     }
-
 
     @Test
     fun `given a running workspace with a resource that has no agents (ie null) then no environment is returned`() =
@@ -145,14 +378,13 @@ class CoderRemoteProviderTest {
             val resource = mockResource(agents = null)
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
 
             // then
             assertTrue(result.isEmpty())
-            coVerify(exactly = 0) { mockClient.resources(workspace) }
         }
 
     @Test
@@ -162,14 +394,13 @@ class CoderRemoteProviderTest {
             val resource = mockResource(agents = emptyList())
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
 
             // then
             assertTrue(result.isEmpty())
-            coVerify(exactly = 0) { mockClient.resources(workspace) }
         }
 
     @Test
@@ -181,7 +412,7 @@ class CoderRemoteProviderTest {
             val resource = mockResource(agents = listOf(agent1, agent2))
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -189,7 +420,6 @@ class CoderRemoteProviderTest {
             // then
             assertEquals(1, result.size)
             assertEquals("ws1.agent1", result[0].id)
-            coVerify(exactly = 0) { mockClient.resources(workspace) }
         }
 
     @Test
@@ -202,7 +432,7 @@ class CoderRemoteProviderTest {
             val resource2 = mockResource(agents = listOf(agent2))
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource1, resource2))
 
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -210,7 +440,6 @@ class CoderRemoteProviderTest {
             // then
             assertEquals(1, result.size)
             assertEquals("ws1.agent1", result[0].id)
-            coVerify(exactly = 0) { mockClient.resources(workspace) }
         }
 
     @Test
@@ -224,7 +453,7 @@ class CoderRemoteProviderTest {
         remoteProvider.lastEnvironments.add(existingEnv)
 
         every { existingEnv.id } returns "ws1.agent1"
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -258,6 +487,27 @@ class CoderRemoteProviderTest {
             assertTrue(overridePage is CoderSetupWizardPage)
             verify { mockContext.popupPluginMainPage() }
         }
+
+    @Test
+    fun `given Toolbox 3_5 provider page then header surface is available and account dropdown starts hidden`() {
+        // Toolbox 3.5 hides the whole top section when this flag is false.
+        // The Coder header page keeps the deployment URL and account dropdown renderable.
+        assertTrue(remoteProvider.canCreateNewEnvironments)
+        assertNotNull(remoteProvider.getNewEnvironmentUiPage())
+
+        val accountDropdown = assertNotNull(remoteProvider.getAccountDropDown())
+        assertFalse(accountDropdown.visibility.value)
+    }
+
+    @Test
+    fun `given visible account dropdown when provider closes then dropdown is hidden`() {
+        val accountDropdown = assertNotNull(remoteProvider.getAccountDropDown())
+        accountDropdown.visibility.value = true
+
+        remoteProvider.close()
+
+        assertFalse(accountDropdown.visibility.value)
+    }
 
     @Test
     fun `given mTLS is required when auto setup has stored credentials then mTLS takes precedence`() {
@@ -390,7 +640,7 @@ class CoderRemoteProviderTest {
         val resource = mockResource(agents = listOf(agent))
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
 
-        coEvery { mockClient.workspaces() } returns listOf(workspace)
+        coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -416,7 +666,7 @@ class CoderRemoteProviderTest {
         val ws2 = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource2))
         val ws3 = mockWorkspace("ws2", WorkspaceStatus.RUNNING, listOf(resource3))
 
-        coEvery { mockClient.workspaces() } returns listOf(ws2, ws1, ws3)
+        coEvery { mockClient.workspaces(any()) } returns listOf(ws2, ws1, ws3)
 
         // when
         val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -441,7 +691,7 @@ class CoderRemoteProviderTest {
             val resource2 = mockResource(agents = listOf(agent3, agent4))
 
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource1, resource2))
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -452,7 +702,6 @@ class CoderRemoteProviderTest {
                 setOf("ws1.agent1", "ws1.agent2", "ws1.agent3", "ws1.agent4"),
                 result.map { it.id }.toSet()
             )
-            coVerify(exactly = 0) { mockClient.resources(workspace) }
         }
 
     @Test
@@ -464,7 +713,7 @@ class CoderRemoteProviderTest {
             val agent3 = mockAgent("duplicate")
             val resource = mockResource(agents = listOf(agent1, agent2, agent3))
             val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(resource))
-            coEvery { mockClient.workspaces() } returns listOf(workspace)
+            coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -484,7 +733,7 @@ class CoderRemoteProviderTest {
             val resource2 = mockResource(agents = listOf(agent2))
             val ws1 = mockWorkspace("workspace1", WorkspaceStatus.RUNNING, listOf(resource1))
             val ws2 = mockWorkspace("workspace2", WorkspaceStatus.RUNNING, listOf(resource2))
-            coEvery { mockClient.workspaces() } returns listOf(ws1, ws2)
+            coEvery { mockClient.workspaces(any()) } returns listOf(ws1, ws2)
 
             // when
             val result = remoteProvider.resolveWorkspaceEnvironments(mockClient, mockCli)
@@ -517,11 +766,13 @@ class CoderRemoteProviderTest {
         resources: List<WorkspaceResource>
     ): Workspace {
         val latestBuild = mockk<WorkspaceBuild> {
+            every { this@mockk.id } returns UUID.randomUUID()
             every { this@mockk.status } returns status
             every { this@mockk.resources } returns resources
         }
         return mockk {
             every { this@mockk.name } returns name
+            every { this@mockk.ownerName } returns "owner"
             every { this@mockk.latestBuild } returns latestBuild
             every { this@mockk.templateDisplayName } returns name
             every { this@mockk.outdated } returns false

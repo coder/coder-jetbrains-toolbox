@@ -3,11 +3,11 @@ package com.coder.toolbox.sdk.v2
 import com.coder.toolbox.sdk.v2.models.Appearance
 import com.coder.toolbox.sdk.v2.models.BuildInfo
 import com.coder.toolbox.sdk.v2.models.CreateWorkspaceBuildRequest
+import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Template
 import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceBuild
-import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspacesResponse
 import retrofit2.Response
 import retrofit2.http.Body
@@ -35,7 +35,7 @@ interface CoderV2RestFacade {
      */
     @GET("api/v2/workspaces")
     suspend fun workspaces(
-        @Query("q") searchParams: String,
+        @Query("q") searchParams: String?,
     ): Response<WorkspacesResponse>
 
     /**
@@ -58,13 +58,21 @@ interface CoderV2RestFacade {
         @Body createWorkspaceBuildRequest: CreateWorkspaceBuildRequest,
     ): Response<WorkspaceBuild>
 
+    /** Retrieves the provisioner logs for a workspace build. */
+    @GET("api/v2/workspacebuilds/{workspaceBuildID}/logs")
+    suspend fun workspaceBuildLogs(
+        @Path("workspaceBuildID") workspaceBuildID: UUID,
+    ): Response<List<ProvisionerJobLog>>
+
+    /**
+     * Retrieves all templates the authenticated user can access.
+     */
+    @GET("api/v2/templates")
+    suspend fun templates(): Response<List<Template>>
+
     @GET("api/v2/templates/{templateID}")
     suspend fun template(
         @Path("templateID") templateID: UUID,
     ): Response<Template>
 
-    @GET("api/v2/templateversions/{templateID}/resources")
-    suspend fun templateVersionResources(
-        @Path("templateID") templateID: UUID,
-    ): Response<List<WorkspaceResource>>
 }

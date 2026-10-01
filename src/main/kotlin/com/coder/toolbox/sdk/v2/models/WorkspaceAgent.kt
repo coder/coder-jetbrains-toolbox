@@ -20,20 +20,44 @@ data class WorkspaceAgent(
 )
 
 enum class WorkspaceAgentStatus {
-    @Json(name = "connecting") CONNECTING,
-    @Json(name = "connected") CONNECTED,
-    @Json(name = "disconnected") DISCONNECTED,
-    @Json(name = "timeout") TIMEOUT,
+    @Json(name = "connecting")
+    CONNECTING,
+
+    @Json(name = "connected")
+    CONNECTED,
+
+    @Json(name = "disconnected")
+    DISCONNECTED,
+
+    @Json(name = "timeout")
+    TIMEOUT,
 }
 
 enum class WorkspaceAgentLifecycleState {
-    @Json(name = "created") CREATED,
-    @Json(name = "starting") STARTING,
-    @Json(name = "start_timeout") START_TIMEOUT,
-    @Json(name = "start_error") START_ERROR,
-    @Json(name = "ready") READY,
-    @Json(name = "shutting_down") SHUTTING_DOWN,
-    @Json(name = "shutdown_timeout") SHUTDOWN_TIMEOUT,
-    @Json(name = "shutdown_error") SHUTDOWN_ERROR,
-    @Json(name = "off") OFF,
+    @Json(name = "created")
+    CREATED,
+
+    @Json(name = "starting")
+    STARTING,
+
+    @Json(name = "start_timeout")
+    START_TIMEOUT,
+
+    @Json(name = "start_error")
+    START_ERROR,
+
+    @Json(name = "ready")
+    READY,
+
+    @Json(name = "shutting_down")
+    SHUTTING_DOWN,
+
+    @Json(name = "shutdown_timeout")
+    SHUTDOWN_TIMEOUT,
+
+    @Json(name = "shutdown_error")
+    SHUTDOWN_ERROR,
+
+    @Json(name = "off")
+    OFF,
 }
