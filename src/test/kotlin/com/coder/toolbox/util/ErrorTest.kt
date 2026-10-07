@@ -10,6 +10,8 @@ internal class ErrorTest {
         val raw = """
             env={CODER_SESSION_TOKEN=super-secret-token}
             header=Coder-Session-Token: super-secret-token
+            header=Coder-Session-Token=super-secret-token
+            header=coder-session-token = super-secret-token
             argv=--token super-secret-token
             argv=--token=super-secret-token
             uri=https://coder.example.com?token=super-secret-token
@@ -19,6 +21,8 @@ internal class ErrorTest {
 
         assertContains(sanitized, "CODER_SESSION_TOKEN=<redacted>")
         assertContains(sanitized, "Coder-Session-Token: <redacted>")
+        assertContains(sanitized, "Coder-Session-Token=<redacted>")
+        assertContains(sanitized, "coder-session-token = <redacted>")
         assertContains(sanitized, "--token <redacted>")
         assertContains(sanitized, "--token=<redacted>")
         assertContains(sanitized, "?token=<redacted>")

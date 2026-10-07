@@ -5,8 +5,27 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 internal class HeadersTest {
+    @Test
+    fun `failing header command redacts equals separated session tokens`() {
+        val command = if (getOS() == OS.WINDOWS) {
+            "echo Coder-Session-Token=header-secret&&echo coder-session-token=stderr-secret>&2&&exit /b 1"
+        } else {
+            "printf 'Coder-Session-Token=header-secret\\n'; " +
+                    "printf 'coder-session-token=stderr-secret\\n' >&2; exit 1"
+        }
+        val error = assertFailsWith<ProcessExitException> {
+            getHeaders(URL("http://localhost"), command)
+        }
+
+        assertContains(error.result.stdout, "Coder-Session-Token=<redacted>")
+        assertContains(error.result.stderr, "coder-session-token=<redacted>")
+        assertFalse(error.message.orEmpty().contains("header-secret"))
+        assertFalse(error.message.orEmpty().contains("stderr-secret"))
+    }
+
     @Test
     @IgnoreOnWindows
     fun testGetHeadersOK() {

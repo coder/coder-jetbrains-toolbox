@@ -608,7 +608,9 @@ Toolbox's saved API token and OAuth credentials. Other clients using that shared
 If CLI cleanup fails, Toolbox still signs out and displays a warning. Closing the plugin alone preserves credentials.
 
 Credential commands and header commands have a 60-second timeout. Workspace starts and SSH sessions are not subject
-to that limit. Workspace start progress is reported one complete line at a time, including carriage-return updates.
+to that limit. Timeout and cancellation cleanup is best-effort for child processes: a command that forks and exits
+before its children are observed can leave orphan processes running. Workspace start progress is reported one
+complete line at a time, including carriage-return updates.
 
 Toolbox retains its own credentials in the Toolbox secret store for automatic sign-in. Importing a token created by
 an independent terminal login is tracked separately in DEVEX-403.

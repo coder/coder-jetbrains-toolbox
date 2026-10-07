@@ -7,6 +7,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -14,6 +17,78 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
 internal class ProcessRunnerTest {
+    @Test
+    fun `timeout terminates an observed child after its parent exits`() {
+        withChildCommand("exit-parent") { command, releaseParent, handles ->
+            assertFailsWith<ProcessTimeoutException> {
+                runProcess(command, timeoutMillis = 5000, onOutputLine = {
+                    // Keep the parent alive across several observation intervals before allowing it to exit.
+                    if (it == "ready") Thread.sleep(500)
+                    releaseParent(it)
+                })
+            }
+            handles().forEach { assertFalse(it.isAlive, "Process ${it.pid()} survived timeout") }
+        }
+    }
+
+    @Test
+    fun `timeout terminates a parent and its running child`() {
+        withChildCommand("keep-parent") { command, _, handles ->
+            assertFailsWith<ProcessTimeoutException> {
+                runProcess(command, timeoutMillis = 2000)
+            }
+            handles().forEach { assertFalse(it.isAlive, "Process ${it.pid()} survived timeout") }
+        }
+    }
+
+    @Test
+    fun `successful command can leave a background child with redirected output`() {
+        withChildCommand("detached-output") { command, releaseParent, handles ->
+            val result = runProcess(command, timeoutMillis = 5000, onOutputLine = { releaseParent(it) })
+            assertEquals(0, result.exitCode)
+            assertEquals("ready", result.stdout.trim())
+            assertEquals(1, handles().count { it.isAlive })
+        }
+    }
+
+    @Test
+    fun `cancellation terminates both parent and child`() = runBlocking {
+        val ready = CompletableDeferred<Unit>()
+        withChildCommand("keep-parent") { command, _, handles ->
+            val job = launch(Dispatchers.Default) {
+                runInterruptible {
+                    runProcess(command, onOutputLine = { if (it == "ready") ready.complete(Unit) })
+                }
+            }
+            try {
+                withTimeout(5000) { ready.await() }
+                withTimeout(5000) { job.cancelAndJoin() }
+                handles().forEach { assertFalse(it.isAlive, "Process ${it.pid()} survived cancellation") }
+            } finally {
+                job.cancelAndJoin()
+            }
+        }
+    }
+
+    @Test
+    fun `missing command raises an execution error`() {
+        val error = assertFailsWith<ProcessExecutionException> {
+            runProcess(listOf("coder-review-command-that-does-not-exist"), timeoutMillis = 5000)
+        }
+        assertContains(error.message.orEmpty(), "Failed to start process")
+    }
+
+    @Test
+    fun `reader failure terminates both parent and child`() {
+        withChildCommand("keep-parent") { command, _, handles ->
+            val error = assertFailsWith<ProcessExecutionException> {
+                runProcess(command, timeoutMillis = 5000, onOutputLine = { error("callback failed") })
+            }
+            assertContains(error.message.orEmpty(), "callback failed")
+            handles().forEach { assertFalse(it.isAlive, "Process ${it.pid()} survived reader failure") }
+        }
+    }
+
     @Test
     @IgnoreOnWindows
     fun `cancellation terminates a running process after delivering live progress`() = runBlocking {
@@ -248,5 +323,43 @@ internal class ProcessRunnerTest {
 
         assertEquals(7, ex.result.exitCode)
         assertFalse(ex.message.orEmpty().contains("super-secret-token"))
+    }
+
+    private inline fun withChildCommand(
+        mode: String,
+        test: (List<String>, (String) -> Unit, () -> List<ProcessHandle>) -> Unit,
+    ) {
+        val directory = Files.createTempDirectory("coder process tree ")
+        val pidFile = directory.resolve("processes.pid")
+        val releaseFile = directory.resolve("release parent")
+        val handles = {
+            Files.readString(pidFile).trim().split(" ").mapNotNull {
+                ProcessHandle.of(it.toLong()).orElse(null)
+            }
+        }
+        val command = listOf(
+            Path.of(System.getProperty("java.home"), "bin", if (getOS() == OS.WINDOWS) "java.exe" else "java")
+                .toString(),
+            "-cp",
+            Path.of(ProcessRunnerTestCommand::class.java.protectionDomain.codeSource.location.toURI()).toString(),
+            ProcessRunnerTestCommand::class.java.name, mode, pidFile.toString(), releaseFile.toString(),
+        )
+        try {
+            test(command, { if (it == "ready") Files.writeString(releaseFile, "exit") }, handles)
+        } finally {
+            if (Files.exists(pidFile)) {
+                stopTestProcesses(handles())
+            }
+            Files.deleteIfExists(pidFile)
+            Files.deleteIfExists(releaseFile)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    private fun stopTestProcesses(handles: List<ProcessHandle>) {
+        handles.filter { it.isAlive }.forEach {
+            it.destroyForcibly()
+            it.onExit().get(5, TimeUnit.SECONDS)
+        }
     }
 }
