@@ -38,6 +38,15 @@ class CoderSettingsStoreTest {
     }
 
     @Test
+    fun `keyring is enabled unless explicitly disabled`() {
+        assertTrue(store.useKeyring)
+        store.updateUseKeyring(false)
+        assertEquals(false, store.useKeyring)
+        store.updateUseKeyring(true)
+        assertTrue(store.useKeyring)
+    }
+
+    @Test
     fun `Default CLI and signature for Windows AMD64`() =
         assertBinaryAndSignature("Windows 10", "amd64", "coder-windows-amd64.exe", "coder-windows-amd64.exe.asc")
 

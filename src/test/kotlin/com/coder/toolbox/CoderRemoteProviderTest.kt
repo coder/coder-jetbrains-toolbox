@@ -81,6 +81,55 @@ class CoderRemoteProviderTest {
     }
 
     @Test
+    fun `explicit logout clears saved credentials and CLI session`() = runTest {
+        every { mockCli.usesTokenAuth } returns true
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+
+        remoteProvider.logout()
+
+        verify { mockContext.secrets.clearSessionFor(match { it.toString() == "https://coder.example.com" }) }
+        coVerify(exactly = 1) { mockCli.logout(any()) }
+        assertFalse(remoteProvider.getAccountDropDown().visibility.value)
+    }
+
+    @Test
+    fun `CLI logout failure still clears Toolbox session and warns`() = runTest {
+        every { mockCli.usesTokenAuth } returns true
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+        coEvery { mockCli.logout(any()) } throws IllegalStateException("keyring unavailable")
+
+        remoteProvider.logout()
+
+        verify { mockContext.secrets.clearSessionFor(match { it.toString() == "https://coder.example.com" }) }
+        verify { underlyingLogger.warn(any<Throwable>(), match<String> { it.contains("CLI credential may remain") }) }
+        assertFalse(remoteProvider.getAccountDropDown().visibility.value)
+    }
+
+    @Test
+    fun `provider shutdown preserves credentials`() {
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+
+        remoteProvider.close()
+
+        coVerify(exactly = 0) { mockCli.logout(any()) }
+        verify(exactly = 0) { mockContext.secrets.clearSessionFor(any()) }
+    }
+
+    @Test
+    fun `certificate logout does not remove a shared token session`() = runTest {
+        every { mockCli.usesTokenAuth } returns false
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+
+        remoteProvider.logout()
+
+        coVerify(exactly = 0) { mockCli.logout(any()) }
+    }
+
+    @Test
     fun `given an empty workspace list expect an empty list of environments`() = runTest {
         // given
         coEvery { mockClient.workspaces(any()) } returns emptyList()

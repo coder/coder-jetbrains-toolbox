@@ -16,8 +16,12 @@ import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.settings.SignatureFallbackStrategy.ALLOW
 import com.coder.toolbox.util.InvalidVersionException
+import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
+import com.coder.toolbox.util.getOS
+import com.coder.toolbox.util.runProcess
 import com.coder.toolbox.util.safeHost
+import com.coder.toolbox.util.sanitizeSecrets
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
@@ -25,7 +29,6 @@ import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
-import org.zeroturnaround.exec.ProcessExecutor
 import retrofit2.Retrofit
 import java.io.EOFException
 import java.io.FileNotFoundException
@@ -102,6 +105,7 @@ data class Features(
     val reportWorkspaceUsage: Boolean = false,
     val wildcardSsh: Boolean = false,
     val buildReason: Boolean = false,
+    val keyringAuth: Boolean = false,
 )
 
 /**
@@ -110,8 +114,14 @@ data class Features(
 class CoderCLIManager(
     private val context: CoderToolboxContext,
     // The URL of the deployment this CLI is for.
-    private val deploymentURL: URL
+    private val deploymentURL: URL,
+    private val currentOs: OS? = getOS(),
 ) {
+    internal val usesTokenAuth = context.settingsStore.requiresTokenAuth
+
+    // Keep credential storage consistent with existing SSH commands until the next sign-in.
+    private val useKeyring = context.settingsStore.useKeyring && usesTokenAuth
+    private var keyringFallbackWarningShown = false
     private val downloader = createDownloadService()
     private val gpgVerifier = GPGVerifier(context)
 
@@ -257,19 +267,34 @@ class CoderCLIManager(
         }
     }
 
-    /**
-     * Use the provided token to initializeSession the CLI.
-     */
-    fun login(token: String): String {
-        context.logger.info("Storing CLI credentials in $coderConfigPath")
-        return exec(
-            "login",
-            deploymentURL.toString(),
-            "--token",
-            token,
-            "--global-config",
-            coderConfigPath.toString(),
-        )
+    /** Persist the same token used by the REST client, without exposing it in process arguments. */
+    suspend fun login(token: String, feats: Features = features): String {
+        if (useKeyring && supportsKeyringStorage(currentOs) && !feats.keyringAuth && !keyringFallbackWarningShown) {
+            keyringFallbackWarningShown = true
+            context.logger.logAndShowWarning(
+                "Keyring storage unavailable",
+                "Coder CLI 2.29.0 or newer is required for OS keyring storage. " +
+                        "The CLI session will be stored in the plugin's data directory.",
+            )
+        }
+        return runInterruptible(Dispatchers.IO) {
+            val output = exec(
+                *workspaceAuthArgs(feats).toTypedArray(),
+                "login", "--use-token-as-session", deploymentURL.toString(),
+                env = mapOf(CODER_SESSION_TOKEN_ENV_VAR to token),
+                timeoutMillis = CREDENTIAL_TIMEOUT_MILLIS,
+            )
+            if (shouldUseKeyringAuth(feats)) {
+                // Remove the plaintext copy only after the keyring write succeeds.
+                Files.deleteIfExists(coderConfigPath.resolve("session"))
+            }
+            output
+        }
+    }
+
+    /** Revoke the CLI session and remove its persisted credential. The caller handles failures. */
+    internal suspend fun logout(feats: Features = features) = runInterruptible(Dispatchers.IO) {
+        exec(*workspaceAuthArgs(feats).toTypedArray(), "logout", "--yes", timeoutMillis = CREDENTIAL_TIMEOUT_MILLIS)
     }
 
     /**
@@ -281,8 +306,7 @@ class CoderCLIManager(
         showTextProgress: (String) -> Unit = {},
     ): String {
         val args = mutableListOf(
-            "--global-config",
-            coderConfigPath.toString(),
+            *workspaceAuthArgs(feats).toTypedArray(),
             "start",
             "--yes",
         )
@@ -348,13 +372,7 @@ class CoderCLIManager(
         val baseArgs =
             listOfNotNull(
                 localBinaryPath.toString(),
-                "--global-config",
-                coderConfigPath.toString(),
-                // CODER_URL might be set, and it will override the URL file in
-                // the config directory, so override that here to make sure we
-                // always use the correct URL.
-                "--url",
-                deploymentURL.toString(),
+                *workspaceAuthArgs(feats).toTypedArray(),
                 context.settingsStore.headerCommand?.takeIf { it.isNotBlank() }?.let { "--header-command" },
                 context.settingsStore.headerCommand?.takeIf { it.isNotBlank() },
                 "ssh",
@@ -519,7 +537,7 @@ class CoderCLIManager(
      * Throws if it could not be determined.
      */
     fun version(): SemVer {
-        val raw = exec("version", "--output", "json")
+        val raw = exec("version", "--output", "json", timeoutMillis = CREDENTIAL_TIMEOUT_MILLIS)
         try {
             val json = Moshi.Builder().build().adapter(Version::class.java).fromJson(raw)
             if (json?.version == null || json.version.isBlank()) {
@@ -578,25 +596,21 @@ class CoderCLIManager(
 
     private fun exec(
         vararg args: String,
+        env: Map<String, String> = emptyMap(),
+        timeoutMillis: Long? = null,
         showTextProgress: ((String) -> Unit)? = null,
     ): String {
-        val processExecutor =
-            ProcessExecutor()
-                .command(localBinaryPath.toString(), *args)
-                .environment("CODER_HEADER_COMMAND", context.settingsStore.headerCommand)
-                .exitValues(0)
-
-        showTextProgress?.let { reportProgress ->
-            processExecutor.redirectOutput(reportProgress::invoke)
+        val command = listOf(localBinaryPath.toString(), *args)
+        val processEnv = buildMap {
+            context.settingsStore.headerCommand?.let { put("CODER_HEADER_COMMAND", it) }
+            putAll(env)
         }
-
-        val stdout =
-            processExecutor
-                .readOutput(true)
-                .execute()
-                .outputUTF8()
-        val redactedArgs = listOf(*args).joinToString(" ").replace(tokenRegex, "--token <redacted>")
-        context.logger.info("`$localBinaryPath $redactedArgs`: $stdout")
+        val stdout = runProcess(
+            command, environment = processEnv, timeoutMillis = timeoutMillis, onOutputLine = showTextProgress,
+        ).stdout
+        val sanitizedArgs = listOf(*args).joinToString(" ").sanitizeSecrets()
+        val sanitizedStdout = stdout.sanitizeSecrets(env[CODER_SESSION_TOKEN_ENV_VAR])
+        context.logger.info("`$localBinaryPath $sanitizedArgs`: $sanitizedStdout")
         return stdout
     }
 
@@ -604,8 +618,7 @@ class CoderCLIManager(
     internal suspend fun supportBundle(address: WorkspaceAddress, outputFile: Path) {
         val command = listOfNotNull(
             localBinaryPath.toString(),
-            "--global-config", coderConfigPath.toString(),
-            "--url", deploymentURL.toString(),
+            *workspaceAuthArgs(features).toTypedArray(),
             "support", "bundle", "--yes", "--output-file", outputFile.toAbsolutePath().toString(),
             "--", address.ownerAndWsName, address.agentName,
         )
@@ -646,6 +659,7 @@ class CoderCLIManager(
                     reportWorkspaceUsage = version >= SemVer(2, 13, 0),
                     wildcardSsh = version >= SemVer(2, 19, 0),
                     buildReason = version >= SemVer(2, 25, 0),
+                    keyringAuth = version >= SemVer(2, 29, 0),
                 )
             }
         }
@@ -661,6 +675,22 @@ class CoderCLIManager(
     companion object {
         private data class ManagedBlock(val start: MatchResult, val end: MatchResult)
 
-        private val tokenRegex = "--token [^ ]+".toRegex()
+        internal const val CREDENTIAL_TIMEOUT_MILLIS = 60_000L
+        private const val CODER_SESSION_TOKEN_ENV_VAR = "CODER_SESSION_TOKEN"
+
+        internal fun supportsKeyringStorage(os: OS?): Boolean = os == OS.MAC || os == OS.WINDOWS
     }
+
+    private fun globalConfigArgs(): List<String> = listOf("--global-config", coderConfigPath.toString())
+
+    private fun workspaceAuthArgs(feats: Features): List<String> = buildList {
+        if (!shouldUseKeyringAuth(feats)) addAll(globalConfigArgs())
+        // Override inherited CODER_URL and CODER_USE_KEYRING for every authenticated command.
+        addAll(listOf("--url", deploymentURL.toString()))
+        if (feats.keyringAuth) add("--use-keyring=${shouldUseKeyringAuth(feats)}")
+    }
+
+    private fun shouldUseKeyringAuth(feats: Features): Boolean =
+        useKeyring && feats.keyringAuth && supportsKeyringStorage(currentOs)
+
 }

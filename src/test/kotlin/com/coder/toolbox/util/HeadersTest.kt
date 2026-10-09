@@ -5,8 +5,27 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 internal class HeadersTest {
+    @Test
+    fun `failing header command redacts equals separated session tokens`() {
+        val command = if (getOS() == OS.WINDOWS) {
+            "echo Coder-Session-Token=header-secret&&echo coder-session-token=stderr-secret>&2&&exit /b 1"
+        } else {
+            "printf 'Coder-Session-Token=header-secret\\n'; " +
+                    "printf 'coder-session-token=stderr-secret\\n' >&2; exit 1"
+        }
+        val error = assertFailsWith<ProcessExitException> {
+            getHeaders(URL("http://localhost"), command)
+        }
+
+        assertContains(error.result.stdout, "Coder-Session-Token=<redacted>")
+        assertContains(error.result.stderr, "coder-session-token=<redacted>")
+        assertFalse(error.message.orEmpty().contains("header-secret"))
+        assertFalse(error.message.orEmpty().contains("stderr-secret"))
+    }
+
     @Test
     @IgnoreOnWindows
     fun testGetHeadersOK() {
@@ -104,7 +123,7 @@ internal class HeadersTest {
                 "echo foo  foo=bar" to "Header name cannot contain spaces, got \"foo  foo\"",
                 "echo   foo=bar  " to "Header name cannot contain spaces, got \"  foo\"",
                 "exit /b 1" to "Unexpected exit value: 1",
-                // "foobar" appears in the InvalidExitValueException message as part of the command string.
+                // "foobar" appears in the process error message as part of the command string.
                 "echo foobar>&2&&exit /b 1" to "foobar",
                 // echo. outputs a bare CRLF; a blank line anywhere in the output is an error.
                 "echo foo=bar&&echo." to "Blank lines are not allowed",

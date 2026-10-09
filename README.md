@@ -540,12 +540,17 @@ explicit entry per resolved workspace/agent using
   as-is) or a base directory (the CLI is placed under a host-specific subdirectory). If blank, the data directory is
   used. Supports `~` and `$HOME` expansion.
 
-- `Data directory` directory where deployment-specific data such as session tokens and CLI binaries are stored. Each
-  deployment gets a host-specific subdirectory (e.g. `coder.example.com`). Supports `~` and `$HOME`
-  expansion.
+- `Data directory` directory where deployment-specific data such as session tokens and CLI binaries
+  are stored. Each deployment gets a host-specific subdirectory (e.g. `coder.example.com`). Supports `~` and `$HOME`
+  expansion. When keyring-backed CLI storage is enabled, the session token is no longer persisted in this directory.
 
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
   When this setting is left blank, the `CODER_HEADER_COMMAND` environment variable is used instead, if set.
+
+- `Store CLI session in OS keyring when supported (CLI >= 2.29.0)` is enabled by default on macOS and Windows.
+  An unset or `true` `useKeyring` setting uses the OS keyring; `false` opts out and stores the CLI session in the
+  plugin's deployment-specific data directory. Linux and older CLIs use file storage. Changes apply on the next
+  sign-in or plugin restart.
 
 - `lastDeploymentURL` the last Coder deployment URL that Coder Toolbox successfully authenticated to.
 
@@ -575,6 +580,40 @@ Once the binary location is resolved:
    error is reported to the user.
 3. If **downloads are disabled** and the CLI exists but its version does not match, the stale CLI is used with a
    warning. If no CLI exists at all, an error is raised.
+
+#### How keyring-backed CLI login works
+
+Toolbox passes session tokens to `coder login` through `CODER_SESSION_TOKEN` and uses `--use-token-as-session` so
+REST requests and CLI commands share the same token. The token is not passed in command-line arguments.
+
+On macOS and Windows with Coder CLI `2.29.0` or newer, Toolbox enables the OS keyring by default. It passes
+`--use-keyring=true` and the deployment URL, and omits the plugin-specific `--global-config` directory. After a
+successful keyring login, Toolbox removes any old plaintext session file from that deployment's plugin data directory.
+A keyring write failure is reported as a login failure; Toolbox does not retry the write using file storage.
+
+To opt out, uncheck **Store CLI session in OS keyring when supported (CLI >= 2.29.0)** or set `useKeyring` to `false`.
+Toolbox then uses its deployment-specific `--global-config` directory and passes `--use-keyring=false` to CLIs that
+support the flag. Linux also uses this file storage. On older CLIs, Toolbox omits the unsupported flag and warns at
+login on macOS and Windows when the requested keyring storage is unavailable. Certificate-based authentication
+continues to use the plugin-specific CLI configuration without storing a session token.
+
+Saving the setting does not change the current session's credential backend or rewrite its SSH commands to use a
+new backend. The change takes effect on the next sign-in or plugin restart, when Toolbox stores the token and
+regenerates SSH configuration. Workspace starts, SSH connections, support bundles, token refreshes, and logout use
+the active session's storage choice consistently.
+
+The OS keyring entry is shared with the Coder CLI and VS Code extension for the same deployment. Explicitly logging
+out of Toolbox runs `coder logout --yes`, which revokes the session and removes its stored credential, and clears
+Toolbox's saved API token and OAuth credentials. Other clients using that shared session will need to sign in again.
+If CLI cleanup fails, Toolbox still signs out and displays a warning. Closing the plugin alone preserves credentials.
+
+Credential commands and header commands have a 60-second timeout. Workspace starts and SSH sessions are not subject
+to that limit. Timeout and cancellation cleanup is best-effort for child processes: a command that forks and exits
+before its children are observed can leave orphan processes running. Workspace start progress is reported one
+complete line at a time, including carriage-return updates.
+
+Toolbox retains its own credentials in the Toolbox secret store for automatic sign-in. Importing a token created by
+an independent terminal login is tracked separately in DEVEX-403.
 
 ### TLS settings
 
@@ -627,6 +666,10 @@ support, may trigger regeneration of SSH configurations.
 
 > [!IMPORTANT]
 > Token authentication is required when TLS certificates are not configured.
+
+When the plugin logs the Coder CLI in with a session token, it passes that token through the
+`CODER_SESSION_TOKEN` environment variable instead of `--token`. This reduces the chances of the token showing up in
+process listings, shell history, or command-line audit logs.
 
 ## Releasing
 
