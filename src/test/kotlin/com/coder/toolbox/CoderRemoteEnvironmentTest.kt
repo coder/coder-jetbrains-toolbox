@@ -1,6 +1,7 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.cli.SshCommandProcessHandle
 import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
@@ -27,22 +28,29 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkConstructor
+import io.mockk.unmockkConstructor
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import java.nio.file.Files
+import java.nio.file.attribute.FileTime
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -52,18 +60,159 @@ import kotlin.test.assertTrue
 
 class CoderRemoteEnvironmentTest {
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `diagnostics reuse the SSH process resolved by network polling and clear it on disconnect`() = runTest {
+        mockkConstructor(SshCommandProcessHandle::class)
+        every { anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(any(), any()) } returns 12345
+        val fixture = fixture(backgroundScope)
+        val root = Files.createTempDirectory("coder-diagnostics-active-log-test")
+        try {
+            val failures = mutableListOf<Throwable>()
+            every { fixture.logger.warn(capture(failures), any<String>()) } answers { Unit }
+            val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
+            val activeLog = Files.writeString(sshLogs.resolve("coder-ssh-active-12345.log"), "active session")
+            Files.setLastModifiedTime(activeLog, FileTime.from(Instant.now().minus(Duration.ofDays(4))))
+            every { fixture.cli.getSshLogDirectory() } returns sshLogs
+            every { fixture.settingsStore.networkInfoDir } returns root.resolve("metrics").toString()
+            runBlocking {
+                fixture.environment.diagnosticInfoCollector.collectAdditionalDiagnostics(
+                    root.resolve("before-connection"),
+                )
+            }
+            assertFalse(Files.exists(root.resolve("before-connection/coder-ssh")))
+            verify(exactly = 0) {
+                anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(any(), any())
+            }
+
+            fixture.environment.beforeConnection()
+            runCurrent()
+
+            runBlocking {
+                fixture.environment.diagnosticInfoCollector.collectAdditionalDiagnostics(root.resolve("diagnostics"))
+            }
+
+            assertTrue(failures.isEmpty(), failures.joinToString { it.stackTraceToString() })
+            verify(exactly = 1) {
+                anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(fixture.workspace, fixture.agent)
+            }
+            assertEquals(
+                "active session",
+                Files.readString(root.resolve("diagnostics/coder-ssh/coder-ssh-active-12345.log")),
+            )
+
+            fixture.environment.afterDisconnect(isManual = false)
+            runBlocking {
+                fixture.environment.diagnosticInfoCollector.collectAdditionalDiagnostics(
+                    root.resolve("after-disconnect"),
+                )
+            }
+            assertFalse(Files.exists(root.resolve("after-disconnect/coder-ssh")))
+            verify(exactly = 1) {
+                anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(any(), any())
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+            fixture.environment.dispose()
+            unmockkConstructor(SshCommandProcessHandle::class)
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `diagnostics stop treating a log as active when polling no longer finds the process`() = runTest {
+        mockkConstructor(SshCommandProcessHandle::class)
+        every {
+            anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(any(), any())
+        } returnsMany listOf(12345L, null)
+        val fixture = fixture(backgroundScope)
+        val root = Files.createTempDirectory("coder-diagnostics-ended-log-test")
+        try {
+            val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
+            val activeLog = Files.writeString(sshLogs.resolve("12345.log"), "active session")
+            Files.setLastModifiedTime(activeLog, FileTime.from(Instant.now().minus(Duration.ofDays(4))))
+            every { fixture.cli.getSshLogDirectory() } returns sshLogs
+            every { fixture.settingsStore.networkInfoDir } returns root.resolve("metrics").toString()
+            fixture.environment.beforeConnection()
+            runCurrent()
+
+            runBlocking {
+                fixture.environment.diagnosticInfoCollector.collectAdditionalDiagnostics(root.resolve("connected"))
+            }
+            assertTrue(Files.exists(root.resolve("connected/coder-ssh/12345.log")))
+
+            advanceTimeBy(5_000)
+            runCurrent()
+            runBlocking {
+                fixture.environment.diagnosticInfoCollector.collectAdditionalDiagnostics(root.resolve("ended"))
+            }
+
+            assertFalse(Files.exists(root.resolve("ended/coder-ssh")))
+            verify(exactly = 2) {
+                anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(fixture.workspace, fixture.agent)
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+            fixture.environment.dispose()
+            unmockkConstructor(SshCommandProcessHandle::class)
+        }
+    }
+
+    @Test
+    fun `diagnostic failures use the matching session at collection time without creating one`() = runTest {
+        val fixture = fixture(backgroundScope)
+        val root = Files.createTempDirectory("coder-diagnostics-session-test")
+        val failure = IllegalStateException("bundle unavailable")
+        try {
+            every { fixture.cli.getSshLogDirectory() } returns root.resolve("missing-logs")
+            coEvery { fixture.cli.supportBundle(any(), any()) } throws failure
+            val collector = fixture.environment.diagnosticInfoCollector
+
+            collector.collectAdditionalDiagnostics(root)
+            assertNull(fixture.currentSessionId())
+            verify(exactly = 1) { fixture.logger.warn(failure, "Could not collect the Coder support bundle") }
+
+            fixture.environment.beforeConnection()
+            val sessionId = assertNotNull(fixture.currentSessionId())
+            collector.collectAdditionalDiagnostics(root)
+            verify(exactly = 1) {
+                fixture.logger.warn(failure, "client_session_id=$sessionId Could not collect the Coder support bundle")
+            }
+
+            val otherAgent = fixture.agent.copy(name = "other-agent")
+            fixture.environment.update(
+                fixture.workspace.copy(
+                    latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING),
+                ),
+                otherAgent,
+            )
+            collector.collectAdditionalDiagnostics(root)
+            assertNull(SessionIdRegistry.findSession(fixture.workspaceName, otherAgent.name))
+            verify(exactly = 2) { fixture.logger.warn(failure, "Could not collect the Coder support bundle") }
+        } finally {
+            root.toFile().deleteRecursively()
+            fixture.environment.dispose()
+            fixture.removeSession()
+        }
+    }
+
+    @Test
     fun `diagnostic collector uses current workspace agent and CLI after refresh`() = runTest {
         val fixture = fixture(backgroundScope)
-        val collector = fixture.environment.diagnosticInfoCollector
         val refreshedCli = mockk<CoderCLIManager>(relaxed = true)
         val updatedAgent = fixture.agent.copy(name = "updated-agent")
-        fixture.environment.update(
-            fixture.workspace.copy(latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)),
-            updatedAgent,
-        )
-        fixture.environment.updateClientAndCli(mockk(relaxed = true), refreshedCli)
         val root = Files.createTempDirectory("coder-diagnostics-test")
         try {
+            val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
+            Files.writeString(sshLogs.resolve("coder-ssh-session.log"), "SSH session")
+            every { fixture.cli.getSshLogDirectory() } returns sshLogs
+            val collector = fixture.environment.diagnosticInfoCollector
+            fixture.environment.update(
+                fixture.workspace.copy(
+                    latestBuild = fixture.workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING),
+                ),
+                updatedAgent,
+            )
+            fixture.environment.updateClientAndCli(mockk(relaxed = true), refreshedCli)
             coEvery { refreshedCli.supportBundle(any(), any()) } answers {
                 Files.writeString(secondArg(), "bundle")
                 Unit
@@ -78,9 +227,49 @@ class CoderRemoteEnvironmentTest {
                     root.resolve("coder-support.zip"),
                 )
             }
+            verify(exactly = 1) { fixture.cli.getSshLogDirectory() }
+            assertEquals("SSH session", Files.readString(root.resolve("coder-ssh/coder-ssh-session.log")))
             fixture.environment.update(fixture.workspace, null)
             collector.collectAdditionalDiagnostics(root)
             coVerify(exactly = 1) { refreshedCli.supportBundle(match { it.agentName == null }, any()) }
+        } finally {
+            root.toFile().deleteRecursively()
+            fixture.environment.dispose()
+        }
+    }
+
+    @Test
+    fun `diagnostic collector resolves the SSH directory when requested`() = runTest {
+        val fixture = fixture(backgroundScope)
+        val root = Files.createTempDirectory("coder-diagnostics-directory-test")
+        try {
+            val firstLogs = Files.createDirectories(root.resolve("first-logs"))
+            val refreshedLogs = Files.createDirectories(root.resolve("refreshed-logs"))
+            Files.writeString(firstLogs.resolve("coder-ssh-session.log"), "first session")
+            Files.writeString(refreshedLogs.resolve("coder-ssh-session.log"), "refreshed session")
+            every { fixture.cli.getSshLogDirectory() } returns firstLogs
+            val firstCollector = fixture.environment.diagnosticInfoCollector
+            verify(exactly = 1) { fixture.cli.getSshLogDirectory() }
+
+            val refreshedCli = mockk<CoderCLIManager>(relaxed = true)
+            every { refreshedCli.getSshLogDirectory() } returns refreshedLogs
+            fixture.environment.updateClientAndCli(mockk(relaxed = true), refreshedCli)
+            val refreshedCollector = fixture.environment.diagnosticInfoCollector
+            verify(exactly = 1) { refreshedCli.getSshLogDirectory() }
+
+            firstCollector.collectAdditionalDiagnostics(root.resolve("first-diagnostics"))
+            refreshedCollector.collectAdditionalDiagnostics(root.resolve("refreshed-diagnostics"))
+
+            assertEquals(
+                "first session",
+                Files.readString(root.resolve("first-diagnostics/coder-ssh/coder-ssh-session.log")),
+            )
+            assertEquals(
+                "refreshed session",
+                Files.readString(root.resolve("refreshed-diagnostics/coder-ssh/coder-ssh-session.log")),
+            )
+            verify(exactly = 1) { fixture.cli.getSshLogDirectory() }
+            verify(exactly = 1) { refreshedCli.getSshLogDirectory() }
         } finally {
             root.toFile().deleteRecursively()
             fixture.environment.dispose()

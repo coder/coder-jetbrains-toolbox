@@ -409,6 +409,33 @@ The plugin runs `coder support bundle` using the deployment's existing CLI login
 and its agent, when available. It places `coder-support.zip` inside the environment's diagnostic directory in the
 Toolbox log archive. Collection does not start a stopped workspace.
 
+The same diagnostic directory also includes recent local CLI SSH logs under `coder-ssh/`, even if support bundle
+generation fails. The plugin uses the configured SSH log directory, then `CODER_SSH_LOG_DIR`, or otherwise the CLI's
+default state directory: `$XDG_STATE_HOME/coder/logs` when set to an absolute path, falling back to
+`~/.local/state/coder/logs` on Linux, `~/Library/Application Support/coder/logs` on macOS, or
+`%LOCALAPPDATA%/coder/logs` on Windows.
+
+Only regular files directly inside the SSH log directory with these names are eligible:
+
+- `coder-ssh*.log`: CLI SSH session logs.
+- `coder-ssh*.log.<number>`: rotated CLI SSH logs, where `<number>` contains only digits, such as `.log.1`.
+- `<PID>.log`: legacy SSH logs with a numeric filename, such as `12345.log`.
+
+Collection skips subdirectories, symbolic links, and other filenames, including rotated legacy files such as
+`12345.log.1`. These local logs can include sessions for other workspaces that share the log directory.
+
+The following fixed limits apply and are not configurable:
+
+- **Age:** include files modified within the last **3 days (72 hours)**, based on the file's last-modified time.
+  The identified active SSH session's log for the selected workspace/agent is included regardless of age.
+  Rotated logs remain subject to the age cutoff. If the active log cannot be identified, the cutoff applies to
+  every file.
+- **Size:** copy only the last **50 MiB (52,428,800 bytes) per file**, including the active log. This is a limit on
+  each file's uncompressed contents, not on the total archive size.
+
+These limits apply only to the collected copies; the original log files are unchanged. Missing or unreadable SSH
+logs do not prevent collecting the remaining diagnostics.
+
 The bundle can contain deployment health and configuration, network diagnostics, workspace build logs, template
 source, and agent diagnostics. Available information depends on your permissions and workspace connectivity.
 Review the bundle before sharing, following
@@ -417,7 +444,7 @@ Review the bundle before sharing, following
 Support bundles require a Coder CLI that supports `coder support bundle` (Coder 2.10 or newer). Collection runs until
 the CLI finishes or you cancel log collection. If the CLI is unavailable or unsupported, or authentication or
 connectivity fails, the plugin removes any partial bundle and attempts to include
-`coder-support-error.txt` instead. Toolbox's other diagnostics remain available.
+`coder-support-error.txt` instead. Local SSH logs and Toolbox's other diagnostics remain available.
 
 ### HTTP Request Logging
 

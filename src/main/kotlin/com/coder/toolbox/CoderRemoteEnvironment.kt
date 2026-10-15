@@ -38,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -114,6 +115,8 @@ class CoderRemoteEnvironment(
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
     private val proxyCommandHandle = SshCommandProcessHandle(context)
     private var pollJob: Job? = null
+    @Volatile
+    private var sshPid: Long? = null
 
     init {
         if (context.settingsStore.shouldAutoConnect(id)) {
@@ -128,8 +131,13 @@ class CoderRemoteEnvironment(
     internal fun currentSessionId(): SessionId? =
         agent?.let { SessionIdRegistry.findSession(workspace.name, it.name) }
 
-    override val diagnosticInfoCollector: DiagnosticInfoCollector =
-        CoderSupportBundleCollector(context.logger) { outputFile ->
+    override val diagnosticInfoCollector: DiagnosticInfoCollector
+        get() = CoderSupportBundleCollector(
+            context.logger,
+            cli.getSshLogDirectory(),
+            ::currentSessionId,
+            sshPid,
+        ) { outputFile ->
             cli.supportBundle(WorkspaceAddress.from(workspace, agent), outputFile)
         }
 
@@ -312,6 +320,7 @@ class CoderRemoteEnvironment(
         // Toolbox can invoke this hook again while retrying without first reporting a disconnect.
         // Replace the previous poller so one environment never leaves multiple pollers behind.
         pollJob?.cancel()
+        sshPid = null
         pollJob = pollNetworkMetrics()
     }
 
@@ -323,6 +332,8 @@ class CoderRemoteEnvironment(
                 val sessionId = currentSessionId()
                 context.logger.debug(sessionId, "Searching SSH command's PID for workspace $id...")
                 val pid = proxyCommandHandle.findByWorkspaceAndAgent(workspace, currentAgent)
+                ensureActive()
+                sshPid = pid
                 if (pid == null) {
                     context.logger.debug(sessionId, "No SSH command PID was found for workspace $id")
                     delay(POLL_INTERVAL)
@@ -366,6 +377,7 @@ class CoderRemoteEnvironment(
     fun dispose() {
         pollJob?.cancel()
         pollJob = null
+        sshPid = null
         isConnected.update { false }
         val removedSessionId = agent?.let {
             SessionIdRegistry.removeSession(workspace.name, it.name)
@@ -401,6 +413,7 @@ class CoderRemoteEnvironment(
         context.logger.info(sessionId, "Stopping the network metrics poll job for $id")
         pollJob?.cancel()
         pollJob = null
+        sshPid = null
         connectionRequest.update { false }
         isConnected.update { false }
         if (isManual) {

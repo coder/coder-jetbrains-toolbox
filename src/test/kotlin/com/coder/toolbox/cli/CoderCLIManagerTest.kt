@@ -93,6 +93,19 @@ internal class CoderCLIManagerTest {
     @TempDir
     lateinit var supportBundleProcessRoot: Path
 
+    @Test
+    fun `SSH log directory follows current settings`() {
+        val cli = supportBundleCli
+        val firstDirectory = supportBundleProcessRoot.resolve("first-logs")
+        val secondDirectory = supportBundleProcessRoot.resolve("second-logs")
+
+        context.settingsStore.updateSshLogDir(firstDirectory.toString())
+        assertEquals(firstDirectory, cli.getSshLogDirectory())
+
+        context.settingsStore.updateSshLogDir(secondDirectory.toString())
+        assertEquals(secondDirectory, cli.getSshLogDirectory())
+    }
+
     private fun waitingCommand(): List<String> = listOf(
         "/bin/sh", "-c", "echo $$ > \"\$1\"; exec sleep 30", "test", supportBundleProcessRoot.resolve("pid").toString(),
     )

@@ -129,6 +129,12 @@ class CoderCLIManager(
     val localBinaryPath: Path = context.settingsStore.binPath(deploymentURL)
     val coderConfigPath: Path = context.settingsStore.dataDir(deploymentURL).resolve("config")
 
+    /** Returns the effective SSH log directory for this CLI's current settings. */
+    internal fun getSshLogDirectory(): Path = getSshLogDirectory(
+        context.settingsStore.sshLogDirectory,
+        os = currentOs,
+    )
+
     private fun createDownloadService(): CoderDownloadService {
 
         val okHttpClient = CoderHttpClientBuilder.default(context)
@@ -679,6 +685,45 @@ class CoderCLIManager(
         private const val CODER_SESSION_TOKEN_ENV_VAR = "CODER_SESSION_TOKEN"
 
         internal fun supportsKeyringStorage(os: OS?): Boolean = os == OS.MAC || os == OS.WINDOWS
+
+        /** Resolves the log directory used by `coder ssh`, including its XDG state directory default. */
+        internal fun getSshLogDirectory(
+            configuredDirectory: String?,
+            env: Map<String, String> = System.getenv(),
+            os: OS? = getOS(),
+            home: Path = Path.of(
+                env[if (os == OS.WINDOWS) "USERPROFILE" else "HOME"].orEmpty().ifEmpty {
+                    System.getProperty("user.home")
+                },
+            ),
+        ): Path {
+            val directoryOverride = configuredDirectory?.takeIf { it.isNotBlank() }
+                ?: env["CODER_SSH_LOG_DIR"]?.takeIf { it.isNotEmpty() }
+            if (directoryOverride != null) return Path.of(directoryOverride)
+
+            // The CLI uses github.com/adrg/xdg: XDG_STATE_HOME must be absolute after home expansion.
+            val stateHome = absoluteStatePath(env["XDG_STATE_HOME"], home, os) ?: when (os) {
+                OS.MAC -> home.resolve("Library/Application Support")
+                OS.WINDOWS -> absoluteStatePath(env["LOCALAPPDATA"], home, os) ?: home.resolve("AppData/Local")
+                else -> home.resolve(".local/state")
+            }
+            return stateHome.resolve("coder/logs")
+        }
+
+        private fun absoluteStatePath(value: String?, home: Path, os: OS?): Path? {
+            if (value.isNullOrEmpty()) return null
+            val prefix = if (os == OS.WINDOWS) {
+                "%USERPROFILE%".takeIf { value.startsWith(it) }
+            } else {
+                listOf("~", "\$HOME").firstOrNull { value.startsWith(it) }
+            }
+            val path = if (prefix == null) {
+                Path.of(value)
+            } else {
+                home.resolve(value.removePrefix(prefix).trimStart('/', '\\'))
+            }
+            return path.takeIf { it.isAbsolute }
+        }
     }
 
     private fun globalConfigArgs(): List<String> = listOf("--global-config", coderConfigPath.toString())
