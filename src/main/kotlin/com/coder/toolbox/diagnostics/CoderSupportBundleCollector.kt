@@ -5,6 +5,7 @@ import com.jetbrains.toolbox.api.remoteDev.deploy.DiagnosticInfoCollector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import net.lingala.zip4j.ZipFile
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -25,7 +26,11 @@ internal class CoderSupportBundleCollector(
         try {
             Files.createDirectories(logsRootFolder)
             collectSupportBundle(logsRootFolder, sessionId)
-            sshLogs.collect(logsRootFolder, sessionId, sshPid)
+            // Without a usable support bundle the SSH logs still go into an archive of their own.
+            val bundle = logsRootFolder.resolve("coder-support.zip")
+            val hasBundle = ZipFile(bundle.toFile()).isValidZipFile
+            val archive = if (hasBundle) bundle else logsRootFolder.resolve("coder-ssh.zip")
+            sshLogs.collect(archive, sessionId, sshPid)
         } catch (ex: CancellationException) {
             throw ex
         } catch (ex: Exception) {

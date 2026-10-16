@@ -12,6 +12,7 @@ import com.coder.toolbox.cli.gpg.GPGVerifier
 import com.coder.toolbox.cli.gpg.VerificationResult
 import com.coder.toolbox.cli.gpg.VerificationResult.Failed
 import com.coder.toolbox.cli.gpg.VerificationResult.Invalid
+import com.coder.toolbox.diagnostics.CoderSshLogCollector
 import com.coder.toolbox.sdk.CoderHttpClientBuilder
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.settings.SignatureFallbackStrategy.ALLOW
@@ -26,6 +27,7 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
@@ -101,6 +103,7 @@ suspend fun ensureCLI(
  * The supported features of the CLI.
  */
 data class Features(
+    val proxyLogDirectory: Boolean = false,
     val disableAutostart: Boolean = false,
     val reportWorkspaceUsage: Boolean = false,
     val wildcardSsh: Boolean = false,
@@ -132,8 +135,21 @@ class CoderCLIManager(
     /** Returns the effective SSH log directory for this CLI's current settings. */
     internal fun getSshLogDirectory(): Path = getSshLogDirectory(
         context.settingsStore.sshLogDirectory,
-        os = currentOs,
+        defaultDirectory = context.settingsStore.dataDir(deploymentURL).resolve("ssh-logs"),
     )
+
+    @Suppress("TooGenericExceptionCaught")
+    internal suspend fun cleanupSshLogs(sessionId: SessionId?) = withContext(Dispatchers.IO) {
+        try {
+            if (features.proxyLogDirectory) {
+                CoderSshLogCollector(context.logger, getSshLogDirectory()).cleanup(sessionId)
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            context.logger.warn(sessionId, ex, "Could not prepare SSH log cleanup")
+        }
+    }
 
     private fun createDownloadService(): CoderDownloadService {
 
@@ -341,6 +357,9 @@ class CoderCLIManager(
         sshConfigPath: String = context.settingsStore.sshConfigPath,
     ) {
         context.logger.info(sessionIds, "Configuring SSH config at $sshConfigPath")
+        if (workspaceAddresses.isNotEmpty() && feats.proxyLogDirectory) {
+            Files.createDirectories(getSshLogDirectory())
+        }
         writeSSHConfig(
             modifySSHConfig(workspaceAddresses, sessionIds, readSSHConfig(sshConfigPath), feats),
             sshConfigPath,
@@ -389,9 +408,9 @@ class CoderCLIManager(
             )
         val proxyArgs = buildList {
             addAll(baseArgs)
-            context.settingsStore.sshLogDirectory?.takeIf { it.isNotBlank() }?.let {
+            if (feats.proxyLogDirectory) {
                 add("--log-dir")
-                add(it)
+                add(getSshLogDirectory().toString())
                 add("-v")
             }
             if (feats.reportWorkspaceUsage) add("--usage-app=jetbrains")
@@ -530,10 +549,6 @@ class CoderCLIManager(
                 sshConfPath.parent?.toFile()?.mkdirs()
                 sshConfPath.toFile().writeText(contents)
             }
-            // The Coder cli will *not* create the log directory.
-            if (!context.settingsStore.sshLogDirectory.isNullOrBlank()) {
-                Path.of(context.settingsStore.sshLogDirectory).toFile().mkdirs()
-            }
         }
     }
 
@@ -661,6 +676,7 @@ class CoderCLIManager(
                 Features()
             } else {
                 Features(
+                    proxyLogDirectory = version >= SemVer(2, 4, 0),
                     disableAutostart = version >= SemVer(2, 5, 0),
                     reportWorkspaceUsage = version >= SemVer(2, 13, 0),
                     wildcardSsh = version >= SemVer(2, 19, 0),
@@ -686,44 +702,14 @@ class CoderCLIManager(
 
         internal fun supportsKeyringStorage(os: OS?): Boolean = os == OS.MAC || os == OS.WINDOWS
 
-        /** Resolves the log directory used by `coder ssh`, including its XDG state directory default. */
+        /** Resolve the same explicit directory for ProxyCommand logging, cleanup, and support bundles. */
         internal fun getSshLogDirectory(
             configuredDirectory: String?,
+            defaultDirectory: Path,
             env: Map<String, String> = System.getenv(),
-            os: OS? = getOS(),
-            home: Path = Path.of(
-                env[if (os == OS.WINDOWS) "USERPROFILE" else "HOME"].orEmpty().ifEmpty {
-                    System.getProperty("user.home")
-                },
-            ),
-        ): Path {
-            val directoryOverride = configuredDirectory?.takeIf { it.isNotBlank() }
-                ?: env["CODER_SSH_LOG_DIR"]?.takeIf { it.isNotEmpty() }
-            if (directoryOverride != null) return Path.of(directoryOverride)
-
-            // The CLI uses github.com/adrg/xdg: XDG_STATE_HOME must be absolute after home expansion.
-            val stateHome = absoluteStatePath(env["XDG_STATE_HOME"], home, os) ?: when (os) {
-                OS.MAC -> home.resolve("Library/Application Support")
-                OS.WINDOWS -> absoluteStatePath(env["LOCALAPPDATA"], home, os) ?: home.resolve("AppData/Local")
-                else -> home.resolve(".local/state")
-            }
-            return stateHome.resolve("coder/logs")
-        }
-
-        private fun absoluteStatePath(value: String?, home: Path, os: OS?): Path? {
-            if (value.isNullOrEmpty()) return null
-            val prefix = if (os == OS.WINDOWS) {
-                "%USERPROFILE%".takeIf { value.startsWith(it) }
-            } else {
-                listOf("~", "\$HOME").firstOrNull { value.startsWith(it) }
-            }
-            val path = if (prefix == null) {
-                Path.of(value)
-            } else {
-                home.resolve(value.removePrefix(prefix).trimStart('/', '\\'))
-            }
-            return path.takeIf { it.isAbsolute }
-        }
+        ): Path = (configuredDirectory?.takeIf { it.isNotBlank() }
+            ?: env["CODER_SSH_LOG_DIR"]?.takeIf { it.isNotBlank() })
+            ?.let { Path.of(it) } ?: defaultDirectory
     }
 
     private fun globalConfigArgs(): List<String> = listOf("--global-config", coderConfigPath.toString())

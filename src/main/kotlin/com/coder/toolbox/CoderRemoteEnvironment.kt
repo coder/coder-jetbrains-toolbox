@@ -115,6 +115,7 @@ class CoderRemoteEnvironment(
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
     private val proxyCommandHandle = SshCommandProcessHandle(context)
     private var pollJob: Job? = null
+
     @Volatile
     private var sshPid: Long? = null
 
@@ -326,6 +327,7 @@ class CoderRemoteEnvironment(
 
     private fun pollNetworkMetrics(): Job =
         context.cs.launch(CoroutineName("Network Metrics Poller")) {
+            cli.cleanupSshLogs(currentSessionId())
             context.logger.info(currentSessionId(), "Starting the network metrics poll job for $id")
             while (isActive) {
                 val currentAgent = agent ?: break
