@@ -409,32 +409,39 @@ The plugin runs `coder support bundle` using the deployment's existing CLI login
 and its agent, when available. It places `coder-support.zip` inside the environment's diagnostic directory in the
 Toolbox log archive. Collection does not start a stopped workspace.
 
-The same diagnostic directory also includes recent local CLI SSH logs under `coder-ssh/`, even if support bundle
-generation fails. The plugin uses the configured SSH log directory, then `CODER_SSH_LOG_DIR`, or otherwise the CLI's
-default state directory: `$XDG_STATE_HOME/coder/logs` when set to an absolute path, falling back to
-`~/.local/state/coder/logs` on Linux, `~/Library/Application Support/coder/logs` on macOS, or
-`%LOCALAPPDATA%/coder/logs` on Windows.
+Recent local CLI SSH logs are added in place to `coder-support.zip` under `toolbox-logs/ssh/`. If the bundle could
+not be generated or is not a valid archive, the logs are written to a separate `coder-ssh.zip` in the diagnostic
+directory instead, using the same layout.
 
-Only regular files directly inside the SSH log directory with these names are eligible:
+For CLI versions **2.4.0 and newer**, the plugin passes `--log-dir <directory> -v` to the SSH ProxyCommand, enabling
+verbose file logging even on CLIs that do not log by default. The directory is the configured SSH log directory,
+then `CODER_SSH_LOG_DIR`, then `ssh-logs/` inside the deployment's plugin data directory. The plugin does not infer
+the CLI's default state directory, so logs written there by earlier setups are not collected. CLI versions older than
+2.4.0, or whose version is not recognized, receive neither logging flag and skip cleanup. Their SSH logs go wherever
+the CLI writes them by default, so collection only finds logs if you point the configured SSH log directory or
+`CODER_SSH_LOG_DIR` at that location.
 
-- `coder-ssh*.log`: CLI SSH session logs.
-- `coder-ssh*.log.<number>`: rotated CLI SSH logs, where `<number>` contains only digits, such as `.log.1`.
-- `<PID>.log`: legacy SSH logs with a numeric filename, such as `12345.log`.
-
-Collection skips subdirectories, symbolic links, and other filenames, including rotated legacy files such as
-`12345.log.1`. These local logs can include sessions for other workspaces that share the log directory.
+Only regular files directly inside the SSH log directory named `coder-ssh*-<pid>.log` are eligible, where `<pid>`
+contains only digits. Collection skips subdirectories, symbolic links, and other filenames, including bare PID names
+such as `12345.log` and rotated `.log.<number>` files. These local logs can include sessions for other workspaces
+that share the log directory.
 
 The following fixed limits apply and are not configurable:
 
 - **Age:** include files modified within the last **3 days (72 hours)**, based on the file's last-modified time.
   The identified active SSH session's log for the selected workspace/agent is included regardless of age.
-  Rotated logs remain subject to the age cutoff. If the active log cannot be identified, the cutoff applies to
-  every file.
+  If the active log cannot be identified, the cutoff applies to every file.
 - **Size:** copy only the last **50 MiB (52,428,800 bytes) per file**, including the active log. This is a limit on
   each file's uncompressed contents, not on the total archive size.
 
-These limits apply only to the collected copies; the original log files are unchanged. Missing or unreadable SSH
+These limits apply only to the archived copies; the original log files are unchanged. Missing or unreadable SSH
 logs do not prevent collecting the remaining diagnostics.
+
+On each connection attempt with a supported CLI, background cleanup keeps the newest **20** `coder-ssh*-<pid>.log`
+files by modification time and deletes other matching regular files only if they are older than **7 days**, so more
+than 20 files can remain when the extra ones are newer. Cleanup does not recurse or delete symlinks. Collection itself
+never deletes source logs.
+CLI 2.38+ also applies its own 50-file pruning in this directory.
 
 The bundle can contain deployment health and configuration, network diagnostics, workspace build logs, template
 source, and agent diagnostics. Available information depends on your permissions and workspace connectivity.

@@ -106,6 +106,28 @@ internal class CoderCLIManagerTest {
         assertEquals(secondDirectory, cli.getSshLogDirectory())
     }
 
+    @Test
+    fun `proxy logging is gated and defaults to a deployment specific plugin directory`() {
+        val cli = supportBundleCli
+        val sshConfig = supportBundleProcessRoot.resolve("ssh-config")
+        val ws = workspace("dev", agents = mapOf("main" to UUID.randomUUID().toString()))
+        val address = WorkspaceAddress.from(ws, ws.latestBuild.resources.first().agents!!.first())
+        context.settingsStore.updateSshLogDir("")
+        val expectedDirectory = context.settingsStore.dataDir(URI("https://coder.example.test").toURL())
+            .resolve("ssh-logs")
+        cli.configSsh(setOf(address), feats = Features(proxyLogDirectory = true), sshConfigPath = sshConfig.toString())
+        assertContains(
+            Files.readString(sshConfig),
+            "--log-dir ${ProxyCommandBuilder().argument(expectedDirectory.toString()).render()} -v",
+        )
+        assertTrue(Files.isDirectory(expectedDirectory))
+
+        context.settingsStore.updateSshLogDir(supportBundleProcessRoot.resolve("custom").toString())
+        cli.configSsh(setOf(address), feats = Features(), sshConfigPath = sshConfig.toString())
+        assertFalse(Files.readString(sshConfig).contains("--log-dir"))
+        assertFalse(Files.exists(supportBundleProcessRoot.resolve("custom")))
+    }
+
     private fun waitingCommand(): List<String> = listOf(
         "/bin/sh", "-c", "echo $$ > \"\$1\"; exec sleep 30", "test", supportBundleProcessRoot.resolve("pid").toString(),
     )
@@ -1034,6 +1056,7 @@ internal class CoderCLIManagerTest {
                     "log-dir",
                     "blank",
                     sshLogDirectory = tmpdir.resolve("ssh-logs"),
+                    features = Features(proxyLogDirectory = true, reportWorkspaceUsage = true),
                 ),
                 SSHTest(
                     listOf(workspace),
@@ -1671,11 +1694,15 @@ internal class CoderCLIManagerTest {
     fun testFeatures() {
         val tests =
             listOf(
-                Pair("2.5.0", Features(disableAutostart = true)),
-                Pair("2.13.0", Features(disableAutostart = true, reportWorkspaceUsage = true)),
+                Pair("2.5.0", Features(proxyLogDirectory = true, disableAutostart = true)),
+                Pair(
+                    "2.13.0",
+                    Features(proxyLogDirectory = true, disableAutostart = true, reportWorkspaceUsage = true)
+                ),
                 Pair(
                     "2.25.0",
                     Features(
+                        proxyLogDirectory = true,
                         disableAutostart = true,
                         reportWorkspaceUsage = true,
                         wildcardSsh = true,
@@ -1684,6 +1711,7 @@ internal class CoderCLIManagerTest {
                 ),
                 Pair(
                     "4.9.0", Features(
+                        proxyLogDirectory = true,
                         disableAutostart = true,
                         reportWorkspaceUsage = true,
                         wildcardSsh = true,
@@ -1694,6 +1722,7 @@ internal class CoderCLIManagerTest {
                 Pair(
                     "2.29.0",
                     Features(
+                        proxyLogDirectory = true,
                         disableAutostart = true,
                         reportWorkspaceUsage = true,
                         wildcardSsh = true,
@@ -1701,7 +1730,9 @@ internal class CoderCLIManagerTest {
                         keyringAuth = true,
                     )
                 ),
-                Pair("2.4.9", Features()),
+                Pair("2.4.9", Features(proxyLogDirectory = true)),
+                Pair("2.4.0", Features(proxyLogDirectory = true)),
+                Pair("2.3.9", Features()),
                 Pair("1.0.1", Features()),
             )
 
