@@ -17,6 +17,14 @@ tasks.named<Jar>("jar") {
     from(generateExtensionJson.flatMap { it.outputFile })
 }
 
+tasks.named<ProcessResources>("processResources") {
+    val pluginVersion = project.version.toString()
+    inputs.property("pluginVersion", pluginVersion)
+    filesMatching("META-INF/plugin.xml") {
+        expand("version" to pluginVersion)
+    }
+}
+
 val filteredDependencies = configurations.named("runtimeClasspath").map {
     filterToolboxProvidedDependencies(it.files)
 }
@@ -69,4 +77,16 @@ val publishPlugin by tasks.registering(PublishToolboxPluginTask::class) {
     dependsOn(validatePluginZip)
     extensionId.set(project.group.toString())
     pluginFile.set(packagePlugin.flatMap { it.archiveFile })
+}
+
+val packageIdeaPlugin by tasks.registering(Zip::class) {
+    dependsOn(tasks.named<Jar>("jar"), generatedDependenciesJson)
+    archiveBaseName.set("coder-toolbox-idea")
+    val pluginDir = project.group.toString()
+    from(tasks.named<Jar>("jar")) {
+        into("$pluginDir/lib")
+    }
+    from(filteredDependencies) {
+        into("$pluginDir/lib")
+    }
 }

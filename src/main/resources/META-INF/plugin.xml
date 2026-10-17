@@ -1,0 +1,12 @@
+<idea-plugin>
+    <id>com.coder.toolbox</id>
+    <name>Coder Plugin</name>
+    <version>${version}</version>
+    <vendor>coder</vendor>
+
+    <description>Connects your JetBrains IDE to Coder workspaces</description>
+
+    <dependencies>
+        <module name="intellij.libraries.toolbox.remote.dev"/>
+    </dependencies>
+</idea-plugin>
