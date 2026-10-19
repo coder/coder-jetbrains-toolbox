@@ -37,17 +37,19 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.attribute.FileTime
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -59,6 +61,10 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class CoderRemoteEnvironmentTest {
+    private fun readSshLog(archive: Path, name: String): String? = ZipFile(archive.toFile()).use { zip ->
+        zip.getEntry("toolbox-logs/ssh/$name")?.let { zip.getInputStream(it).reader().readText() }
+    }
+
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
     fun `diagnostics reuse the SSH process resolved by network polling and clear it on disconnect`() = runTest {
@@ -79,7 +85,7 @@ class CoderRemoteEnvironmentTest {
                     root.resolve("before-connection"),
                 )
             }
-            assertFalse(Files.exists(root.resolve("before-connection/coder-ssh")))
+            assertFalse(Files.exists(root.resolve("before-connection/coder-ssh.zip")))
             verify(exactly = 0) {
                 anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(any(), any())
             }
@@ -97,7 +103,7 @@ class CoderRemoteEnvironmentTest {
             }
             assertEquals(
                 "active session",
-                Files.readString(root.resolve("diagnostics/coder-ssh/coder-ssh-active-12345.log")),
+                readSshLog(root.resolve("diagnostics/coder-ssh.zip"), "coder-ssh-active-12345.log"),
             )
 
             fixture.environment.afterDisconnect(isManual = false)
@@ -106,7 +112,7 @@ class CoderRemoteEnvironmentTest {
                     root.resolve("after-disconnect"),
                 )
             }
-            assertFalse(Files.exists(root.resolve("after-disconnect/coder-ssh")))
+            assertFalse(Files.exists(root.resolve("after-disconnect/coder-ssh.zip")))
             verify(exactly = 1) {
                 anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(any(), any())
             }
@@ -128,7 +134,7 @@ class CoderRemoteEnvironmentTest {
         val root = Files.createTempDirectory("coder-diagnostics-ended-log-test")
         try {
             val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
-            val activeLog = Files.writeString(sshLogs.resolve("12345.log"), "active session")
+            val activeLog = Files.writeString(sshLogs.resolve("coder-ssh-active-12345.log"), "active session")
             Files.setLastModifiedTime(activeLog, FileTime.from(Instant.now().minus(Duration.ofDays(4))))
             every { fixture.cli.getSshLogDirectory() } returns sshLogs
             every { fixture.settingsStore.networkInfoDir } returns root.resolve("metrics").toString()
@@ -138,7 +144,10 @@ class CoderRemoteEnvironmentTest {
             runBlocking {
                 fixture.environment.diagnosticInfoCollector.collectAdditionalDiagnostics(root.resolve("connected"))
             }
-            assertTrue(Files.exists(root.resolve("connected/coder-ssh/12345.log")))
+            assertEquals(
+                "active session",
+                readSshLog(root.resolve("connected/coder-ssh.zip"), "coder-ssh-active-12345.log"),
+            )
 
             advanceTimeBy(5_000)
             runCurrent()
@@ -146,7 +155,7 @@ class CoderRemoteEnvironmentTest {
                 fixture.environment.diagnosticInfoCollector.collectAdditionalDiagnostics(root.resolve("ended"))
             }
 
-            assertFalse(Files.exists(root.resolve("ended/coder-ssh")))
+            assertFalse(Files.exists(root.resolve("ended/coder-ssh.zip")))
             verify(exactly = 2) {
                 anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(fixture.workspace, fixture.agent)
             }
@@ -203,7 +212,7 @@ class CoderRemoteEnvironmentTest {
         val root = Files.createTempDirectory("coder-diagnostics-test")
         try {
             val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
-            Files.writeString(sshLogs.resolve("coder-ssh-session.log"), "SSH session")
+            Files.writeString(sshLogs.resolve("coder-ssh-session-1.log"), "SSH session")
             every { fixture.cli.getSshLogDirectory() } returns sshLogs
             val collector = fixture.environment.diagnosticInfoCollector
             fixture.environment.update(
@@ -228,7 +237,7 @@ class CoderRemoteEnvironmentTest {
                 )
             }
             verify(exactly = 1) { fixture.cli.getSshLogDirectory() }
-            assertEquals("SSH session", Files.readString(root.resolve("coder-ssh/coder-ssh-session.log")))
+            assertEquals("SSH session", readSshLog(root.resolve("coder-ssh.zip"), "coder-ssh-session-1.log"))
             fixture.environment.update(fixture.workspace, null)
             collector.collectAdditionalDiagnostics(root)
             coVerify(exactly = 1) { refreshedCli.supportBundle(match { it.agentName == null }, any()) }
@@ -245,8 +254,8 @@ class CoderRemoteEnvironmentTest {
         try {
             val firstLogs = Files.createDirectories(root.resolve("first-logs"))
             val refreshedLogs = Files.createDirectories(root.resolve("refreshed-logs"))
-            Files.writeString(firstLogs.resolve("coder-ssh-session.log"), "first session")
-            Files.writeString(refreshedLogs.resolve("coder-ssh-session.log"), "refreshed session")
+            Files.writeString(firstLogs.resolve("coder-ssh-session-1.log"), "first session")
+            Files.writeString(refreshedLogs.resolve("coder-ssh-session-1.log"), "refreshed session")
             every { fixture.cli.getSshLogDirectory() } returns firstLogs
             val firstCollector = fixture.environment.diagnosticInfoCollector
             verify(exactly = 1) { fixture.cli.getSshLogDirectory() }
@@ -262,11 +271,11 @@ class CoderRemoteEnvironmentTest {
 
             assertEquals(
                 "first session",
-                Files.readString(root.resolve("first-diagnostics/coder-ssh/coder-ssh-session.log")),
+                readSshLog(root.resolve("first-diagnostics/coder-ssh.zip"), "coder-ssh-session-1.log"),
             )
             assertEquals(
                 "refreshed session",
-                Files.readString(root.resolve("refreshed-diagnostics/coder-ssh/coder-ssh-session.log")),
+                readSshLog(root.resolve("refreshed-diagnostics/coder-ssh.zip"), "coder-ssh-session-1.log"),
             )
             verify(exactly = 1) { fixture.cli.getSshLogDirectory() }
             verify(exactly = 1) { refreshedCli.getSshLogDirectory() }

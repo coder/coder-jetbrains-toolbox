@@ -6,8 +6,9 @@
 
 - include a Coder support bundle for the selected workspace and agent only when using the environment's _Collect logs_
   action in Toolbox
-- include active and recent local CLI SSH logs in workspace log collection, using the configured or default CLI log
-  directory
+- include active and recent local CLI SSH logs in workspace log collection. For CLI 2.4.0 and newer the plugin now
+  passes an explicit `--log-dir` to the SSH ProxyCommand (the configured directory, `CODER_SSH_LOG_DIR`, or
+  `ssh-logs/` in the deployment's plugin data directory) and collects and cleans up logs from that same directory
 
 ### Changed
 
