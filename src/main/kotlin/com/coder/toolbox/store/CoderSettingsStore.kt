@@ -17,6 +17,10 @@ import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.withPath
 import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
@@ -29,8 +33,11 @@ class CoderSettingsStore(
     private val logger: Logger
 ) : ReadOnlyCoderSettings {
 
+    private val settingsLock = Any()
+    private val revision = MutableStateFlow(0L)
+
     // Internal TLS settings implementation
-    private class TLSSettings(
+    private data class TLSSettings(
         override val certPath: String?,
         override val keyPath: String?,
         override val caPath: String?,
@@ -177,112 +184,126 @@ class CoderSettingsStore(
     // a readonly cast
     fun readOnly(): ReadOnlyCoderSettings = this
 
+    override fun <T> observe(select: (ReadOnlyCoderSettings) -> T): Flow<T> = revision
+        .map { synchronized(settingsLock) { select(this) } }
+        .distinctUntilChanged()
+
+    private fun writeSetting(key: String, value: String) {
+        synchronized(settingsLock) {
+            store[key] = value
+            // A failed write leaves the revision unchanged. Selectors share this lock so they
+            // cannot read an update before the backing store's write has returned.
+            revision.value += 1
+        }
+    }
+
     // Write operations
     fun updateLastUsedUrl(url: URL) {
-        store[LAST_USED_URL] = url.toString()
+        writeSetting(LAST_USED_URL, url.toString())
     }
 
     fun updateUseAppNameAsTitle(appNameAsTitle: Boolean) {
-        store[APP_NAME_AS_TITLE] = appNameAsTitle.toString()
+        writeSetting(APP_NAME_AS_TITLE, appNameAsTitle.toString())
     }
 
     fun updateBinarySource(source: String) {
-        store[BINARY_SOURCE] = source
+        writeSetting(BINARY_SOURCE, source)
     }
 
     fun updateBinaryDestination(dest: String) {
-        store[BINARY_DESTINATION] = dest
+        writeSetting(BINARY_DESTINATION, dest)
     }
 
     fun updateDataDirectory(dir: String) {
-        store[DATA_DIRECTORY] = dir
+        writeSetting(DATA_DIRECTORY, dir)
     }
 
     fun updateEnableDownloads(shouldEnableDownloads: Boolean) {
-        store[ENABLE_DOWNLOADS] = shouldEnableDownloads.toString()
+        writeSetting(ENABLE_DOWNLOADS, shouldEnableDownloads.toString())
     }
 
     fun updateDisableSignatureVerification(shouldDisableSignatureVerification: Boolean) {
-        store[DISABLE_SIGNATURE_VALIDATION] = shouldDisableSignatureVerification.toString()
+        writeSetting(DISABLE_SIGNATURE_VALIDATION, shouldDisableSignatureVerification.toString())
     }
 
     fun updateSignatureFallbackStrategy(fallback: Boolean) {
-        store[FALLBACK_ON_CODER_FOR_SIGNATURES] = when (fallback) {
+        val strategy = when (fallback) {
             true -> SignatureFallbackStrategy.ALLOW.toString()
             else -> SignatureFallbackStrategy.FORBIDDEN.toString()
         }
+        writeSetting(FALLBACK_ON_CODER_FOR_SIGNATURES, strategy)
     }
 
     fun updateHttpClientLogLevel(level: HttpLoggingVerbosity?) {
         if (level == null) return
-        store[HTTP_CLIENT_LOG_LEVEL] = level.toString()
+        writeSetting(HTTP_CLIENT_LOG_LEVEL, level.toString())
     }
 
     fun updateConnectionLogBufferSize(size: Int) {
         require(size in CONNECTION_LOG_BUFFER_SIZE_RANGE) {
             "Connection log buffer size must be between 0 and 10000"
         }
-        store[CONNECTION_LOG_BUFFER_SIZE] = size.toString()
+        writeSetting(CONNECTION_LOG_BUFFER_SIZE, size.toString())
     }
 
     fun updateHeaderCommand(cmd: String) {
-        store[HEADER_COMMAND] = cmd
+        writeSetting(HEADER_COMMAND, cmd)
     }
 
     fun updateUseKeyring(useKeyring: Boolean) {
-        store[USE_KEYRING] = useKeyring.toString()
+        writeSetting(USE_KEYRING, useKeyring.toString())
     }
 
     fun updateCertPath(path: String) {
-        store[TLS_CERT_PATH] = path
+        writeSetting(TLS_CERT_PATH, path)
     }
 
     fun updateKeyPath(path: String) {
-        store[TLS_KEY_PATH] = path
+        writeSetting(TLS_KEY_PATH, path)
     }
 
     fun updateCAPath(path: String) {
-        store[TLS_CA_PATH] = path
+        writeSetting(TLS_CA_PATH, path)
     }
 
     fun updateAltHostname(hostname: String) {
-        store[TLS_ALTERNATE_HOSTNAME] = hostname
+        writeSetting(TLS_ALTERNATE_HOSTNAME, hostname)
     }
 
     fun updateDisableAutostart(shouldDisableAutostart: Boolean) {
-        store[DISABLE_AUTOSTART] = shouldDisableAutostart.toString()
+        writeSetting(DISABLE_AUTOSTART, shouldDisableAutostart.toString())
     }
 
     fun updateSshConnectionTimeoutInSeconds(sshConnectionTimeoutInSeconds: Int) {
-        store[SSH_CONNECTION_TIMEOUT_IN_SECONDS] = sshConnectionTimeoutInSeconds.toString()
+        writeSetting(SSH_CONNECTION_TIMEOUT_IN_SECONDS, sshConnectionTimeoutInSeconds.toString())
     }
 
     fun updateEnableSshWildcardConfig(enable: Boolean) {
-        store[ENABLE_SSH_WILDCARD_CONFIG] = enable.toString()
+        writeSetting(ENABLE_SSH_WILDCARD_CONFIG, enable.toString())
     }
 
     fun updateSshConfigPath(path: String) {
-        store[SSH_CONFIG_PATH] = path
+        writeSetting(SSH_CONFIG_PATH, path)
     }
 
     fun updateSshLogDir(path: String) {
-        store[SSH_LOG_DIR] = path
+        writeSetting(SSH_LOG_DIR, path)
     }
 
     fun updateNetworkInfoDir(path: String) {
-        store[NETWORK_INFO_DIR] = path
+        writeSetting(NETWORK_INFO_DIR, path)
     }
 
     fun updateSshConfigOptions(options: String) {
-        store[SSH_CONFIG_OPTIONS] = options
+        writeSetting(SSH_CONFIG_OPTIONS, options)
     }
 
     fun updateAutoConnect(workspaceId: String, autoConnect: Boolean) {
-        store["$SSH_AUTO_CONNECT_PREFIX$workspaceId"] = autoConnect.toString()
+        writeSetting("$SSH_AUTO_CONNECT_PREFIX$workspaceId", autoConnect.toString())
     }
 
     fun updatePreferAuthViaOAuth2(preferAuthViaOAuth2: Boolean) {
-        store[PREFER_OAUTH2_IF_AVAILABLE] = preferAuthViaOAuth2.toString()
+        writeSetting(PREFER_OAUTH2_IF_AVAILABLE, preferAuthViaOAuth2.toString())
     }
 
     private fun getDefaultGlobalDataDir(): Path {
