@@ -1,5 +1,7 @@
 package com.coder.toolbox.store
 
+import com.coder.toolbox.settings.CONNECTION_LOG_BUFFER_SIZE_RANGE
+import com.coder.toolbox.settings.DEFAULT_CONNECTION_LOG_BUFFER_SIZE
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.settings.HttpLoggingVerbosity
 import com.coder.toolbox.settings.ReadOnlyCoderSettings
@@ -48,6 +50,9 @@ class CoderSettingsStore(
         get() = SignatureFallbackStrategy.fromValue(store[FALLBACK_ON_CODER_FOR_SIGNATURES])
     override val httpClientLogLevel: HttpLoggingVerbosity
         get() = HttpLoggingVerbosity.fromValue(store[HTTP_CLIENT_LOG_LEVEL])
+    override val connectionLogBufferSize: Int
+        get() = store[CONNECTION_LOG_BUFFER_SIZE]?.toIntOrNull()
+            ?.takeIf { it in CONNECTION_LOG_BUFFER_SIZE_RANGE } ?: DEFAULT_CONNECTION_LOG_BUFFER_SIZE
     override val defaultCliBinaryNameByOsAndArch: String get() = getCoderCLIForOS(getOS(), getArch())
     override val defaultSignatureNameByOsAndArch: String get() = getCoderSignatureForOS(getOS(), getArch())
     override val dataDirectory: String? get() = store[DATA_DIRECTORY]
@@ -211,6 +216,13 @@ class CoderSettingsStore(
     fun updateHttpClientLogLevel(level: HttpLoggingVerbosity?) {
         if (level == null) return
         store[HTTP_CLIENT_LOG_LEVEL] = level.toString()
+    }
+
+    fun updateConnectionLogBufferSize(size: Int) {
+        require(size in CONNECTION_LOG_BUFFER_SIZE_RANGE) {
+            "Connection log buffer size must be between 0 and 10000"
+        }
+        store[CONNECTION_LOG_BUFFER_SIZE] = size.toString()
     }
 
     fun updateHeaderCommand(cmd: String) {

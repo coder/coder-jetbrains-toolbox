@@ -4,6 +4,9 @@ import java.net.URL
 import java.nio.file.Path
 import java.util.Locale.getDefault
 
+internal const val DEFAULT_CONNECTION_LOG_BUFFER_SIZE = 1_000
+internal val CONNECTION_LOG_BUFFER_SIZE_RANGE = 0..10_000
+
 /**
  * Read-only interface for accessing Coder settings
  */
@@ -57,6 +60,13 @@ interface ReadOnlyCoderSettings {
      * Controls the logging for the rest client.
      */
     val httpClientLogLevel: HttpLoggingVerbosity
+
+    /**
+     * Maximum number of entries below Toolbox's log level to retain for connection diagnostics.
+     * Defaults to 1000, accepts 0 through 10000, and uses 0 to disable buffering.
+     * Reserved for future log capture and replay on terminal failures and support bundle collection.
+     */
+    val connectionLogBufferSize: Int
 
     /**
      * Default CLI binary name based on OS and architecture

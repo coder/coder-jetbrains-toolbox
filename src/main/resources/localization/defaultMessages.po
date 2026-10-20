@@ -67,6 +67,18 @@ msgstr ""
 msgid "Coder Settings"
 msgstr ""
 
+msgid "Connection log buffer size"
+msgstr ""
+
+msgid "Connection log buffer size must be a whole number between 0 and 10000"
+msgstr ""
+
+msgid ""
+"Maximum number of log entries below Toolbox's log level to keep in memory for connection diagnostics. "
+"Defaults to 1000; accepts 0 to 10000. Set to 0 to disable. "
+"Log capture and replay are not yet implemented."
+msgstr ""
+
 msgid "Binary source"
 msgstr ""
 

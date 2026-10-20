@@ -562,6 +562,12 @@ explicit entry per resolved workspace/agent using
 `Host coder-jetbrains-toolbox--<owner>--<workspace>.<agent>--<host>`, and its proxy command targets
 `<owner>/<workspace>.<agent>`.
 
+### Connection logging settings
+
+- `Connection log buffer size` (`connectionLogBufferSize`) sets the maximum number of log entries below Toolbox's
+  log level to keep in memory for connection diagnostics. It defaults to `1000` and accepts whole numbers from `0`
+  to `10000`; `0` disables buffering. Invalid stored values fall back to `1000`.
+
 ### CLI related settings
 
 - `Binary source` specifies the source URL or relative path from which the Coder CLI should be downloaded. If a relative
