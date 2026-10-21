@@ -42,6 +42,15 @@ internal class FlightRecorder(
         record(level, clock.instant(), message, exception)
     }
 
+    fun record(level: LogLevel, exception: Throwable?, message: () -> String): () -> String {
+        if (capacity == 0 || logger.isEnabled(level)) return message
+        val timestamp = clock.instant()
+        val resolved = message()
+        record(level, timestamp, resolved, exception)
+        // Toolbox may evaluate this later if its level changes. Never evaluate the original supplier twice.
+        return { resolved }
+    }
+
     private fun record(level: LogLevel, timestamp: Instant, message: String, exception: Throwable?) {
         val text = if (exception == null) message else "$message\n${exception.stackTraceToString()}"
         val entry = FlightRecorderEntry(level, timestamp, text)

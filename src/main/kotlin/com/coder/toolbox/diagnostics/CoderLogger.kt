@@ -41,9 +41,17 @@ class CoderLogger(
         delegate.error(message)
     }
 
+    override inline fun error(noinline message: () -> String) {
+        delegate.error(record(LogLevel.ERROR, null, message))
+    }
+
     override inline fun error(exception: Throwable, message: String) {
         record(LogLevel.ERROR, message, exception)
         delegate.error(exception, message)
+    }
+
+    override inline fun error(exception: Throwable, noinline message: () -> String) {
+        delegate.error(exception, record(LogLevel.ERROR, exception, message))
     }
 
     inline fun error(sessionId: SessionId?, exception: Throwable, message: String) {
@@ -59,9 +67,17 @@ class CoderLogger(
         delegate.warn(message)
     }
 
+    override inline fun warn(noinline message: () -> String) {
+        delegate.warn(record(LogLevel.WARN, null, message))
+    }
+
     override inline fun warn(exception: Throwable, message: String) {
         record(LogLevel.WARN, message, exception)
         delegate.warn(exception, message)
+    }
+
+    override inline fun warn(exception: Throwable, noinline message: () -> String) {
+        delegate.warn(exception, record(LogLevel.WARN, exception, message))
     }
 
     inline fun warn(sessionId: SessionId?, message: String) {
@@ -81,9 +97,17 @@ class CoderLogger(
         delegate.debug(message)
     }
 
+    override inline fun debug(noinline message: () -> String) {
+        delegate.debug(record(LogLevel.DEBUG, null, message))
+    }
+
     override inline fun debug(exception: Throwable, message: String) {
         record(LogLevel.DEBUG, message, exception)
         delegate.debug(exception, message)
+    }
+
+    override inline fun debug(exception: Throwable, noinline message: () -> String) {
+        delegate.debug(exception, record(LogLevel.DEBUG, exception, message))
     }
 
     inline fun debug(sessionId: SessionId?, message: String) {
@@ -99,9 +123,17 @@ class CoderLogger(
         delegate.info(message)
     }
 
+    override inline fun info(noinline message: () -> String) {
+        delegate.info(record(LogLevel.INFO, null, message))
+    }
+
     override inline fun info(exception: Throwable, message: String) {
         record(LogLevel.INFO, message, exception)
         delegate.info(exception, message)
+    }
+
+    override inline fun info(exception: Throwable, noinline message: () -> String) {
+        delegate.info(exception, record(LogLevel.INFO, exception, message))
     }
 
     inline fun info(sessionId: SessionId?, message: String) {
@@ -117,11 +149,21 @@ class CoderLogger(
         delegate.trace(message)
     }
 
+    override inline fun trace(noinline message: () -> String) {
+        delegate.trace(record(LogLevel.TRACE, null, message))
+    }
+
     @Deprecated("Do not trace with exceptions", level = DeprecationLevel.ERROR)
     @Suppress("DEPRECATION_ERROR")
     override inline fun trace(exception: Throwable, message: String) {
         record(LogLevel.TRACE, message, exception)
         delegate.trace(exception, message)
+    }
+
+    @Deprecated("Do not trace with exceptions", level = DeprecationLevel.ERROR)
+    @Suppress("DEPRECATION_ERROR")
+    override inline fun trace(exception: Throwable, noinline message: () -> String) {
+        delegate.trace(exception, record(LogLevel.TRACE, exception, message))
     }
 
     inline fun logAndShowError(title: String, error: String) {
@@ -188,6 +230,10 @@ class CoderLogger(
     internal fun record(level: LogLevel, message: String, exception: Throwable? = null) {
         flightRecorder.record(level, message, exception)
     }
+
+    @PublishedApi
+    internal fun record(level: LogLevel, exception: Throwable?, message: () -> String): () -> String =
+        flightRecorder.record(level, exception, message)
 
     /**
      * Displays an informational popup on a child of the plugin coroutine scope rather than on
