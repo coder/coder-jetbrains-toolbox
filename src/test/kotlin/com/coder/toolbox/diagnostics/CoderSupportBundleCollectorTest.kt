@@ -28,7 +28,8 @@ class CoderSupportBundleCollectorTest {
         val destination = Files.writeString(root.resolve("diagnostics"), "existing file")
         val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
         val sshLog = Files.writeString(sshLogs.resolve("coder-ssh-session-1.log"), "SSH session")
-        val logger = mockk<CoderLogger>(relaxed = true)
+        val delegate = mockk<Logger>(relaxed = true)
+        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk(), mockk(relaxed = true))
         var bundleCollected = false
         val collector = CoderSupportBundleCollector(logger, sshLogs) {
             bundleCollected = true
@@ -39,8 +40,8 @@ class CoderSupportBundleCollectorTest {
         assertFalse(bundleCollected)
         assertEquals("existing file", Files.readString(destination))
         assertEquals("SSH session", Files.readString(sshLog))
-        verify(exactly = 1) { logger.warn(any<Throwable>(), "Could not collect Coder workspace diagnostics") }
-        confirmVerified(logger)
+        verify(exactly = 1) { delegate.warn(any<Throwable>(), "Could not collect Coder workspace diagnostics") }
+        confirmVerified(delegate)
     }
 
     @Test
@@ -68,7 +69,7 @@ class CoderSupportBundleCollectorTest {
         val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
         Files.writeString(sshLogs.resolve("coder-ssh-session-1.log"), "SSH session")
         val delegate = mockk<Logger>(relaxed = true)
-        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk())
+        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk(), mockk(relaxed = true))
         val sessionId = SessionId.generate()
         val collector = CoderSupportBundleCollector(logger, sshLogs, currentSessionId = { sessionId }) {
             Files.writeString(it, "partial")
@@ -104,7 +105,7 @@ class CoderSupportBundleCollectorTest {
     fun `SSH log failure preserves the support bundle`() = runTest {
         val invalidDirectory = Files.writeString(root.resolve("ssh-logs"), "not a directory")
         val delegate = mockk<Logger>(relaxed = true)
-        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk())
+        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk(), mockk(relaxed = true))
         val sessionId = SessionId.generate()
         val collector = CoderSupportBundleCollector(logger, invalidDirectory, currentSessionId = { sessionId }) {
             Files.writeString(it, "bundle")

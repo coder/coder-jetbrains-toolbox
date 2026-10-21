@@ -110,8 +110,7 @@ class CoderSettingsPage(
     private val connectionLogBufferDescription = LabelField(
         context.i18n.ptrl(
             "Maximum number of log entries below Toolbox's log level to keep in memory for connection diagnostics. " +
-                    "Defaults to 1000; accepts 0 to 10000. Set to 0 to disable. " +
-                    "Log capture and replay are not yet implemented."
+                    "Defaults to 1000; accepts 0 to 10000. Set to 0 to disable."
         ),
         LabelStyleType.Secondary
     )

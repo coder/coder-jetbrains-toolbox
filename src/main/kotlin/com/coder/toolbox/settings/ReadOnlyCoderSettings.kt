@@ -76,7 +76,7 @@ interface ReadOnlyCoderSettings {
     /**
      * Maximum number of entries below Toolbox's log level to retain for connection diagnostics.
      * Defaults to 1000, accepts 0 through 10000, and uses 0 to disable buffering.
-     * Reserved for future log capture and replay on terminal failures and support bundle collection.
+     * Captured entries retain their original log level, timestamp, and message.
      */
     val connectionLogBufferSize: Int
 

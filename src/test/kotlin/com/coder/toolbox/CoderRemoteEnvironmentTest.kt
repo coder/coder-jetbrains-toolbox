@@ -804,7 +804,7 @@ class CoderRemoteEnvironmentTest {
         every { i18n.pnotr(any<String>()) } answers {
             localizedStrings.getOrPut(firstArg()) { mockk(relaxed = true) }
         }
-        val coderLogger = CoderLogger(logger, mockk<ToolboxUi>(relaxed = true), scope, i18n)
+        val coderLogger = CoderLogger(logger, mockk<ToolboxUi>(relaxed = true), scope, i18n, mockk(relaxed = true))
         every { context.cs } returns scope
         every { context.logger } returns coderLogger
         every { context.settingsStore } returns settingsStore
