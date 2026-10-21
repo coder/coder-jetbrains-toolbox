@@ -1,5 +1,6 @@
 package com.coder.toolbox.diagnostics
 
+import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.settings.CONNECTION_LOG_BUFFER_SIZE_RANGE
 import com.coder.toolbox.settings.ReadOnlyCoderSettings
 import com.jetbrains.toolbox.api.core.diagnostics.LogLevel
@@ -10,6 +11,11 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import java.time.Clock
 import java.time.Instant
+import java.time.format.DateTimeFormatterBuilder
+
+private const val REPLAY_CHUNK_SIZE = 100
+private const val BUFFERED_PREFIX = "[buffered] "
+private val BUFFERED_TIMESTAMP_FORMATTER = DateTimeFormatterBuilder().appendInstant(3).toFormatter()
 
 internal data class FlightRecorderEntry(val level: LogLevel, val timestamp: Instant, val message: String)
 
@@ -49,6 +55,57 @@ internal class FlightRecorder(
         record(level, timestamp, resolved, exception)
         // Toolbox may evaluate this later if its level changes. Never evaluate the original supplier twice.
         return { resolved }
+    }
+
+    fun flush(reason: String, sessionId: SessionId? = null) {
+        synchronized(lock) {
+            if (count == 0 || logger.effectiveLevel.value == LogLevel.OFF) return
+            if (!replay("${BUFFERED_PREFIX}replaying $count buffered entries ($reason)", sessionId)) return
+
+            while (count > 0) {
+                if (logger.effectiveLevel.value == LogLevel.OFF) return
+                val chunkSize = minOf(count, REPLAY_CHUNK_SIZE)
+                val message = buildString {
+                    repeat(chunkSize) { index ->
+                        if (index > 0) append('\n')
+                        val entry = requireNotNull(entries[(oldestRecordIndex + index) % entries.size])
+                        appendBufferedEntry(entry)
+                    }
+                }
+                if (!replay(message, sessionId)) return
+
+                repeat(chunkSize) {
+                    entries[oldestRecordIndex] = null
+                    oldestRecordIndex = if (oldestRecordIndex == entries.lastIndex) 0 else oldestRecordIndex + 1
+                }
+                count -= chunkSize
+            }
+
+            replay("${BUFFERED_PREFIX}end of buffered logs ($reason)", sessionId)
+        }
+    }
+
+    private fun StringBuilder.appendBufferedEntry(entry: FlightRecorderEntry) {
+        append(BUFFERED_PREFIX)
+        append(BUFFERED_TIMESTAMP_FORMATTER.format(entry.timestamp))
+        append(' ').append(entry.level.name).append(' ')
+        entry.message.lineSequence().forEachIndexed { index, line ->
+            if (index > 0) append('\n').append(BUFFERED_PREFIX)
+            append(line)
+        }
+    }
+
+    private fun replay(message: String, sessionId: SessionId?): Boolean {
+        val level = logger.effectiveLevel.value
+        if (level == LogLevel.OFF) return false
+        val text = withSessionId(sessionId, message)
+        when (level) {
+            LogLevel.TRACE, LogLevel.DEBUG, LogLevel.INFO -> logger.info(text)
+            LogLevel.WARN -> logger.warn(text)
+            LogLevel.ERROR -> logger.error(text)
+            LogLevel.OFF -> return false
+        }
+        return true
     }
 
     private fun record(level: LogLevel, timestamp: Instant, message: String, exception: Throwable?) {

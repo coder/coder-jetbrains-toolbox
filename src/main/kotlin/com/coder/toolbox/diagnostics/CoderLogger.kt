@@ -235,6 +235,11 @@ class CoderLogger(
     internal fun record(level: LogLevel, exception: Throwable?, message: () -> String): () -> String =
         flightRecorder.record(level, exception, message)
 
+    /** Replays and removes buffered logs, oldest first, with an optional session prefix. */
+    fun flush(reason: String, sessionId: SessionId? = null) {
+        flightRecorder.flush(reason, sessionId)
+    }
+
     /**
      * Displays an informational popup on a child of the plugin coroutine scope rather than on
      * the caller's coroutine, without waiting for it.
