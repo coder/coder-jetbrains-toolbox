@@ -38,12 +38,12 @@ internal class FlightRecorder(
     private val capacity: Int get() = synchronized(lock) { entries.size }
 
     fun record(level: LogLevel, message: String, exception: Throwable? = null) {
-        if (capacity == 0 || logger.isEnabled(level)) return
+        if (capacity == 0 || logger.effectiveLevel.value == LogLevel.OFF || logger.isEnabled(level)) return
         record(level, clock.instant(), message, exception)
     }
 
     fun record(level: LogLevel, exception: Throwable?, message: () -> String): () -> String {
-        if (capacity == 0 || logger.isEnabled(level)) return message
+        if (capacity == 0 || logger.effectiveLevel.value == LogLevel.OFF || logger.isEnabled(level)) return message
         val timestamp = clock.instant()
         val resolved = message()
         record(level, timestamp, resolved, exception)
