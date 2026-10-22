@@ -158,6 +158,7 @@ class CoderRemoteProvider(
                             sessionIds,
                             "Workspaces have changed, reconfiguring CLI: $resolvedEnvironments",
                         )
+                        context.logger.flush("workspaces_changed")
                         configureSsh(cli, resolvedEnvironments)
                     }
 
@@ -195,6 +196,7 @@ class CoderRemoteProvider(
                                 "Your Coder session has expired. Please re-authenticate and try again.",
                                 ex
                             )
+                            context.logger.flush("coder_session_expired")
                             break
                         }
                         context.logger.error(sessionIds, ex, "workspace polling error encountered")
@@ -359,6 +361,7 @@ class CoderRemoteProvider(
         val activeClient = client
         val activeCli = cli
         context.logger.info(sessionIds, "Logging out ${activeClient?.me?.username}...")
+        context.logger.flush("logout")
         try {
             pollJob?.cancelAndJoin()
             activeClient?.close()
@@ -376,6 +379,7 @@ class CoderRemoteProvider(
                         "Sign in and try logging out again to remove it.",
                 ex,
             )
+            context.logger.flush("cli_logout_failed")
         } finally {
             close()
         }
@@ -422,6 +426,7 @@ class CoderRemoteProvider(
         accountDropdownField.visibility.update { false }
         router.clear()
         context.logger.info(sessionIds, "Coder plugin is now closed")
+        context.logger.flush("provider_closed")
     }
 
     private fun softClose() {

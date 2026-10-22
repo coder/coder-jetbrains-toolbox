@@ -1,7 +1,13 @@
 package com.coder.toolbox.diagnostics
 
+import com.coder.toolbox.CoderRemoteEnvironment
+import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.sdk.DataGen
+import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
+import com.coder.toolbox.session.SessionIdRegistry
 import com.coder.toolbox.settings.ReadOnlyCoderSettings
+import com.coder.toolbox.views.Action
 import com.jetbrains.toolbox.api.core.diagnostics.LogLevel
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
@@ -11,11 +17,13 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -732,6 +740,82 @@ class CoderLoggerFlightRecorderTest {
         assertTrue(lines.first().endsWith("Z DEBUG failed request"))
         assertEquals("[buffered] java.lang.IllegalStateException: failure", lines[1])
         assertTrue(lines.all { it.startsWith("[buffered] ") })
+    }
+
+    @Test
+    fun `action failure replays the preceding context with its current session`() = runTest {
+        // given
+        val logger = CoderLogger(delegate, ui, backgroundScope, i18n, settings)
+        val context = mockk<CoderToolboxContext>(relaxed = true)
+        every { context.logger } returns logger
+        every { context.cs } returns this
+        val sessionId = SessionId.generate()
+        val failure = IllegalStateException("stop failed")
+        val action = Action(context, "Stop workspace") { throw failure }
+            .withCurrentSessionId { sessionId }
+        logger.debug(sessionId, "before stopping")
+
+        // when
+        action.run()
+        runCurrent()
+
+        // then
+        verify(exactly = 1) { delegate.error(failure, "client_session_id=$sessionId stop failed") }
+        val prefix = "client_session_id=$sessionId "
+        assertEquals(3, calls.size)
+        assertEquals(
+            "${prefix}[buffered] replaying 1 buffered entries (action_failed Stop workspace)",
+            calls.first().message,
+        )
+        assertTrue(calls[1].message.endsWith("DEBUG ${prefix}before stopping"))
+        assertEquals(
+            "${prefix}[buffered] end of buffered logs (action_failed Stop workspace)",
+            calls.last().message,
+        )
+    }
+
+    @Test
+    fun `environment status update replays context and the filtered trigger through CoderLogger`() = runTest {
+        // given
+        logLevel.value = LogLevel.ERROR
+        val logger = CoderLogger(delegate, ui, backgroundScope, i18n, settings)
+        val context = mockk<CoderToolboxContext>(relaxed = true)
+        every { context.logger } returns logger
+        every { context.cs } returns backgroundScope
+        every { context.i18n } returns i18n
+        val workspace = DataGen.workspace(
+            name = "workspace-${UUID.randomUUID()}",
+            agents = mapOf("agent" to UUID.randomUUID().toString()),
+        )
+        val agent = requireNotNull(workspace.latestBuild.resources.single().agents).single()
+        val environment = CoderRemoteEnvironment(
+            context, mockk(relaxed = true), mockk(relaxed = true), Channel(Channel.CONFLATED), workspace, agent,
+        )
+        val sessionId = SessionIdRegistry.startSession(context, workspace.name, agent.name)
+        try {
+            logger.flush("setup")
+            calls.clear()
+            logger.debug(sessionId, "before status update")
+
+            // when
+            environment.update(
+                workspace.copy(latestBuild = workspace.latestBuild.copy(status = WorkspaceStatus.STOPPING)),
+                agent,
+            )
+
+            // then
+            val prefix = "client_session_id=$sessionId "
+            val reason = "environment_status_changed ${environment.id}"
+            assertEquals(List(3) { LogLevel.ERROR }, calls.map { it.level })
+            assertEquals("${prefix}[buffered] replaying 2 buffered entries ($reason)", calls.first().message)
+            val lines = calls[1].message.lines()
+            assertTrue(lines[0].endsWith("DEBUG ${prefix}before status update"))
+            assertTrue(lines[1].contains("INFO ${prefix}Overall status for workspace ${environment.id}"))
+            assertEquals("${prefix}[buffered] end of buffered logs ($reason)", calls.last().message)
+        } finally {
+            environment.dispose()
+            SessionIdRegistry.removeSession(workspace.name, agent.name)
+        }
     }
 
     private fun assertReplayedLevels(bufferedLevels: List<LogLevel>, replayLevel: LogLevel) {

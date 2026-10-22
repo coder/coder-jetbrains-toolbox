@@ -240,6 +240,7 @@ class CoderRemoteEnvironment(
                     Action(context, "Update and restart") {
                         withProgress("Updating and restarting workspace…") {
                             context.logger.debug(currentSessionId(), "Updating and re-starting $id...")
+                            context.logger.flush("workspace_restarting $id", currentSessionId())
                             val build = client.updateWorkspace(workspace)
                             applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
                             workspaceRefreshTrigger.trySend(true)
@@ -252,6 +253,7 @@ class CoderRemoteEnvironment(
                     withProgress("Stopping workspace…") {
                         tryStopSshConnection()
                         context.logger.debug(currentSessionId(), "Stopping $id...")
+                        context.logger.flush("workspace_stopping $id", currentSessionId())
                         val build = client.stopWorkspace(workspace)
                         applyWorkspaceSnapshot(workspace.copy(latestBuild = build), agent)
                         workspaceRefreshTrigger.trySend(true)
@@ -279,6 +281,7 @@ class CoderRemoteEnvironment(
                 if (confirmation == workspace.name) {
                     withProgress("Deleting workspace…") {
                         context.logger.debug(currentSessionId(), "Deleting $id...")
+                        context.logger.flush("workspace_deleting $id", currentSessionId())
                         deleteWorkspace()
                     }
                 }
@@ -301,6 +304,7 @@ class CoderRemoteEnvironment(
                     "The SSH connection to workspace $name could not be dropped in time, " +
                             "going to stop the workspace while the SSH connection is live"
                 context.logger.warn(currentSessionId(), message)
+                context.logger.flush("ssh_disconnect_timeout $id", currentSessionId())
             }
         }
     }
@@ -386,6 +390,7 @@ class CoderRemoteEnvironment(
         }
         removedSessionId?.let { sessionId ->
             context.logger.info(sessionId, "Removed Toolbox SSH session for $id")
+            context.logger.flush("ssh_session_removed $id", sessionId)
         }
     }
 
@@ -412,6 +417,7 @@ class CoderRemoteEnvironment(
             "Toolbox is disconnecting SSH from $id $disconnectKind.$stateInference " +
                     "Latest known Coder state: $latestCoderState",
         )
+        context.logger.flush("ssh_disconnected $id", sessionId)
         context.logger.info(sessionId, "Stopping the network metrics poll job for $id")
         pollJob?.cancel()
         pollJob = null
@@ -425,6 +431,7 @@ class CoderRemoteEnvironment(
                 SessionIdRegistry.removeSession(workspace.name, it.name)
             }?.let {
                 context.logger.info(it, "Removed Toolbox SSH session for $id after manual disconnect")
+                context.logger.flush("ssh_session_removed_after_manual_disconnect $id", it)
             }
         }
     }
@@ -499,6 +506,7 @@ class CoderRemoteEnvironment(
                     "agent lifecycle state: ${previousAgent?.lifecycleState} -> ${agent?.lifecycleState}, " +
                     "login before ready: ${previousAgent?.loginBeforeReady} -> ${agent?.loginBeforeReady}"
         context.logger.info(sessionId, message)
+        context.logger.flush("environment_status_changed $id", sessionId)
     }
 
     /**
