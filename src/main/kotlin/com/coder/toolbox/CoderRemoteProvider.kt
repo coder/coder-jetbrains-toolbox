@@ -158,7 +158,6 @@ class CoderRemoteProvider(
                             sessionIds,
                             "Workspaces have changed, reconfiguring CLI: $resolvedEnvironments",
                         )
-                        context.logger.flush("workspaces_changed")
                         configureSsh(cli, resolvedEnvironments)
                     }
 

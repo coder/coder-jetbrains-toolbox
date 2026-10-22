@@ -419,7 +419,6 @@ ID, normally `workspace.agent`.
 | Event                                                                              | Replay reason                                                                     |
 |------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
 | An environment changes from reachable to unreachable                               | `environment_status_changed <id>`                                                 |
-| The resolved workspace/environment list changes                                    | `workspaces_changed`                                                              |
 | The workspace filter changes                                                       | `workspace_filter_changed`                                                        |
 | A workspace restart, stop, or deletion is requested                                | `workspace_restarting <id>`, `workspace_stopping <id>`, `workspace_deleting <id>` |
 | An SSH disconnect request times out before workspace stop                          | `ssh_disconnect_timeout <id>`                                                     |
