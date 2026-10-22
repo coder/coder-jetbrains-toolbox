@@ -10,8 +10,7 @@ Connects your JetBrains IDE to Coder workspaces
 
 To install this plugin using JetBrains Toolbox, follow the steps below.
 
-1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/). Make sure it's the `2.6.0.40632` release or
-   above.
+1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/) **3.9 or newer**. Earlier versions are not supported.
 2. Launch the Toolbox app and sign in with your JetBrains account (if needed).
 
 ### Install Coder plugin via URI
@@ -576,9 +575,10 @@ source, and agent diagnostics. Available information depends on your permissions
 Review the bundle before sharing, following
 [Coder's support-bundle guidance](https://coder.com/docs/support/support-bundle).
 
-Support bundles require a Coder CLI that supports `coder support bundle` (Coder 2.10 or newer). Collection runs until
-the CLI finishes or you cancel log collection. If the CLI is unavailable or unsupported, or authentication or
-connectivity fails, the plugin removes any partial bundle and attempts to include
+Support bundles require **Coder server and CLI 2.10.0 or newer**, which introduced
+[`coder support bundle`](https://coder.com/changelog/coder-v2-10-0). Collection runs until the CLI finishes or you cancel
+log collection. If the CLI is unavailable or unsupported, or authentication or connectivity fails, the plugin removes
+any partial bundle and attempts to include
 `coder-support-error.txt` instead. Local SSH logs and Toolbox's other diagnostics remain available.
 
 ### HTTP Request Logging
