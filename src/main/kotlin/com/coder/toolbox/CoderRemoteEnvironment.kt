@@ -162,7 +162,6 @@ class CoderRemoteEnvironment(
 
     private fun refreshAvailableActions() {
         val actions = mutableListOf<ActionDescription>()
-        context.logger.debug("Refreshing available actions for workspace $id with status: $environmentStatus")
         if (environmentStatus.canStop() && agent != null) {
             actions.add(Action(context, "Open web terminal") {
                 context.logger.debug("Launching web terminal for $id...")
