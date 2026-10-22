@@ -10,7 +10,8 @@ Connects your JetBrains IDE to Coder workspaces
 
 To install this plugin using JetBrains Toolbox, follow the steps below.
 
-1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/) **3.9 or newer**. Earlier versions are not supported.
+1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/) **3.9 or newer**. Earlier versions are not
+   supported.
 2. Launch the Toolbox app and sign in with your JetBrains account (if needed).
 
 ### Install Coder plugin via URI
@@ -417,7 +418,7 @@ ID, normally `workspace.agent`.
 
 | Event                                                                              | Replay reason                                                                     |
 |------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
-| Workspace or agent status is published                                             | `environment_status_changed <id>`                                                 |
+| An environment changes from reachable to unreachable                               | `environment_status_changed <id>`                                                 |
 | The resolved workspace/environment list changes                                    | `workspaces_changed`                                                              |
 | The workspace filter changes                                                       | `workspace_filter_changed`                                                        |
 | A workspace restart, stop, or deletion is requested                                | `workspace_restarting <id>`, `workspace_stopping <id>`, `workspace_deleting <id>` |
@@ -576,7 +577,8 @@ Review the bundle before sharing, following
 [Coder's support-bundle guidance](https://coder.com/docs/support/support-bundle).
 
 Support bundles require **Coder server and CLI 2.10.0 or newer**, which introduced
-[`coder support bundle`](https://coder.com/changelog/coder-v2-10-0). Collection runs until the CLI finishes or you cancel
+[`coder support bundle`](https://coder.com/changelog/coder-v2-10-0). Collection runs until the CLI finishes or you
+cancel
 log collection. If the CLI is unavailable or unsupported, or authentication or connectivity fails, the plugin removes
 any partial bundle and attempts to include
 `coder-support-error.txt` instead. Local SSH logs and Toolbox's other diagnostics remain available.

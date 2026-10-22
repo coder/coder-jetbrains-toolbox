@@ -3,6 +3,7 @@ package com.coder.toolbox.diagnostics
 import com.coder.toolbox.CoderRemoteEnvironment
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.sdk.DataGen
+import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
@@ -27,6 +28,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -775,7 +777,7 @@ class CoderLoggerFlightRecorderTest {
     }
 
     @Test
-    fun `environment status update replays context and the filtered trigger through CoderLogger`() = runTest {
+    fun `environment becoming unreachable replays context and the filtered trigger through CoderLogger`() = runTest {
         // given
         logLevel.value = LogLevel.ERROR
         val logger = CoderLogger(delegate, ui, backgroundScope, i18n, settings)
@@ -796,6 +798,7 @@ class CoderLoggerFlightRecorderTest {
             logger.flush("setup")
             calls.clear()
             logger.debug(sessionId, "before status update")
+            assertTrue(environment.state.value.isReachable)
 
             // when
             environment.update(
@@ -804,6 +807,7 @@ class CoderLoggerFlightRecorderTest {
             )
 
             // then
+            assertFalse(environment.state.value.isReachable)
             val prefix = "client_session_id=$sessionId "
             val reason = "environment_status_changed ${environment.id}"
             assertEquals(List(3) { LogLevel.ERROR }, calls.map { it.level })
@@ -815,6 +819,55 @@ class CoderLoggerFlightRecorderTest {
         } finally {
             environment.dispose()
             SessionIdRegistry.removeSession(workspace.name, agent.name)
+        }
+    }
+
+    @Test
+    fun `status updates without losing reachability preserve buffered context`() = runTest {
+        // given
+        val logger = CoderLogger(delegate, ui, backgroundScope, i18n, settings)
+        val context = mockk<CoderToolboxContext>(relaxed = true)
+        every { context.logger } returns logger
+        every { context.cs } returns backgroundScope
+        every { context.i18n } returns i18n
+        val workspace = DataGen.workspace(
+            name = "workspace-${UUID.randomUUID()}",
+            agents = mapOf("agent" to UUID.randomUUID().toString()),
+        ).let { it.copy(latestBuild = it.latestBuild.copy(status = WorkspaceStatus.STOPPED)) }
+        val agent = requireNotNull(workspace.latestBuild.resources.single().agents).single()
+        val environment = CoderRemoteEnvironment(
+            context, mockk(relaxed = true), mockk(relaxed = true), Channel(Channel.CONFLATED), workspace, agent,
+        )
+        try {
+            assertFalse(environment.state.value.isReachable)
+            logger.debug("before status updates")
+            val updates = listOf(
+                Triple(WorkspaceStatus.FAILED, agent, false),
+                Triple(WorkspaceStatus.RUNNING, agent, true),
+                Triple(WorkspaceStatus.RUNNING, agent.copy(status = WorkspaceAgentStatus.DISCONNECTED), true),
+            )
+            for ((status, updatedAgent, expectedReachability) in updates) {
+                // when
+                environment.update(
+                    workspace.copy(latestBuild = workspace.latestBuild.copy(id = UUID.randomUUID(), status = status)),
+                    updatedAgent,
+                )
+
+                // then
+                assertEquals(expectedReachability, environment.state.value.isReachable)
+                assertTrue(calls.none { it.message.startsWith("[buffered]") })
+            }
+            assertEquals(3, calls.size)
+            assertTrue(calls.all { it.level == LogLevel.INFO && it.message.startsWith("Overall status for workspace") })
+
+            // when
+            calls.clear()
+            logger.flush("support_bundle")
+
+            // then
+            assertEquals(listOf("before status updates"), replayedDebugMessages())
+        } finally {
+            environment.dispose()
         }
     }
 

@@ -485,6 +485,7 @@ class CoderRemoteEnvironment(
         val previousEnvironmentStatus = environmentStatus
         val previousWorkspace = workspace
         val previousAgent = agent
+        val wasReachable = state.value.isReachable
         val sessionId = currentSessionId()
 
         environmentStatus = newState
@@ -505,7 +506,9 @@ class CoderRemoteEnvironment(
                     "agent lifecycle state: ${previousAgent?.lifecycleState} -> ${agent?.lifecycleState}, " +
                     "login before ready: ${previousAgent?.loginBeforeReady} -> ${agent?.loginBeforeReady}"
         context.logger.info(sessionId, message)
-        context.logger.flush("environment_status_changed $id", sessionId)
+        if (wasReachable && !state.value.isReachable) {
+            context.logger.flush("environment_status_changed $id", sessionId)
+        }
     }
 
     /**
