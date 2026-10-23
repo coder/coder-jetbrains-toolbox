@@ -363,10 +363,12 @@ configure the capacity up to **10000 entries** using **Connection log buffer siz
 its current log level are logged normally; messages it filters out are captured in a fixed capacity array ring buffer.
 When the buffer fills, each new entry replaces the oldest entry.
 
-Each entry preserves its original log level, UTC timestamp, message text, and exception details when present. The limit
-counts entries, not lines or bytes: a multiline message or a message with a stack trace occupies one entry, so memory
-usage depends on message size. Capture covers messages sent through the Coder plugin logger; CLI SSH file logs are
-collected separately as described in [Coder Support Bundles](#coder-support-bundles).
+Each entry preserves its original log level, message text, and exception details when present. Its UTC timestamp marks
+when the prepared entry is accepted into the buffer, after any lazy message evaluation and exception formatting.
+Entries are replayed and evicted in that acceptance order. The limit counts entries, not lines or bytes: a multiline
+message or a message with a stack trace occupies one entry, so memory usage depends on message size. Capture covers
+messages sent through the Coder plugin logger; CLI SSH file logs are collected separately as described in
+[Coder Support Bundles](#coder-support-bundles).
 
 There is one shared buffer per running plugin instance, so a replay can contain context from several workspaces.
 Messages retain any `client_session_id` recorded with them. Environment-specific replays also use the triggering
@@ -452,8 +454,8 @@ Example message text, before Toolbox adds its own timestamp and metadata:
 ```
 
 The `retry scheduled` line is a continuation of the first entry. Every continuation line gets a bare `[buffered] `
-prefix. Entry timestamps use ISO 8601 in UTC with millisecond precision and show when the message was originally
-logged. Toolbox adds its own timestamp for the replay time, which can use a different time zone.
+prefix. Entry timestamps use ISO 8601 in UTC with millisecond precision and show when the prepared entry was accepted
+into the buffer. Toolbox adds its own timestamp for the replay time, which can use a different time zone.
 
 Each chunk is one multiline Toolbox record. Only its first line receives Toolbox's usual timestamp, severity, and
 other metadata; subsequent lines contain the buffered message text. Original severity labels such as `DEBUG` and

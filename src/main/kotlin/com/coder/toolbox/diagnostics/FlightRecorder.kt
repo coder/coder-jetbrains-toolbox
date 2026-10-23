@@ -45,14 +45,13 @@ internal class FlightRecorder(
 
     fun record(level: LogLevel, message: String, exception: Throwable? = null) {
         if (capacity == 0 || logger.effectiveLevel.value == LogLevel.OFF || logger.isEnabled(level)) return
-        record(level, clock.instant(), message, exception)
+        recordEntry(level, message, exception)
     }
 
     fun record(level: LogLevel, exception: Throwable?, message: () -> String): () -> String {
         if (capacity == 0 || logger.effectiveLevel.value == LogLevel.OFF || logger.isEnabled(level)) return message
-        val timestamp = clock.instant()
         val resolved = message()
-        record(level, timestamp, resolved, exception)
+        recordEntry(level, resolved, exception)
         // Toolbox may evaluate this later if its level changes. Never evaluate the original supplier twice.
         return { resolved }
     }
@@ -108,11 +107,11 @@ internal class FlightRecorder(
         return true
     }
 
-    private fun record(level: LogLevel, timestamp: Instant, message: String, exception: Throwable?) {
+    private fun recordEntry(level: LogLevel, message: String, exception: Throwable?) {
         val text = if (exception == null) message else "$message\n${exception.stackTraceToString()}"
-        val entry = FlightRecorderEntry(level, timestamp, text)
         synchronized(lock) {
             if (entries.isEmpty()) return
+            val entry = FlightRecorderEntry(level, clock.instant(), text)
             val newestRecordIndex = oldestRecordIndex + count
             entries[if (newestRecordIndex >= entries.size) newestRecordIndex - entries.size else newestRecordIndex] =
                 entry

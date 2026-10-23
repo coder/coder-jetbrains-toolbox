@@ -25,10 +25,15 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import java.io.PrintWriter
+import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.Optional
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.stream.Stream
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -449,6 +454,104 @@ class CoderLoggerFlightRecorderTest {
         assertTrue(lines[3].endsWith("Z DEBUG failed"))
         assertEquals("[buffered] java.lang.IllegalStateException: failure", lines[4])
         assertTrue(lines.drop(1).all { it.startsWith("[buffered] ") })
+    }
+
+    @Test
+    fun `concurrent lazy logging timestamps entries in buffer acceptance order`() = runTest {
+        // given
+        bufferSize.value = 2
+        val firstTimestamp = Instant.parse("2026-10-23T12:00:00.001Z")
+        val secondTimestamp = firstTimestamp.plusMillis(1)
+        val clock = mockk<Clock> {
+            every { instant() } returnsMany listOf(firstTimestamp, secondTimestamp)
+        }
+        mockkStatic(Clock::class)
+        val logger = try {
+            every { Clock.systemUTC() } returns clock
+            CoderLogger(delegate, ui, backgroundScope, i18n, settings)
+        } finally {
+            unmockkStatic(Clock::class)
+        }
+        val supplierStarted = CountDownLatch(1)
+        val finishSupplier = CountDownLatch(1)
+        val producers = Executors.newFixedThreadPool(2)
+        try {
+            // when
+            val delayed = producers.submit {
+                logger.debug {
+                    supplierStarted.countDown()
+                    assertTrue(finishSupplier.await(10, TimeUnit.SECONDS))
+                    "prepared later"
+                }
+            }
+            assertTrue(supplierStarted.await(5, TimeUnit.SECONDS))
+            producers.submit { logger.debug("prepared first") }.get(5, TimeUnit.SECONDS)
+            finishSupplier.countDown()
+            delayed.get(5, TimeUnit.SECONDS)
+            logger.flush("support_bundle")
+
+            // then
+            assertEquals(listOf("prepared first", "prepared later"), replayedDebugMessages())
+            assertEquals(
+                listOf(
+                    "[buffered] $firstTimestamp DEBUG prepared first",
+                    "[buffered] $secondTimestamp DEBUG prepared later",
+                ),
+                calls[1].message.lines(),
+            )
+        } finally {
+            finishSupplier.countDown()
+            producers.shutdownNow()
+            producers.awaitTermination(5, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test
+    fun `concurrent exception formatting retains the newest accepted entry at capacity one`() = runTest {
+        // given
+        bufferSize.value = 1
+        val firstTimestamp = Instant.parse("2026-10-23T12:00:00.001Z")
+        val secondTimestamp = firstTimestamp.plusMillis(1)
+        val clock = mockk<Clock> {
+            every { instant() } returnsMany listOf(firstTimestamp, secondTimestamp)
+        }
+        mockkStatic(Clock::class)
+        val logger = try {
+            every { Clock.systemUTC() } returns clock
+            CoderLogger(delegate, ui, backgroundScope, i18n, settings)
+        } finally {
+            unmockkStatic(Clock::class)
+        }
+        val formattingStarted = CountDownLatch(1)
+        val finishFormatting = CountDownLatch(1)
+        val exception = object : RuntimeException("delayed exception") {
+            override fun printStackTrace(writer: PrintWriter) {
+                formattingStarted.countDown()
+                assertTrue(finishFormatting.await(10, TimeUnit.SECONDS))
+                super.printStackTrace(writer)
+            }
+        }
+        val producers = Executors.newFixedThreadPool(2)
+        try {
+            // when
+            val delayed = producers.submit { logger.debug(exception, "prepared later") }
+            assertTrue(formattingStarted.await(5, TimeUnit.SECONDS))
+            producers.submit { logger.debug("prepared first") }.get(5, TimeUnit.SECONDS)
+            finishFormatting.countDown()
+            delayed.get(5, TimeUnit.SECONDS)
+            logger.flush("support_bundle")
+
+            // then
+            assertEquals(3, calls.size)
+            assertEquals("[buffered] replaying 1 buffered entries (support_bundle)", calls.first().message)
+            assertEquals("[buffered] $secondTimestamp DEBUG prepared later", calls[1].message.lines().first())
+            assertTrue(calls[1].message.contains("delayed exception"))
+            assertTrue(calls.none { it.message.contains("prepared first") })
+        } finally {
+            finishFormatting.countDown()
+            producers.shutdownNow()
+            producers.awaitTermination(5, TimeUnit.SECONDS)
+        }
     }
 
     @Test
