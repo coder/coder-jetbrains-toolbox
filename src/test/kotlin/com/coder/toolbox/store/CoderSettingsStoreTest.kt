@@ -12,6 +12,7 @@ import java.nio.file.Path
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 
 class CoderSettingsStoreTest {
     private var originalOsName: String? = null
@@ -44,6 +45,44 @@ class CoderSettingsStoreTest {
         assertEquals(false, store.useKeyring)
         store.updateUseKeyring(true)
         assertTrue(store.useKeyring)
+    }
+
+    @Test
+    fun `connection log buffer defaults to 1000`() {
+        assertEquals(1000, store.readOnly().connectionLogBufferSize)
+    }
+
+    @Test
+    fun `connection log buffer persists valid sizes under the documented key`() {
+        val backingStore = pluginTestSettingsStore()
+        val settings = CoderSettingsStore(backingStore, Environment(), mockk<Logger>(relaxed = true))
+
+        listOf(0, 1, 2500, 10000).forEach { size ->
+            settings.updateConnectionLogBufferSize(size)
+
+            assertEquals(size.toString(), backingStore["connectionLogBufferSize"])
+            val reloaded = CoderSettingsStore(backingStore, Environment(), mockk<Logger>(relaxed = true))
+            assertEquals(size, reloaded.readOnly().connectionLogBufferSize)
+        }
+    }
+
+    @Test
+    fun `invalid stored connection log buffer sizes fall back to the default`() {
+        listOf("", "invalid", "1.5", "-1", "10001", "2147483648").forEach { value ->
+            val settings = storeWith("connectionLogBufferSize" to value)
+
+            assertEquals(1000, settings.readOnly().connectionLogBufferSize, value)
+        }
+    }
+
+    @Test
+    fun `invalid connection log buffer updates preserve the saved size`() {
+        store.updateConnectionLogBufferSize(2500)
+
+        listOf(Int.MIN_VALUE, -1, 10001, Int.MAX_VALUE).forEach { size ->
+            assertFailsWith<IllegalArgumentException> { store.updateConnectionLogBufferSize(size) }
+            assertEquals(2500, store.readOnly().connectionLogBufferSize)
+        }
     }
 
     @Test

@@ -5,10 +5,12 @@
 ### Added
 
 - include a Coder support bundle for the selected workspace and agent only when using the environment's _Collect logs_
-  action in Toolbox
+  action in Toolbox; requires Coder server and CLI 2.10.0 or newer. Toolbox logs and eligible local SSH logs remain
+  available when a Coder support bundle cannot be generated
 - include active and recent local CLI SSH logs in workspace log collection. For CLI 2.4.0 and newer the plugin now
   passes an explicit `--log-dir` to the SSH ProxyCommand (the configured directory, `CODER_SSH_LOG_DIR`, or
   `ssh-logs/` in the deployment's plugin data directory) and collects and cleans up logs from that same directory
+- add a flight recorder that keeps recent plugin messages below Toolbox's log level in memory for connection diagnostics
 
 ### Changed
 
@@ -18,8 +20,7 @@
 - remove stored credentials on explicit logout, and remove old plaintext session files after successful keyring login
 - bound credential and header commands to 60 seconds while preserving unbounded workspace starts and complete progress
   lines
-
-- upgraded the Toolbox plugin API, dropping support for Toolbox versions older than 3.7.2
+- upgraded the Toolbox plugin API, dropping support for Toolbox versions older than 3.9.0
 - display live workspace start output from the Coder CLI and poll build status and provisioner output while updating,
   restarting, or stopping workspaces
 

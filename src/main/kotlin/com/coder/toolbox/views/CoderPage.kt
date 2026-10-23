@@ -92,12 +92,14 @@ class Action(
                         ex.reason
                     } else ex.message
                 } else ex.message
+                val sessionId = currentSessionId()
                 context.logger.logAndShowError(
-                    currentSessionId(),
+                    sessionId,
                     "Error while running `$description`",
                     textError ?: "",
                     ex,
                 )
+                context.logger.flush("action_failed $description", sessionId)
             }
         }
     }

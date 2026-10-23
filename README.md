@@ -10,8 +10,8 @@ Connects your JetBrains IDE to Coder workspaces
 
 To install this plugin using JetBrains Toolbox, follow the steps below.
 
-1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/). Make sure it's the `2.6.0.40632` release or
-   above.
+1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/) **3.9 or newer**. Earlier versions are not
+   supported.
 2. Launch the Toolbox app and sign in with your JetBrains account (if needed).
 
 ### Install Coder plugin via URI
@@ -348,12 +348,122 @@ error.
 
 ## Debugging and Reporting issues
 
-Enabling debug logging is essential for diagnosing issues with the Toolbox plugin, especially when SSH connections to
-the remote environment fail — it provides detailed output that includes SSH negotiation and command execution, which is
-not visible at the default log level.
+The plugin's flight recorder keeps recent messages below Toolbox's log level in memory and replays them at connection
+diagnostic checkpoints and when collecting a Coder support bundle. This can preserve the context leading up to an issue
+without enabling debug logging beforehand. Enable debug logging when you need continuous detailed output, including
+messages from Toolbox itself.
 
 If you encounter a problem with Coder's JetBrains Toolbox plugin, follow the steps below to gather more information and
 help us diagnose and resolve it quickly.
+
+### Flight recorder
+
+The flight recorder is enabled by default with a capacity of **1000 log entries** from the Coder plugin logger. You can
+configure the capacity up to **10000 entries** using **Connection log buffer size**. Messages that Toolbox accepts at
+its current log level are logged normally; messages it filters out are captured in a fixed capacity array ring buffer.
+When the buffer fills, each new entry replaces the oldest entry.
+
+Each entry preserves its original log level, message text, and exception details when present. Its UTC timestamp marks
+when the prepared entry is accepted into the buffer, after any lazy message evaluation and exception formatting.
+Entries are replayed and evicted in that acceptance order. The limit counts entries, not lines or bytes: a multiline
+message or a message with a stack trace occupies one entry, so memory usage depends on message size. Capture covers
+messages sent through the Coder plugin logger; CLI SSH file logs are collected separately as described in
+[Coder Support Bundles](#coder-support-bundles).
+
+There is one shared buffer per running plugin instance, so a replay can contain context from several workspaces.
+Messages retain any `client_session_id` recorded with them. Environment-specific replays also use the triggering
+environment's current session ID; provider-wide replays do not add a session prefix. The buffer remains in memory until
+replayed or discarded. Entries that have not been replayed are lost when the plugin instance ends or Toolbox exits.
+
+#### Configuring the buffer
+
+Open the **Coder main page** (the page listing your environments), click the **action menu on the right side of the
+page header**, and select **Settings**. Under **General**, change **Connection log buffer size** and click **Save**.
+
+| Setting                    | Plugin settings key       | Default        | Valid values                                 |
+|----------------------------|---------------------------|----------------|----------------------------------------------|
+| Connection log buffer size | `connectionLogBufferSize` | `1000` entries | Whole numbers from `0` to `10000`, inclusive |
+
+Changes take effect without restarting Toolbox:
+
+- Reducing the capacity keeps the newest entries that fit and discards older entries.
+- Increasing the capacity preserves all retained entries and allows more entries to be recorded.
+- Setting the capacity to `0` clears the buffer and disables recording and replay. Normal Toolbox logging continues.
+- The settings page rejects invalid input. An absent, malformed, or out-of-range stored value falls back to `1000`.
+
+#### Toolbox log levels and replay levels
+
+The recorder follows Toolbox's effective log level, including `--debug` and `--trace` launch flags. Changes to the
+Toolbox log level apply live. Each replay call uses a level Toolbox currently persists, while the original level of
+each entry stays in the message text.
+
+| Toolbox effective level | Logged normally          | New entries captured in memory | Replay level                                    |
+|-------------------------|--------------------------|--------------------------------|-------------------------------------------------|
+| ERROR                   | ERROR                    | WARN, INFO, DEBUG, TRACE       | ERROR                                           |
+| WARN                    | ERROR, WARN              | INFO, DEBUG, TRACE             | WARN                                            |
+| INFO                    | ERROR, WARN, INFO        | DEBUG, TRACE                   | INFO                                            |
+| DEBUG                   | ERROR, WARN, INFO, DEBUG | TRACE                          | INFO                                            |
+| TRACE                   | All levels               | None                           | INFO for entries retained from an earlier level |
+| OFF                     | None                     | None                           | No replay                                       |
+
+With Toolbox logging set to **OFF**, neither recording nor replay runs. Existing buffered entries remain available
+after logging is re-enabled, unless the capacity is set to `0` or the plugin instance ends in the meantime.
+
+The plugin's **HTTP logging level** is independent of this setting. For example, the recorder cannot capture HTTP
+headers or bodies when the HTTP logging setting does not generate those messages. See
+[HTTP Request Logging](#http-request-logging).
+
+#### Automatic replay triggers
+
+The following events flush the recorder. The reason appears in the replay header and footer; `<id>` is the environment
+ID, normally `workspace.agent`.
+
+| Event                                                                              | Replay reason                                                                     |
+|------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
+| An environment changes from reachable to unreachable                               | `environment_status_changed <id>`                                                 |
+| The workspace filter changes                                                       | `workspace_filter_changed`                                                        |
+| A workspace restart, stop, or deletion is requested                                | `workspace_restarting <id>`, `workspace_stopping <id>`, `workspace_deleting <id>` |
+| An SSH disconnect request times out before workspace stop                          | `ssh_disconnect_timeout <id>`                                                     |
+| Toolbox invokes the SSH disconnect callback                                        | `ssh_disconnected <id>`                                                           |
+| An environment's SSH session is removed during disposal or after manual disconnect | `ssh_session_removed <id>`, `ssh_session_removed_after_manual_disconnect <id>`    |
+| Logout begins, CLI logout fails, or the provider closes                            | `logout`, `cli_logout_failed`, `provider_closed`                                  |
+| The Coder session expires or access token refresh fails                            | `coder_session_expired`, `token_refresh_failed`                                   |
+| Unsafe deployment-controlled workspace, owner, or agent identifiers are reported   | `invalid_deployment_data`                                                         |
+| A workspace/deployment action fails                                                | `action_failed <action description>`                                              |
+| Workspace log collection starts Coder support bundle export                        | `support_bundle`                                                                  |
+
+Lifecycle flushes run immediately after their triggering log message, so that message is included if Toolbox filters
+it. Support bundle export flushes before collecting the bundle. These checkpoints also include normal state changes
+and user actions; a replay block alone does not mean that a connection failed.
+
+#### Reading replayed logs
+
+A flush replays entries from oldest to newest and removes each batch after it is logged. An empty buffer produces no
+header, entries, or footer. A completed flush makes one call for the header, one call per chunk of up to **100
+entries**,
+and one call for the footer. For example, 250 entries produce five Toolbox log calls.
+
+Example message text, before Toolbox adds its own timestamp and metadata:
+
+```text
+[buffered] replaying 2 buffered entries (support_bundle)
+[buffered] 2026-10-22T06:10:01.002Z DEBUG Connecting to demo.agent
+[buffered] retry scheduled
+[buffered] 2026-10-22T06:10:03.415Z TRACE Waiting for agent
+[buffered] end of buffered logs (support_bundle)
+```
+
+The `retry scheduled` line is a continuation of the first entry. Every continuation line gets a bare `[buffered] `
+prefix. Entry timestamps use ISO 8601 in UTC with millisecond precision and show when the prepared entry was accepted
+into the buffer. Toolbox adds its own timestamp for the replay time, which can use a different time zone.
+
+Each chunk is one multiline Toolbox record. Only its first line receives Toolbox's usual timestamp, severity, and
+other metadata; subsequent lines contain the buffered message text. Original severity labels such as `DEBUG` and
+`TRACE` therefore remain visible even when the Toolbox record itself is logged as INFO, WARN, or ERROR.
+
+Capture and export are best-effort because Toolbox schedules its own log writes and the effective level can change
+between recording and writing a message. Successfully replayed entries are not repeated by later flushes. If logging
+is switched to OFF during replay, the remaining entries stay buffered until another flush can run.
 
 ### Enable Debug Logging
 
@@ -375,10 +485,23 @@ There is no need to restart Toolbox, as it will begin logging at the __DEBUG__ l
 > [!WARNING]
 > Toolbox does not persist log level configuration between restarts.
 
-#### Viewing the Logs
+### Viewing the Logs
 
-Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly via Toolbox App Menu >
-About > Show log files.
+Normal plugin logs and replayed flight recorder entries are written through Toolbox's logger into the **Toolbox App
+log files**. Search for `[buffered]` to find replay blocks and their reasons. The recorder does not create a separate
+log file, and the **SSH proxy log directory** and plugin **Data directory** settings do not change where replayed
+entries are written.
+
+Open **Toolbox App Menu > Settings > About > Show log files** to locate the files. The standard directories are:
+
+| Operating system | Toolbox App log directory                |
+|------------------|------------------------------------------|
+| Windows          | `%LOCALAPPDATA%\JetBrains\Toolbox\logs\` |
+| macOS            | `~/Library/Logs/JetBrains/Toolbox/`      |
+| Linux            | `~/.local/share/JetBrains/Toolbox/logs/` |
+
+These locations are documented in
+the [JetBrains Toolbox App FAQ](https://www.jetbrains.com/help/toolbox-app/frequently-asked-questions.html).
 
 Alternatively, use the workspace environment's _Collect logs_ action to generate a ZIP file with Toolbox diagnostics
 and a Coder support bundle. See [Coder Support Bundles](#coder-support-bundles) below for the navigation steps and
@@ -403,11 +526,17 @@ To collect logs with a Coder support bundle:
 
 > [!NOTE]
 > The general Toolbox **Settings > About > Collect logs and diagnostic data** action does **not** generate a Coder
-> support bundle.
+> support bundle or explicitly flush the flight recorder. The **Collect logs** action in an individual environment's
+> action menu requests both. Previously replayed entries remain available in the Toolbox App log files.
 
 The plugin runs `coder support bundle` using the deployment's existing CLI login and targets the selected workspace
 and its agent, when available. It places `coder-support.zip` inside the environment's diagnostic directory in the
 Toolbox log archive. Collection does not start a stopped workspace.
+
+Before running the Coder CLI, the plugin flushes the flight recorder with reason `support_bundle` and the current
+session ID when available. Replayed entries go into the Toolbox App logs collected with the diagnostics; the recorder
+does not write a separate file into `coder-support.zip`. This replay is requested even if Coder bundle generation
+subsequently fails. Keep Toolbox logging enabled when collecting logs, since OFF disables replay.
 
 Recent local CLI SSH logs are added in place to `coder-support.zip` under `toolbox-logs/ssh/`. If the bundle could
 not be generated or is not a valid archive, the logs are written to a separate `coder-ssh.zip` in the diagnostic
@@ -448,9 +577,11 @@ source, and agent diagnostics. Available information depends on your permissions
 Review the bundle before sharing, following
 [Coder's support-bundle guidance](https://coder.com/docs/support/support-bundle).
 
-Support bundles require a Coder CLI that supports `coder support bundle` (Coder 2.10 or newer). Collection runs until
-the CLI finishes or you cancel log collection. If the CLI is unavailable or unsupported, or authentication or
-connectivity fails, the plugin removes any partial bundle and attempts to include
+Support bundles require **Coder server and CLI 2.10.0 or newer**, which introduced
+[`coder support bundle`](https://coder.com/changelog/coder-v2-10-0). Collection runs until the CLI finishes or you
+cancel
+log collection. If the CLI is unavailable or unsupported, or authentication or connectivity fails, the plugin removes
+any partial bundle and attempts to include
 `coder-support-error.txt` instead. Local SSH logs and Toolbox's other diagnostics remain available.
 
 ### HTTP Request Logging
@@ -462,8 +593,8 @@ issues with Coder deployments. This feature allows you to monitor all HTTP reque
 
 You can configure HTTP logging verbosity through the Coder Settings page:
 
-1. Navigate to the Coder Workspaces page
-2. Click on the deployment action menu (three dots)
+1. Open the Coder main page, which lists your environments
+2. Click the action menu (three dots) on the right side of the page header
 3. Select "Settings"
 4. Find the "HTTP logging level" dropdown
 
@@ -513,7 +644,8 @@ When reporting issues, include HTTP logs to help diagnose:
 ## Coder Settings
 
 The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data storage
-paths. The options can be configured from the plugin's main Workspaces page > deployment action menu > Settings.
+paths. On the Coder main page (the page listing your environments), click the action menu on the right side of the
+page header and select **Settings**.
 
 ### Workspace list filtering
 
@@ -561,6 +693,14 @@ the plugin connects through hostnames shaped like
 explicit entry per resolved workspace/agent using
 `Host coder-jetbrains-toolbox--<owner>--<workspace>.<agent>--<host>`, and its proxy command targets
 `<owner>/<workspace>.<agent>`.
+
+### Connection logging settings
+
+- `Connection log buffer size` (`connectionLogBufferSize`) sets the maximum number of log entries below Toolbox's
+  log level to keep in memory for connection diagnostics. It defaults to `1000` and accepts whole numbers from `0`
+  to `10000`; `0` clears the buffer and disables buffering. Invalid stored values fall back to `1000`. Saving a new
+  value resizes the buffer without a restart, keeping the newest entries that fit. See
+  [Flight recorder](#flight-recorder) for capture, automatic replay, log levels, and output details.
 
 ### CLI related settings
 

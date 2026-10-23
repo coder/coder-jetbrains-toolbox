@@ -78,6 +78,7 @@ class CoderProtocolHandlerTest {
             mockk<ToolboxUi>(relaxed = true),
             CoroutineScope(dispatcher),
             mockk<LocalizableStringFactory>(relaxed = true),
+            mockk(relaxed = true),
         )
         environment = mockk {
             every { id } returns "env-1"

@@ -1,5 +1,6 @@
 package com.coder.toolbox
 
+import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
@@ -28,9 +29,12 @@ class CoderToolboxExtension : RemoteDevExtension {
     // All services must be passed in here and threaded as necessary.
     override fun createRemoteProviderPluginInstance(serviceLocator: ServiceLocator): RemoteProvider {
         val ui = serviceLocator.getService<ToolboxUi>()
-        val logger = serviceLocator.getService(Logger::class.java)
         val cs = serviceLocator.getService<CoroutineScope>()
         val i18n = serviceLocator.getService<LocalizableStringFactory>()
+        val delegate = serviceLocator.getService<Logger>()
+        val settingsStore =
+            CoderSettingsStore(serviceLocator.getService<PluginSettingsStore>(), Environment(), delegate)
+        val logger = CoderLogger(delegate, ui, cs, i18n, settingsStore.readOnly())
         return CoderRemoteProvider(
             CoderToolboxContext(
                 ui,
@@ -41,9 +45,9 @@ class CoderToolboxExtension : RemoteDevExtension {
                 serviceLocator.getService<ClientHelper>(),
                 serviceLocator.getService<LocalDesktopManager>(),
                 cs,
-                serviceLocator.getService<Logger>(),
+                logger,
                 i18n,
-                CoderSettingsStore(serviceLocator.getService<PluginSettingsStore>(), Environment(), logger),
+                settingsStore,
                 CoderSecretsStore(serviceLocator.getService<PluginSecretStore>()),
                 serviceLocator.getService<ToolboxProxySettings>(),
             )
