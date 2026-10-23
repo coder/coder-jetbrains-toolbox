@@ -2,6 +2,7 @@ package com.coder.toolbox.diagnostics
 
 import com.coder.toolbox.CoderRemoteEnvironment
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.cli.SshCommandProcessHandle
 import com.coder.toolbox.sdk.DataGen
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
@@ -16,6 +17,8 @@ import com.jetbrains.toolbox.api.ui.ToolboxUi
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -24,7 +27,9 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.Optional
 import java.util.UUID
+import java.util.stream.Stream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -817,6 +822,79 @@ class CoderLoggerFlightRecorderTest {
             assertTrue(lines[1].contains("INFO ${prefix}Overall status for workspace ${environment.id}"))
             assertEquals("${prefix}[buffered] end of buffered logs ($reason)", calls.last().message)
         } finally {
+            environment.dispose()
+            SessionIdRegistry.removeSession(workspace.name, agent.name)
+        }
+    }
+
+    @Test
+    fun `automatic disconnect replay omits arguments from visited and matched processes`() = runTest {
+        // given
+        val logger = CoderLogger(delegate, ui, backgroundScope, i18n, settings)
+        val context = mockk<CoderToolboxContext>(relaxed = true)
+        every { context.logger } returns logger
+        every { context.cs } returns backgroundScope
+        every { context.i18n } returns i18n
+        val workspace = DataGen.workspace(
+            name = "workspace-${UUID.randomUUID()}",
+            agents = mapOf("agent" to UUID.randomUUID().toString()),
+        )
+        val agent = requireNotNull(workspace.latestBuild.resources.single().agents).single()
+        val environment = CoderRemoteEnvironment(
+            context, mockk(relaxed = true), mockk(relaxed = true), Channel(Channel.CONFLATED), workspace, agent,
+        )
+        val sessionId = SessionIdRegistry.startSession(context, workspace.name, agent.name)
+        val sshCommand = "ssh -o ProxyCommand='coder --token matched-token ssh --stdio' ${environment.id}"
+        val unrelatedCommand = "helper --token unrelated-token --password unrelated-password"
+        val sshProcess = mockk<ProcessHandle> {
+            every { pid() } returns 12345L
+            every { info().commandLine() } returns Optional.of(sshCommand)
+        }
+        val unrelatedProcess = mockk<ProcessHandle> {
+            every { pid() } returns 23456L
+            every { info().commandLine() } returns Optional.of(unrelatedCommand)
+            every { children() } answers { Stream.empty() }
+        }
+        val currentProcess = mockk<ProcessHandle> {
+            every { children() } answers { Stream.of(sshProcess, unrelatedProcess) }
+        }
+        calls.clear()
+        mockkStatic(ProcessHandle::class)
+        try {
+            every { ProcessHandle.current() } returns currentProcess
+
+            // when
+            val pid = SshCommandProcessHandle(context).findByWorkspaceAndAgent(workspace, agent)
+
+            // then
+            assertEquals(12345L, pid)
+            verify(exactly = 1) { unrelatedProcess.info().commandLine() }
+            assertTrue(calls.isEmpty())
+
+            // when
+            environment.afterDisconnect(isManual = false)
+
+            // then
+            val output = calls.joinToString("\n") { it.message }
+            for (argument in listOf(
+                sshCommand,
+                unrelatedCommand,
+                "matched-token",
+                "unrelated-token",
+                "unrelated-password"
+            )) {
+                assertFalse(output.contains(argument), "Process arguments must not appear in replayed logs")
+            }
+            val prefix = "client_session_id=$sessionId "
+            val replay = calls.filter { it.message.startsWith("${prefix}[buffered]") }
+            val reason = "ssh_disconnected ${environment.id}"
+            assertEquals(3, replay.size)
+            assertEquals("${prefix}[buffered] replaying 1 buffered entries ($reason)", replay.first().message)
+            assertTrue(replay[1].message.endsWith("DEBUG ${prefix}SSH command with PID: 12345 matches ${environment.id}"))
+            assertEquals("${prefix}[buffered] end of buffered logs ($reason)", replay.last().message)
+            assertTrue(calls.all { it.level == LogLevel.INFO })
+        } finally {
+            unmockkStatic(ProcessHandle::class)
             environment.dispose()
             SessionIdRegistry.removeSession(workspace.name, agent.name)
         }
