@@ -16,7 +16,7 @@ plugin-structure = "3.333"
 mockk = "1.14.11"
 detekt = "1.23.8"
 bouncycastle = "1.86"
-jackson = "2.22.3"
+jackson = "2.22.4"
 zip4j = "2.11.5"
 
 [libraries]
