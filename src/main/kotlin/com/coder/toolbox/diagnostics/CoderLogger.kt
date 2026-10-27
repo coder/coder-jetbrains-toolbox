@@ -235,7 +235,7 @@ class CoderLogger(
     internal fun record(level: LogLevel, exception: Throwable?, message: () -> String): () -> String =
         flightRecorder.record(level, exception, message)
 
-    /** Replays and removes buffered logs, oldest first, with an optional session prefix. */
+    /** Replays and removes buffered logs, oldest first, with an optional session prefix on the header and footer. */
     fun flush(reason: String, sessionId: SessionId? = null) {
         flightRecorder.flush(reason, sessionId)
     }

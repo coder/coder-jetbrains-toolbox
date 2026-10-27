@@ -421,7 +421,7 @@ class CoderLoggerFlightRecorderTest {
     }
 
     @Test
-    fun `replay keeps original UTC timestamps and prefixes continuation lines and session calls`() = runTest {
+    fun `replay keeps original UTC timestamps and prefixes continuation lines and session markers`() = runTest {
         // given
         val logger = CoderLogger(delegate, ui, backgroundScope, i18n, settings)
         val sessionId = SessionId.generate()
@@ -443,7 +443,7 @@ class CoderLoggerFlightRecorderTest {
             "${sessionPrefix}[buffered] end of buffered logs (certificate_error /route)",
             calls.last().message,
         )
-        val lines = calls[1].message.removePrefix(sessionPrefix).lines()
+        val lines = calls[1].message.lines()
         val firstLine = assertNotNull(
             Regex("""\[buffered\] (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z) TRACE first""")
                 .matchEntire(lines.first()),
@@ -454,6 +454,74 @@ class CoderLoggerFlightRecorderTest {
         assertTrue(lines[3].endsWith("Z DEBUG failed"))
         assertEquals("[buffered] java.lang.IllegalStateException: failure", lines[4])
         assertTrue(lines.drop(1).all { it.startsWith("[buffered] ") })
+    }
+
+    @Test
+    fun `replay does not duplicate the original session ID across chunk boundaries`() = runTest {
+        // given
+        val logger = CoderLogger(delegate, ui, backgroundScope, i18n, settings)
+        val sessionId = SessionId.generate()
+        repeat(101) { logger.debug(sessionId, "entry-$it") }
+
+        // when
+        logger.flush("support_bundle", sessionId)
+
+        // then
+        assertEquals(4, calls.size)
+        val chunks = calls.subList(1, 3)
+        assertEquals(listOf(100, 1), chunks.map { it.message.lines().size })
+        val lines = chunks.flatMap { it.message.lines() }
+        assertTrue(lines.all { it.startsWith("[buffered] ") })
+        assertEquals(
+            List(101) { "client_session_id=$sessionId entry-$it" },
+            lines.map { it.substringAfter(" DEBUG ") },
+        )
+        assertTrue(lines.all { Regex("client_session_id=").findAll(it).count() == 1 })
+        assertEquals(
+            "client_session_id=$sessionId [buffered] replaying 101 buffered entries (support_bundle)",
+            calls.first().message,
+        )
+        assertEquals(
+            "client_session_id=$sessionId [buffered] end of buffered logs (support_bundle)",
+            calls.last().message,
+        )
+    }
+
+    @Test
+    fun `replay preserves mixed session IDs and does not assign the flush session to unscoped entries`() = runTest {
+        // given
+        val logger = CoderLogger(delegate, ui, backgroundScope, i18n, settings)
+        val firstSessionId = SessionId.generate()
+        val secondSessionId = SessionId.generate()
+        val flushSessionId = SessionId.generate()
+        logger.debug(firstSessionId, "first session")
+        logger.debug(secondSessionId, "second session")
+        logger.debug("unscoped")
+
+        // when
+        logger.flush("support_bundle", flushSessionId)
+
+        // then
+        assertEquals(3, calls.size)
+        val chunk = calls[1].message
+        assertFalse(chunk.contains("client_session_id=$flushSessionId"))
+        assertTrue(chunk.lines().all { it.startsWith("[buffered] ") })
+        assertEquals(
+            listOf(
+                "client_session_id=$firstSessionId first session",
+                "client_session_id=$secondSessionId second session",
+                "unscoped",
+            ),
+            chunk.lines().map { it.substringAfter(" DEBUG ") },
+        )
+        assertEquals(
+            "client_session_id=$flushSessionId [buffered] replaying 3 buffered entries (support_bundle)",
+            calls.first().message,
+        )
+        assertEquals(
+            "client_session_id=$flushSessionId [buffered] end of buffered logs (support_bundle)",
+            calls.last().message,
+        )
     }
 
     @Test
@@ -989,7 +1057,7 @@ class CoderLoggerFlightRecorderTest {
                 assertFalse(output.contains(argument), "Process arguments must not appear in replayed logs")
             }
             val prefix = "client_session_id=$sessionId "
-            val replay = calls.filter { it.message.startsWith("${prefix}[buffered]") }
+            val replay = calls.filter { it.message.removePrefix(prefix).startsWith("[buffered]") }
             val reason = "ssh_disconnected ${environment.id}"
             assertEquals(3, replay.size)
             assertEquals("${prefix}[buffered] replaying 1 buffered entries ($reason)", replay.first().message)

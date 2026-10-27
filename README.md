@@ -371,9 +371,11 @@ messages sent through the Coder plugin logger; CLI SSH file logs are collected s
 [Coder Support Bundles](#coder-support-bundles).
 
 There is one shared buffer per running plugin instance, so a replay can contain context from several workspaces.
-Messages retain any `client_session_id` recorded with them. Environment-specific replays also use the triggering
-environment's current session ID; provider-wide replays do not add a session prefix. The buffer remains in memory until
-replayed or discarded. Entries that have not been replayed are lost when the plugin instance ends or Toolbox exits.
+Messages retain any `client_session_id` recorded with them. Environment-specific replays add the triggering
+environment's current session ID only to the replay header and footer; entry chunks keep their original session IDs,
+and entries without an ID remain unscoped. Provider-wide replays do not add a session prefix. The buffer remains in
+memory until replayed or discarded. Entries that have not been replayed are lost when the plugin instance ends or
+Toolbox exits.
 
 #### Configuring the buffer
 

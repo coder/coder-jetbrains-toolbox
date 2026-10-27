@@ -59,7 +59,8 @@ internal class FlightRecorder(
     fun flush(reason: String, sessionId: SessionId? = null) {
         synchronized(lock) {
             if (count == 0 || logger.effectiveLevel.value == LogLevel.OFF) return
-            if (!replay("${BUFFERED_PREFIX}replaying $count buffered entries ($reason)", sessionId)) return
+            val header = withSessionId(sessionId, "${BUFFERED_PREFIX}replaying $count buffered entries ($reason)")
+            if (!replay(header)) return
 
             while (count > 0) {
                 if (logger.effectiveLevel.value == LogLevel.OFF) return
@@ -71,7 +72,7 @@ internal class FlightRecorder(
                         appendBufferedEntry(entry)
                     }
                 }
-                if (!replay(message, sessionId)) return
+                if (!replay(message)) return
 
                 repeat(chunkSize) {
                     entries[oldestRecordIndex] = null
@@ -80,7 +81,7 @@ internal class FlightRecorder(
                 count -= chunkSize
             }
 
-            replay("${BUFFERED_PREFIX}end of buffered logs ($reason)", sessionId)
+            replay(withSessionId(sessionId, "${BUFFERED_PREFIX}end of buffered logs ($reason)"))
         }
     }
 
@@ -94,14 +95,13 @@ internal class FlightRecorder(
         }
     }
 
-    private fun replay(message: String, sessionId: SessionId?): Boolean {
+    private fun replay(message: String): Boolean {
         val level = logger.effectiveLevel.value
         if (level == LogLevel.OFF) return false
-        val text = withSessionId(sessionId, message)
         when (level) {
-            LogLevel.TRACE, LogLevel.DEBUG, LogLevel.INFO -> logger.info(text)
-            LogLevel.WARN -> logger.warn(text)
-            LogLevel.ERROR -> logger.error(text)
+            LogLevel.TRACE, LogLevel.DEBUG, LogLevel.INFO -> logger.info(message)
+            LogLevel.WARN -> logger.warn(message)
+            LogLevel.ERROR -> logger.error(message)
             LogLevel.OFF -> return false
         }
         return true
