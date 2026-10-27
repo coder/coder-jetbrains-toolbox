@@ -25,8 +25,9 @@ class SessionIdRegistryTest {
     private val coderLogger = CoderLogger(
         logger,
         mockk<ToolboxUi>(relaxed = true),
-        mockk<CoroutineScope>(relaxed = true),
+        CoroutineScope(Dispatchers.Unconfined),
         mockk<LocalizableStringFactory>(relaxed = true),
+        mockk(relaxed = true),
     )
     private val context = mockk<CoderToolboxContext>(relaxed = true)
 

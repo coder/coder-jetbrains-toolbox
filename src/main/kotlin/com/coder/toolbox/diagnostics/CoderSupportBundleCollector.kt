@@ -24,6 +24,7 @@ internal class CoderSupportBundleCollector(
     override suspend fun collectAdditionalDiagnostics(logsRootFolder: Path) = withContext(Dispatchers.IO) {
         val sessionId = currentSessionId()
         try {
+            logger.flush("support_bundle", sessionId)
             Files.createDirectories(logsRootFolder)
             collectSupportBundle(logsRootFolder, sessionId)
             // Without a usable support bundle the SSH logs still go into an archive of their own.

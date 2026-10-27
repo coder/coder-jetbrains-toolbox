@@ -9,6 +9,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -86,8 +87,9 @@ class IdeFeedManagerTest {
         logger = CoderLogger(
             mockk<Logger>(relaxed = true),
             mockk<ToolboxUi>(relaxed = true),
-            mockk<CoroutineScope>(relaxed = true),
+            CoroutineScope(Dispatchers.Unconfined),
             mockk<LocalizableStringFactory>(relaxed = true),
+            mockk(relaxed = true),
         )
 
         every { context.logger } returns logger
