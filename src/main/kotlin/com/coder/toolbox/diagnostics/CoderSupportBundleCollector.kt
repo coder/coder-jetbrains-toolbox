@@ -1,18 +1,21 @@
 package com.coder.toolbox.diagnostics
 
 import com.coder.toolbox.session.SessionId
+import com.coder.toolbox.settings.ReadOnlyCoderSettings
 import com.jetbrains.toolbox.api.remoteDev.deploy.DiagnosticInfoCollector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.lingala.zip4j.ZipFile
+import net.lingala.zip4j.model.ZipParameters
 import java.nio.file.Files
 import java.nio.file.Path
 
-/** Collects a workspace support bundle and recent local Coder SSH logs. */
+/** Collects a workspace support bundle, a masked settings snapshot, and recent local Coder SSH logs. */
 internal class CoderSupportBundleCollector(
     private val logger: CoderLogger,
     sshLogDirectory: Path,
+    private val settings: ReadOnlyCoderSettings,
     private val currentSessionId: () -> SessionId? = { null },
     private val sshPid: Long? = null,
     private val collectBundle: suspend (Path) -> Unit,
@@ -27,15 +30,36 @@ internal class CoderSupportBundleCollector(
             logger.flush("support_bundle", sessionId)
             Files.createDirectories(logsRootFolder)
             collectSupportBundle(logsRootFolder, sessionId)
-            // Without a usable support bundle the SSH logs still go into an archive of their own.
+            // Without a usable support bundle the local diagnostics still go into an archive of their own.
             val bundle = logsRootFolder.resolve("coder-support.zip")
             val hasBundle = ZipFile(bundle.toFile()).isValidZipFile
             val archive = if (hasBundle) bundle else logsRootFolder.resolve("coder-ssh.zip")
+            collectSettings(archive, sessionId)
             sshLogs.collect(archive, sessionId, sshPid)
         } catch (ex: CancellationException) {
             throw ex
         } catch (ex: Exception) {
             logger.warn(sessionId, ex, "Could not collect Coder workspace diagnostics")
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun collectSettings(archive: Path, sessionId: SessionId?) {
+        try {
+            val snapshot = collectSettingsSnapshot(settings)
+            ZipFile(archive.toFile()).use { zip ->
+                snapshot.inputStream().use { input ->
+                    zip.addStream(input, ZipParameters().apply { fileNameInZip = "toolbox-logs/settings.json" })
+                }
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            logger.error(
+                sessionId,
+                ex,
+                "Could not collect Coder Toolbox settings; diagnostic collection will continue without the settings",
+            )
         }
     }
 

@@ -544,6 +544,15 @@ Recent local CLI SSH logs are added in place to `coder-support.zip` under `toolb
 not be generated or is not a valid archive, the logs are written to a separate `coder-ssh.zip` in the diagnostic
 directory instead, using the same layout.
 
+The same archive includes `toolbox-logs/settings.json`, an explicit allowlist of effective Coder Toolbox settings,
+including defaults and environment fallbacks exposed by the settings store. This is a diagnostic snapshot, not a
+copy of the raw settings file. `headerCommand`, `tlsCertRefreshCommand`, and `sshConfigOptions` are masked as
+`<set>` or `<empty>` because they can contain commands or credentials. Other allowlisted values, including URLs
+and file paths, are kept as configured or resolved by the settings store. Credentials, per-workspace auto-connect
+entries, and the contents of referenced files are not collected. New settings must be reviewed and explicitly added
+to the allowlist. Settings are included even when no SSH logs are available; a settings collection failure does not
+prevent collecting the other diagnostics. Running `coder support bundle` directly does not add Toolbox settings.
+
 For CLI versions **2.4.0 and newer**, the plugin passes `--log-dir <directory> -v` to the SSH ProxyCommand, enabling
 verbose file logging even on CLIs that do not log by default. The directory is the configured SSH log directory,
 then `CODER_SSH_LOG_DIR`, then `ssh-logs/` inside the deployment's plugin data directory. The plugin does not infer

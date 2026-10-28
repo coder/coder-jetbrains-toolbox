@@ -11,6 +11,7 @@
   passes an explicit `--log-dir` to the SSH ProxyCommand (the configured directory, `CODER_SSH_LOG_DIR`, or
   `ssh-logs/` in the deployment's plugin data directory) and collects and cleans up logs from that same directory
 - add a flight recorder that keeps recent plugin messages below Toolbox's log level in memory for connection diagnostics
+- include an allowlisted Coder Toolbox settings snapshot in workspace support bundles, masking commands and SSH options
 
 ### Changed
 
