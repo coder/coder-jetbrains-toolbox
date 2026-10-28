@@ -17,6 +17,7 @@ import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.withPath
 import com.jetbrains.toolbox.api.core.PluginSettingsStore
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -26,6 +27,15 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
+// Defaults shared by the getters and the JSON export, so both always report the same fallback.
+private const val DEFAULT_DEPLOYMENT_URL = "https://dev.coder.com"
+private const val DEFAULT_APP_NAME_AS_TITLE = false
+private const val DEFAULT_DISABLE_SIGNATURE_VALIDATION = false
+private const val DEFAULT_ENABLE_DOWNLOADS = true
+private const val DEFAULT_USE_KEYRING = true
+private const val DEFAULT_SSH_CONNECTION_TIMEOUT_IN_SECONDS = 0
+private const val DEFAULT_ENABLE_SSH_WILDCARD_CONFIG = true
+private const val DEFAULT_PREFER_OAUTH2_IF_AVAILABLE = false
 
 class CoderSettingsStore(
     private val store: PluginSettingsStore,
@@ -47,12 +57,14 @@ class CoderSettingsStore(
 
     // Properties implementation
     override val lastDeploymentURL: String? get() = store[LAST_USED_URL]
-    override val defaultURL: String get() = store[DEFAULT_URL] ?: "https://dev.coder.com"
-    override val useAppNameAsTitle: Boolean get() = store[APP_NAME_AS_TITLE]?.toBooleanStrictOrNull() ?: false
+    override val defaultURL: String get() = store[DEFAULT_URL] ?: DEFAULT_DEPLOYMENT_URL
+    override val useAppNameAsTitle: Boolean
+        get() = store[APP_NAME_AS_TITLE]?.toBooleanStrictOrNull() ?: DEFAULT_APP_NAME_AS_TITLE
     override val binarySource: String? get() = store[BINARY_SOURCE]
     override val binaryDestination: String? get() = store[BINARY_DESTINATION] ?: store[BINARY_DIRECTORY]
     override val disableSignatureVerification: Boolean
-        get() = store[DISABLE_SIGNATURE_VALIDATION]?.toBooleanStrictOrNull() ?: false
+        get() = store[DISABLE_SIGNATURE_VALIDATION]?.toBooleanStrictOrNull()
+            ?: DEFAULT_DISABLE_SIGNATURE_VALIDATION
     override val fallbackOnCoderForSignatures: SignatureFallbackStrategy
         get() = SignatureFallbackStrategy.fromValue(store[FALLBACK_ON_CODER_FOR_SIGNATURES])
     override val httpClientLogLevel: HttpLoggingVerbosity
@@ -65,11 +77,12 @@ class CoderSettingsStore(
     override val dataDirectory: String? get() = store[DATA_DIRECTORY]
     override val globalDataDirectory: String get() = getDefaultGlobalDataDir().normalize().toString()
     override val globalConfigDir: String get() = getDefaultGlobalConfigDir().normalize().toString()
-    override val enableDownloads: Boolean get() = store[ENABLE_DOWNLOADS]?.toBooleanStrictOrNull() ?: true
+    override val enableDownloads: Boolean
+        get() = store[ENABLE_DOWNLOADS]?.toBooleanStrictOrNull() ?: DEFAULT_ENABLE_DOWNLOADS
     override val headerCommand: String?
         get() = store[HEADER_COMMAND].takeUnless { it.isNullOrEmpty() }
             ?: env.get(CODER_HEADER_COMMAND).takeUnless { it.isEmpty() }
-    override val useKeyring: Boolean get() = store[USE_KEYRING]?.toBooleanStrictOrNull() ?: true
+    override val useKeyring: Boolean get() = store[USE_KEYRING]?.toBooleanStrictOrNull() ?: DEFAULT_USE_KEYRING
     override val tls: ReadOnlyTLSSettings
         get() = TLSSettings(
             certPath = store[TLS_CERT_PATH],
@@ -81,28 +94,119 @@ class CoderSettingsStore(
     override val requiresTokenAuth: Boolean get() = tls.certPath.isNullOrBlank() || tls.keyPath.isNullOrBlank()
     override val requiresMTlsAuth: Boolean get() = tls.certPath?.isNotBlank() == true && tls.keyPath?.isNotBlank() == true
     override val disableAutostart: Boolean
-        get() = store[DISABLE_AUTOSTART]?.toBooleanStrictOrNull() ?: (getOS() == OS.MAC)
+        get() = store[DISABLE_AUTOSTART]?.toBooleanStrictOrNull() ?: defaultDisableAutostart()
     override val sshConnectionTimeoutInSeconds: Int
-        get() = store[SSH_CONNECTION_TIMEOUT_IN_SECONDS]?.toIntOrNull() ?: 0
+        get() = store[SSH_CONNECTION_TIMEOUT_IN_SECONDS]?.toIntOrNull()
+            ?: DEFAULT_SSH_CONNECTION_TIMEOUT_IN_SECONDS
     override val isSshWildcardConfigEnabled: Boolean
-        get() = store[ENABLE_SSH_WILDCARD_CONFIG]?.toBooleanStrictOrNull() ?: true
+        get() = store[ENABLE_SSH_WILDCARD_CONFIG]?.toBooleanStrictOrNull() ?: DEFAULT_ENABLE_SSH_WILDCARD_CONFIG
     override val sshConfigPath: String
-        get() = store[SSH_CONFIG_PATH]?.takeIf { it.isNotBlank() }?.let { expand(it) }
-            ?: Path.of(System.getProperty("user.home")).resolve(".ssh/config").normalize().toString()
+        get() = store[SSH_CONFIG_PATH]?.takeIf { it.isNotBlank() }?.let { expand(it) } ?: defaultSshConfigPath()
     override val sshLogDirectory: String? get() = store[SSH_LOG_DIR]?.takeIf { it.isNotBlank() }?.let { expand(it) }
     override val sshConfigOptions: String?
         get() = store[SSH_CONFIG_OPTIONS].takeUnless { it.isNullOrEmpty() } ?: env.get(CODER_SSH_CONFIG_OPTIONS)
     override val networkInfoDir: String
-        get() = store[NETWORK_INFO_DIR]?.takeIf { it.isNotBlank() }?.let { expand(it) } ?: getDefaultGlobalDataDir()
-            .resolve("ssh-network-metrics")
-            .normalize()
-            .toString()
+        get() = store[NETWORK_INFO_DIR]?.takeIf { it.isNotBlank() }?.let { expand(it) } ?: defaultNetworkInfoDir()
     override val preferOAuth2IfAvailable: Boolean
-        get() = store[PREFER_OAUTH2_IF_AVAILABLE]?.toBooleanStrictOrNull() ?: false
+        get() = store[PREFER_OAUTH2_IF_AVAILABLE]?.toBooleanStrictOrNull() ?: DEFAULT_PREFER_OAUTH2_IF_AVAILABLE
     override val workspaceViewUrl: String?
         get() = store[WORKSPACE_VIEW_URL]
     override val workspaceCreateUrl: String?
         get() = store[WORKSPACE_CREATE_URL]
+
+    // Effective values come from the public getters, so the JSON cannot diverge from what the plugin uses.
+    override fun marshalToJson(): ByteArray {
+        val snapshot = synchronized(settingsLock) {
+            val tls = tls
+            // Keep this allowlist explicit: new settings must be reviewed for secrets before including them.
+            sortedMapOf(
+                jsonEntry(LAST_USED_URL, null, lastDeploymentURL),
+                jsonEntry(DEFAULT_URL, DEFAULT_DEPLOYMENT_URL, defaultURL),
+                jsonEntry(APP_NAME_AS_TITLE, DEFAULT_APP_NAME_AS_TITLE, useAppNameAsTitle),
+                jsonEntry(BINARY_SOURCE, null, binarySource),
+                jsonEntry(BINARY_DESTINATION, null, binaryDestination, legacyKey = BINARY_DIRECTORY),
+                jsonEntry(
+                    DISABLE_SIGNATURE_VALIDATION, DEFAULT_DISABLE_SIGNATURE_VALIDATION, disableSignatureVerification,
+                ),
+                jsonEntry(
+                    FALLBACK_ON_CODER_FOR_SIGNATURES,
+                    SignatureFallbackStrategy.fromValue(null),
+                    fallbackOnCoderForSignatures,
+                ),
+                jsonEntry(HTTP_CLIENT_LOG_LEVEL, HttpLoggingVerbosity.fromValue(null), httpClientLogLevel),
+                jsonEntry(CONNECTION_LOG_BUFFER_SIZE, DEFAULT_CONNECTION_LOG_BUFFER_SIZE, connectionLogBufferSize),
+                jsonEntry(DATA_DIRECTORY, null, dataDirectory),
+                jsonEntry(ENABLE_DOWNLOADS, DEFAULT_ENABLE_DOWNLOADS, enableDownloads),
+                jsonEntry(
+                    HEADER_COMMAND, null, headerCommand,
+                    shouldBeMasked = true, environmentVariable = CODER_HEADER_COMMAND,
+                ),
+                jsonEntry(USE_KEYRING, DEFAULT_USE_KEYRING, useKeyring),
+                jsonEntry(TLS_CERT_PATH, null, tls.certPath),
+                jsonEntry(TLS_KEY_PATH, null, tls.keyPath),
+                jsonEntry(TLS_CA_PATH, null, tls.caPath),
+                jsonEntry(TLS_ALTERNATE_HOSTNAME, null, tls.altHostname),
+                jsonEntry(TLS_CERT_REFRESH_COMMAND, null, tls.certRefreshCommand, shouldBeMasked = true),
+                jsonEntry(DISABLE_AUTOSTART, defaultDisableAutostart(), disableAutostart),
+                jsonEntry(
+                    SSH_CONNECTION_TIMEOUT_IN_SECONDS,
+                    DEFAULT_SSH_CONNECTION_TIMEOUT_IN_SECONDS,
+                    sshConnectionTimeoutInSeconds,
+                ),
+                jsonEntry(ENABLE_SSH_WILDCARD_CONFIG, DEFAULT_ENABLE_SSH_WILDCARD_CONFIG, isSshWildcardConfigEnabled),
+                jsonEntry(SSH_CONFIG_PATH, defaultSshConfigPath(), sshConfigPath),
+                jsonEntry(SSH_LOG_DIR, null, sshLogDirectory),
+                jsonEntry(
+                    SSH_CONFIG_OPTIONS, "", sshConfigOptions,
+                    shouldBeMasked = true, environmentVariable = CODER_SSH_CONFIG_OPTIONS,
+                ),
+                jsonEntry(NETWORK_INFO_DIR, defaultNetworkInfoDir(), networkInfoDir),
+                jsonEntry(PREFER_OAUTH2_IF_AVAILABLE, DEFAULT_PREFER_OAUTH2_IF_AVAILABLE, preferOAuth2IfAvailable),
+                jsonEntry(WORKSPACE_VIEW_URL, null, workspaceViewUrl),
+                jsonEntry(WORKSPACE_CREATE_URL, null, workspaceCreateUrl),
+            )
+        }
+        val json = Moshi.Builder().build().adapter(Map::class.java).serializeNulls().indent("  ").toJson(snapshot)
+        return "$json\n".toByteArray(Charsets.UTF_8)
+    }
+
+    private fun jsonEntry(
+        key: String,
+        default: Any?,
+        effective: Any?,
+        shouldBeMasked: Boolean = false,
+        environmentVariable: String? = null,
+        legacyKey: String? = null,
+    ): Pair<String, Map<String, Any?>> {
+        fun toJsonValue(value: Any?): Any? = when {
+            shouldBeMasked -> if (value == null || value == "") "<empty>" else "<set>"
+            value is Enum<*> -> value.toString()
+            else -> value
+        }
+
+        val entry = linkedMapOf(
+            "defaultValue" to toJsonValue(default),
+            "storedValue" to toJsonValue(store[key]),
+            "effective" to toJsonValue(effective),
+        )
+        if (environmentVariable != null) {
+            entry["environmentVariable"] = environmentVariable
+            entry["environmentValue"] = toJsonValue(env.get(environmentVariable))
+        }
+        if (legacyKey != null) {
+            entry["legacyKey"] = legacyKey
+            entry["legacyValue"] = toJsonValue(store[legacyKey])
+        }
+        return key to entry
+    }
+
+    private fun defaultDisableAutostart(): Boolean = getOS() == OS.MAC
+
+    private fun defaultSshConfigPath(): String =
+        Path.of(System.getProperty("user.home")).resolve(".ssh/config").normalize().toString()
+
+    private fun defaultNetworkInfoDir(): String =
+        getDefaultGlobalDataDir().resolve("ssh-network-metrics").normalize().toString()
 
     /**
      * Where the specified deployment should put its data.

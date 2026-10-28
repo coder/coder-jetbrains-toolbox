@@ -46,7 +46,7 @@ internal class CoderSupportBundleCollector(
     @Suppress("TooGenericExceptionCaught")
     private fun collectSettings(archive: Path, sessionId: SessionId?) {
         try {
-            val snapshot = collectSettingsSnapshot(settings)
+            val snapshot = settings.marshalToJson()
             ZipFile(archive.toFile()).use { zip ->
                 snapshot.inputStream().use { input ->
                     zip.addStream(input, ZipParameters().apply { fileNameInZip = "toolbox-logs/settings.json" })

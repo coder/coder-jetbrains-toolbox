@@ -799,6 +799,7 @@ class CoderRemoteEnvironmentTest {
         val context = mockk<CoderToolboxContext>(relaxed = true)
         val logger = mockk<Logger>(relaxed = true)
         val settingsStore = mockk<CoderSettingsStore>(relaxed = true)
+        every { settingsStore.marshalToJson() } returns "{}\n".toByteArray(Charsets.UTF_8)
         val i18n = mockk<LocalizableStringFactory>(relaxed = true)
         val localizedStrings = mutableMapOf<String, LocalizableString>()
         every { i18n.ptrl(any<String>()) } answers {

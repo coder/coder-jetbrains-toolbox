@@ -110,7 +110,7 @@ class CoderSupportBundleCollectorTest {
         ZipFile(root.resolve("diagnostics/coder-support.zip").toFile()).use { zip ->
             assertEquals("bundle", zip.getInputStream(zip.getEntry("agent.txt")).reader().readText())
             assertEquals(
-                collectSettingsSnapshot(snapshotSettings()).toString(Charsets.UTF_8),
+                snapshotSettings().marshalToJson().toString(Charsets.UTF_8),
                 zip.getInputStream(zip.getEntry("toolbox-logs/settings.json")).reader().readText(),
             )
             assertEquals(
@@ -205,7 +205,7 @@ class CoderSupportBundleCollectorTest {
         Files.writeString(logs.resolve("coder-ssh-session-1.log"), "session")
         val failure = IllegalStateException("Settings unavailable")
         val settings = mockk<ReadOnlyCoderSettings> {
-            every { tls } throws failure
+            every { marshalToJson() } throws failure
         }
         val logger = mockk<CoderLogger>(relaxed = true)
         val sessionId = SessionId.generate()
@@ -245,7 +245,7 @@ class CoderSupportBundleCollectorTest {
 
     private fun assertSettingsPresent(archive: Path) = ZipFile(archive.toFile()).use { zip ->
         assertEquals(
-            collectSettingsSnapshot(snapshotSettings()).toString(Charsets.UTF_8),
+            snapshotSettings().marshalToJson().toString(Charsets.UTF_8),
             zip.getInputStream(zip.getEntry("toolbox-logs/settings.json")).reader().readText(),
         )
     }

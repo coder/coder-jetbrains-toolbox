@@ -639,7 +639,7 @@ class CoderRemoteProvider(
         return deploymentURL
     }
 
-    private suspend fun resolveToken(params: Map<String, String>): String? {
+    private fun resolveToken(params: Map<String, String>): String? {
         val token = params.token()
         if (token.isNullOrBlank()) {
             context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")
