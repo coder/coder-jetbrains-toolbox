@@ -120,66 +120,86 @@ class CoderSettingsStore(
             val tls = tls
             // Keep this allowlist explicit: new settings must be reviewed for secrets before including them.
             sortedMapOf(
-                jsonEntry(LAST_USED_URL, null, lastDeploymentURL),
-                jsonEntry(DEFAULT_URL, DEFAULT_DEPLOYMENT_URL, defaultURL),
-                jsonEntry(APP_NAME_AS_TITLE, DEFAULT_APP_NAME_AS_TITLE, useAppNameAsTitle),
-                jsonEntry(BINARY_SOURCE, null, binarySource),
-                jsonEntry(BINARY_DESTINATION, null, binaryDestination, legacyKey = BINARY_DIRECTORY),
+                jsonEntry(LAST_USED_URL, null, lastDeploymentURL, masking = Masking.VISIBLE),
+                jsonEntry(DEFAULT_URL, DEFAULT_DEPLOYMENT_URL, defaultURL, masking = Masking.VISIBLE),
+                jsonEntry(APP_NAME_AS_TITLE, DEFAULT_APP_NAME_AS_TITLE, useAppNameAsTitle, masking = Masking.VISIBLE),
+                jsonEntry(BINARY_SOURCE, null, binarySource, masking = Masking.VISIBLE),
+                jsonEntry(
+                    BINARY_DESTINATION, null, binaryDestination,
+                    masking = Masking.VISIBLE, legacyKey = BINARY_DIRECTORY,
+                ),
                 jsonEntry(
                     DISABLE_SIGNATURE_VALIDATION, DEFAULT_DISABLE_SIGNATURE_VALIDATION, disableSignatureVerification,
+                    masking = Masking.VISIBLE,
                 ),
                 jsonEntry(
                     FALLBACK_ON_CODER_FOR_SIGNATURES,
                     SignatureFallbackStrategy.fromValue(null),
                     fallbackOnCoderForSignatures,
+                    masking = Masking.VISIBLE,
                 ),
-                jsonEntry(HTTP_CLIENT_LOG_LEVEL, HttpLoggingVerbosity.fromValue(null), httpClientLogLevel),
-                jsonEntry(CONNECTION_LOG_BUFFER_SIZE, DEFAULT_CONNECTION_LOG_BUFFER_SIZE, connectionLogBufferSize),
-                jsonEntry(DATA_DIRECTORY, null, dataDirectory),
-                jsonEntry(ENABLE_DOWNLOADS, DEFAULT_ENABLE_DOWNLOADS, enableDownloads),
+                jsonEntry(
+                    HTTP_CLIENT_LOG_LEVEL, HttpLoggingVerbosity.fromValue(null), httpClientLogLevel,
+                    masking = Masking.VISIBLE,
+                ),
+                jsonEntry(
+                    CONNECTION_LOG_BUFFER_SIZE, DEFAULT_CONNECTION_LOG_BUFFER_SIZE, connectionLogBufferSize,
+                    masking = Masking.VISIBLE,
+                ),
+                jsonEntry(DATA_DIRECTORY, null, dataDirectory, masking = Masking.VISIBLE),
+                jsonEntry(ENABLE_DOWNLOADS, DEFAULT_ENABLE_DOWNLOADS, enableDownloads, masking = Masking.VISIBLE),
                 jsonEntry(
                     HEADER_COMMAND, null, headerCommand,
-                    shouldBeMasked = true, environmentVariable = CODER_HEADER_COMMAND,
+                    masking = Masking.MASKED, environmentVariable = CODER_HEADER_COMMAND,
                 ),
-                jsonEntry(USE_KEYRING, DEFAULT_USE_KEYRING, useKeyring),
-                jsonEntry(TLS_CERT_PATH, null, tls.certPath),
-                jsonEntry(TLS_KEY_PATH, null, tls.keyPath),
-                jsonEntry(TLS_CA_PATH, null, tls.caPath),
-                jsonEntry(TLS_ALTERNATE_HOSTNAME, null, tls.altHostname),
-                jsonEntry(TLS_CERT_REFRESH_COMMAND, null, tls.certRefreshCommand, shouldBeMasked = true),
-                jsonEntry(DISABLE_AUTOSTART, defaultDisableAutostart(), disableAutostart),
+                jsonEntry(USE_KEYRING, DEFAULT_USE_KEYRING, useKeyring, masking = Masking.VISIBLE),
+                jsonEntry(TLS_CERT_PATH, null, tls.certPath, masking = Masking.VISIBLE),
+                jsonEntry(TLS_KEY_PATH, null, tls.keyPath, masking = Masking.VISIBLE),
+                jsonEntry(TLS_CA_PATH, null, tls.caPath, masking = Masking.VISIBLE),
+                jsonEntry(TLS_ALTERNATE_HOSTNAME, null, tls.altHostname, masking = Masking.VISIBLE),
+                jsonEntry(TLS_CERT_REFRESH_COMMAND, null, tls.certRefreshCommand, masking = Masking.MASKED),
+                jsonEntry(DISABLE_AUTOSTART, defaultDisableAutostart(), disableAutostart, masking = Masking.VISIBLE),
                 jsonEntry(
                     SSH_CONNECTION_TIMEOUT_IN_SECONDS,
                     DEFAULT_SSH_CONNECTION_TIMEOUT_IN_SECONDS,
                     sshConnectionTimeoutInSeconds,
+                    masking = Masking.VISIBLE,
                 ),
-                jsonEntry(ENABLE_SSH_WILDCARD_CONFIG, DEFAULT_ENABLE_SSH_WILDCARD_CONFIG, isSshWildcardConfigEnabled),
-                jsonEntry(SSH_CONFIG_PATH, defaultSshConfigPath(), sshConfigPath),
-                jsonEntry(SSH_LOG_DIR, null, sshLogDirectory),
+                jsonEntry(
+                    ENABLE_SSH_WILDCARD_CONFIG, DEFAULT_ENABLE_SSH_WILDCARD_CONFIG, isSshWildcardConfigEnabled,
+                    masking = Masking.VISIBLE,
+                ),
+                jsonEntry(SSH_CONFIG_PATH, defaultSshConfigPath(), sshConfigPath, masking = Masking.VISIBLE),
+                jsonEntry(SSH_LOG_DIR, null, sshLogDirectory, masking = Masking.VISIBLE),
                 jsonEntry(
                     SSH_CONFIG_OPTIONS, "", sshConfigOptions,
-                    shouldBeMasked = true, environmentVariable = CODER_SSH_CONFIG_OPTIONS,
+                    masking = Masking.MASKED, environmentVariable = CODER_SSH_CONFIG_OPTIONS,
                 ),
-                jsonEntry(NETWORK_INFO_DIR, defaultNetworkInfoDir(), networkInfoDir),
-                jsonEntry(PREFER_OAUTH2_IF_AVAILABLE, DEFAULT_PREFER_OAUTH2_IF_AVAILABLE, preferOAuth2IfAvailable),
-                jsonEntry(WORKSPACE_VIEW_URL, null, workspaceViewUrl),
-                jsonEntry(WORKSPACE_CREATE_URL, null, workspaceCreateUrl),
+                jsonEntry(NETWORK_INFO_DIR, defaultNetworkInfoDir(), networkInfoDir, masking = Masking.VISIBLE),
+                jsonEntry(
+                    PREFER_OAUTH2_IF_AVAILABLE, DEFAULT_PREFER_OAUTH2_IF_AVAILABLE, preferOAuth2IfAvailable,
+                    masking = Masking.VISIBLE,
+                ),
+                jsonEntry(WORKSPACE_VIEW_URL, null, workspaceViewUrl, masking = Masking.VISIBLE),
+                jsonEntry(WORKSPACE_CREATE_URL, null, workspaceCreateUrl, masking = Masking.VISIBLE),
             )
         }
         val json = Moshi.Builder().build().adapter(Map::class.java).serializeNulls().indent("  ").toJson(snapshot)
         return "$json\n".toByteArray(Charsets.UTF_8)
     }
 
+    private enum class Masking { MASKED, VISIBLE }
+
     private fun jsonEntry(
         key: String,
         default: Any?,
         effective: Any?,
-        shouldBeMasked: Boolean = false,
+        masking: Masking,
         environmentVariable: String? = null,
         legacyKey: String? = null,
     ): Pair<String, Map<String, Any?>> {
         fun toJsonValue(value: Any?): Any? = when {
-            shouldBeMasked -> if (value == null || value == "") "<empty>" else "<set>"
+            masking == Masking.MASKED -> if (value == null || value == "") "<empty>" else "<set>"
             value is Enum<*> -> value.toString()
             else -> value
         }
