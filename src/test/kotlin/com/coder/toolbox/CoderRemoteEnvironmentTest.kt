@@ -52,7 +52,6 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -61,6 +60,10 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class CoderRemoteEnvironmentTest {
+    private fun assertSettingsOnly(archive: Path) = ZipFile(archive.toFile()).use { zip ->
+        assertEquals(listOf("toolbox-logs/settings.json"), zip.entries().asSequence().map { it.name }.toList())
+    }
+
     private fun readSshLog(archive: Path, name: String): String? = ZipFile(archive.toFile()).use { zip ->
         zip.getEntry("toolbox-logs/ssh/$name")?.let { zip.getInputStream(it).reader().readText() }
     }
@@ -85,7 +88,7 @@ class CoderRemoteEnvironmentTest {
                     root.resolve("before-connection"),
                 )
             }
-            assertFalse(Files.exists(root.resolve("before-connection/coder-ssh.zip")))
+            assertSettingsOnly(root.resolve("before-connection/coder-ssh.zip"))
             verify(exactly = 0) {
                 anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(any(), any())
             }
@@ -112,7 +115,7 @@ class CoderRemoteEnvironmentTest {
                     root.resolve("after-disconnect"),
                 )
             }
-            assertFalse(Files.exists(root.resolve("after-disconnect/coder-ssh.zip")))
+            assertSettingsOnly(root.resolve("after-disconnect/coder-ssh.zip"))
             verify(exactly = 1) {
                 anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(any(), any())
             }
@@ -155,7 +158,7 @@ class CoderRemoteEnvironmentTest {
                 fixture.environment.diagnosticInfoCollector.collectAdditionalDiagnostics(root.resolve("ended"))
             }
 
-            assertFalse(Files.exists(root.resolve("ended/coder-ssh.zip")))
+            assertSettingsOnly(root.resolve("ended/coder-ssh.zip"))
             verify(exactly = 2) {
                 anyConstructed<SshCommandProcessHandle>().findByWorkspaceAndAgent(fixture.workspace, fixture.agent)
             }
@@ -796,6 +799,7 @@ class CoderRemoteEnvironmentTest {
         val context = mockk<CoderToolboxContext>(relaxed = true)
         val logger = mockk<Logger>(relaxed = true)
         val settingsStore = mockk<CoderSettingsStore>(relaxed = true)
+        every { settingsStore.marshalToJson() } returns "{}\n".toByteArray(Charsets.UTF_8)
         val i18n = mockk<LocalizableStringFactory>(relaxed = true)
         val localizedStrings = mutableMapOf<String, LocalizableString>()
         every { i18n.ptrl(any<String>()) } answers {

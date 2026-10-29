@@ -25,6 +25,19 @@ interface ReadOnlyCoderSettings {
     fun <T> observe(select: (ReadOnlyCoderSettings) -> T): Flow<T>
 
     /**
+     * Serializes the plugin settings to a UTF-8 JSON document for support bundles.
+     *
+     * Each setting is reported with its default, the value persisted by the user, and the value
+     * the plugin actually uses, so explicit configuration can be told apart from defaults.
+     * Settings that can also come from an environment variable or a legacy key report that source too.
+     * Only reviewed settings are included, and values that may contain secrets are masked.
+     * Credentials and the contents of referenced files are never included.
+     *
+     * @return the JSON document as UTF-8 encoded bytes.
+     */
+    fun marshalToJson(): ByteArray
+
+    /**
      * The last used deployment URL.
      */
     val lastDeploymentURL: String?

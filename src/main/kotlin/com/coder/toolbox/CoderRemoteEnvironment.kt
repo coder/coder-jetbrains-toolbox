@@ -136,6 +136,7 @@ class CoderRemoteEnvironment(
         get() = CoderSupportBundleCollector(
             context.logger,
             cli.getSshLogDirectory(),
+            context.settingsStore,
             ::currentSessionId,
             sshPid,
         ) { outputFile ->
