@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.5 - 2026-10-30
+
 ### Added
 
 - include a Coder support bundle for the selected workspace and agent only when using the environment's _Collect logs_
