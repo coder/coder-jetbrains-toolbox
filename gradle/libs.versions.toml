@@ -17,7 +17,7 @@ mockk = "1.14.11"
 detekt = "1.23.8"
 bouncycastle = "1.86"
 jackson = "2.22.3"
-zip4j = "2.11.5"
+zip4j = "2.11.6"
 
 [libraries]
 toolbox-core-api = { module = "com.jetbrains.toolbox:core-api", version.ref = "toolbox-plugin-api" }
