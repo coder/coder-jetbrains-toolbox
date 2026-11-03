@@ -566,8 +566,8 @@ class CoderRemoteEnvironmentTest {
         val fixture = fixture(this, workspaceStatus = WorkspaceStatus.STOPPED)
         val commandStarted = CountDownLatch(1)
         val finishCommand = CountDownLatch(1)
-        every { fixture.cli.startWorkspace(any(), any(), any()) } answers {
-            thirdArg<(String) -> Unit>()("\u001B[92mProvisioning workspace...\u001B[0m")
+        every { fixture.cli.startWorkspace(any(), any()) } answers {
+            secondArg<(String) -> Unit>()("\u001B[92mProvisioning workspace...\u001B[0m")
             commandStarted.countDown()
             check(finishCommand.await(5, TimeUnit.SECONDS))
             ""
@@ -583,7 +583,7 @@ class CoderRemoteEnvironmentTest {
 
         finishCommand.countDown()
         advanceUntilIdle()
-        verify(exactly = 1) { fixture.cli.startWorkspace(any(), any(), any()) }
+        verify(exactly = 1) { fixture.cli.startWorkspace(any(), any()) }
     }
 
     @Test

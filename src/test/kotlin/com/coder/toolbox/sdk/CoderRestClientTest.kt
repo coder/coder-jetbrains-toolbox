@@ -353,6 +353,27 @@ class CoderRestClientTest {
     }
 
     @Test
+    fun `session rejects unsupported server versions before user or workspace setup`() {
+        for (version in listOf("v2.28.9", "v1.0.0", "unknown")) {
+            val (srv, url) = mockServer()
+            try {
+                val body = moshi.adapter(BuildInfo::class.java).toJson(BuildInfo(url, version)).toByteArray()
+                srv.createContext("/api/v2/buildinfo", BaseHttpHandler("GET") { exchange ->
+                    exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, body.size.toLong())
+                    exchange.responseBody.write(body)
+                })
+                val error = assertFailsWith<IllegalStateException> {
+                    runBlocking { CoderRestClient(context, URL(url), "token").initializeSession() }
+                }
+                assertContains(error.message!!, "v2.29.0 or newer")
+                if (version != "unknown") assertContains(error.message!!, "Your Coder server is too old.")
+            } finally {
+                srv.stop(0)
+            }
+        }
+    }
+
+    @Test
     fun `unsafe identifier warning is shown once between REST client session initializations`() {
         val response = WorkspacesResponse(listOf(DataGen.workspace("unsafe\nHost *")))
         val body = moshi.adapter(WorkspacesResponse::class.java)
@@ -383,7 +404,7 @@ class CoderRestClientTest {
         val sessionBodies = mapOf(
             "/api/v2/users/me" to moshi.adapter(User::class.java).toJson(DataGen.user()).toByteArray(),
             "/api/v2/buildinfo" to moshi.adapter(BuildInfo::class.java)
-                .toJson(BuildInfo("https://coder.example.com", "v1.0.0"))
+                .toJson(BuildInfo("https://coder.example.com", "v2.29.0"))
                 .toByteArray(),
             "/api/v2/appearance" to moshi.adapter(Appearance::class.java)
                 .toJson(Appearance("Coder"))

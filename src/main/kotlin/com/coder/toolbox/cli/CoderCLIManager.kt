@@ -53,12 +53,13 @@ internal data class Version(
  * 1. Create a CLI manager for the deployment URL.
  * 2. If the CLI version matches the build version, return it immediately.
  * 3. Otherwise, if downloads are enabled, attempt to download the CLI.
- *    a. On success, return the CLI.
- *    b. Any exception propagates to the user.
+ *    Any exception propagates to the user.
  * 4. If downloads are disabled:
  *    a. [IllegalStateException] is raised if the CLI does not exist (look into binary destination if it was configured,
  *    fallback to data dir otherwise)
- *    b. Otherwise, warn the user and return the mismatched version.
+ *    b. Otherwise, warn the user and use the mismatched version.
+ * 5. [IllegalStateException] is raised if the downloaded or mismatched CLI is older than the minimum supported
+ *    version. Otherwise, return the CLI.
  */
 suspend fun ensureCLI(
     context: CoderToolboxContext,
@@ -89,27 +90,15 @@ suspend fun ensureCLI(
     if (settings.enableDownloads) {
         reportProgress("Downloading Coder CLI...")
         cli.download(buildVersion, showTextProgress)
-        return cli
+    } else {
+        if (cliMatches == null) {
+            throw IllegalStateException("Can't resolve Coder CLI and downloads are disabled")
+        }
+        reportProgress("Downloads are disabled, and a cached CLI is used which does not match the server version $buildVersion and could cause compatibility issues")
     }
-
-    if (cliMatches == null) {
-        throw IllegalStateException("Can't resolve Coder CLI and downloads are disabled")
-    }
-    reportProgress("Downloads are disabled, and a cached CLI is used which does not match the server version $buildVersion and could cause compatibility issues")
+    SupportedVersions.requireSupportedCli(cli.version())
     return cli
 }
-
-/**
- * The supported features of the CLI.
- */
-data class Features(
-    val proxyLogDirectory: Boolean = false,
-    val disableAutostart: Boolean = false,
-    val reportWorkspaceUsage: Boolean = false,
-    val wildcardSsh: Boolean = false,
-    val buildReason: Boolean = false,
-    val keyringAuth: Boolean = false,
-)
 
 /**
  * Manage the CLI for a single deployment.
@@ -124,7 +113,6 @@ class CoderCLIManager(
 
     // Keep credential storage consistent with existing SSH commands until the next sign-in.
     private val useKeyring = context.settingsStore.useKeyring && usesTokenAuth
-    private var keyringFallbackWarningShown = false
     private val downloader = createDownloadService()
     private val gpgVerifier = GPGVerifier(context)
 
@@ -141,9 +129,7 @@ class CoderCLIManager(
     @Suppress("TooGenericExceptionCaught")
     internal suspend fun cleanupSshLogs(sessionId: SessionId?) = withContext(Dispatchers.IO) {
         try {
-            if (features.proxyLogDirectory) {
-                CoderSshLogCollector(context.logger, getSshLogDirectory()).cleanup(sessionId)
-            }
+            CoderSshLogCollector(context.logger, getSshLogDirectory()).cleanup(sessionId)
         } catch (ex: CancellationException) {
             throw ex
         } catch (ex: Exception) {
@@ -290,23 +276,15 @@ class CoderCLIManager(
     }
 
     /** Persist the same token used by the REST client, without exposing it in process arguments. */
-    suspend fun login(token: String, feats: Features = features): String {
-        if (useKeyring && supportsKeyringStorage(currentOs) && !feats.keyringAuth && !keyringFallbackWarningShown) {
-            keyringFallbackWarningShown = true
-            context.logger.logAndShowWarning(
-                "Keyring storage unavailable",
-                "Coder CLI 2.29.0 or newer is required for OS keyring storage. " +
-                        "The CLI session will be stored in the plugin's data directory.",
-            )
-        }
+    suspend fun login(token: String): String {
         return runInterruptible(Dispatchers.IO) {
             val output = exec(
-                *workspaceAuthArgs(feats).toTypedArray(),
+                *workspaceAuthArgs().toTypedArray(),
                 "login", "--use-token-as-session", deploymentURL.toString(),
                 env = mapOf(CODER_SESSION_TOKEN_ENV_VAR to token),
                 timeoutMillis = CREDENTIAL_TIMEOUT_MILLIS,
             )
-            if (shouldUseKeyringAuth(feats)) {
+            if (shouldUseKeyringAuth()) {
                 // Remove the plaintext copy only after the keyring write succeeds.
                 Files.deleteIfExists(coderConfigPath.resolve("session"))
             }
@@ -315,8 +293,8 @@ class CoderCLIManager(
     }
 
     /** Revoke the CLI session and remove its persisted credential. The caller handles failures. */
-    internal suspend fun logout(feats: Features = features) = runInterruptible(Dispatchers.IO) {
-        exec(*workspaceAuthArgs(feats).toTypedArray(), "logout", "--yes", timeoutMillis = CREDENTIAL_TIMEOUT_MILLIS)
+    internal suspend fun logout() = runInterruptible(Dispatchers.IO) {
+        exec(*workspaceAuthArgs().toTypedArray(), "logout", "--yes", timeoutMillis = CREDENTIAL_TIMEOUT_MILLIS)
     }
 
     /**
@@ -324,44 +302,34 @@ class CoderCLIManager(
      */
     internal fun startWorkspace(
         wsAddress: WorkspaceAddress,
-        feats: Features = features,
         showTextProgress: (String) -> Unit = {},
-    ): String {
-        val args = mutableListOf(
-            *workspaceAuthArgs(feats).toTypedArray(),
-            "start",
-            "--yes",
-        )
-
-        if (feats.buildReason) {
-            args.addAll(listOf("--reason", "jetbrains_connection"))
-        }
-        args.add("--")
-        args.add(wsAddress.ownerAndWsName)
-
-        return exec(*args.toTypedArray(), showTextProgress = showTextProgress)
-    }
+    ): String = exec(
+        *workspaceAuthArgs().toTypedArray(),
+        "start",
+        "--yes",
+        "--reason", "jetbrains_connection",
+        "--",
+        wsAddress.ownerAndWsName,
+        showTextProgress = showTextProgress,
+    )
 
     /**
      * Configure SSH to use this binary.
      *
      * The caller supplies the affected [sessionIds] because [workspaceAddresses] may be empty
      * while cleaning up configuration or may no longer contain a removed environment.
-     *
-     * This can take supported features for testing purposes only.
      */
     internal fun configSsh(
         workspaceAddresses: Set<WorkspaceAddress>,
         sessionIds: Set<SessionId> = emptySet(),
-        feats: Features = features,
         sshConfigPath: String = context.settingsStore.sshConfigPath,
     ) {
         context.logger.info(sessionIds, "Configuring SSH config at $sshConfigPath")
-        if (workspaceAddresses.isNotEmpty() && feats.proxyLogDirectory) {
+        if (workspaceAddresses.isNotEmpty()) {
             Files.createDirectories(getSshLogDirectory())
         }
         writeSSHConfig(
-            modifySSHConfig(workspaceAddresses, sessionIds, readSSHConfig(sshConfigPath), feats),
+            modifySSHConfig(workspaceAddresses, sessionIds, readSSHConfig(sshConfigPath)),
             sshConfigPath,
         )
         context.logger.info(sessionIds, "Finished configuring SSH config")
@@ -380,15 +348,11 @@ class CoderCLIManager(
      * Given an existing SSH config modify it to add or remove the config for
      * this deployment and return the modified config or null if it does not
      * need to be modified.
-     *
-     * If features are not provided, calculate them based on the binary
-     * version.
      */
     private fun modifySSHConfig(
         workspaceAddresses: Set<WorkspaceAddress>,
         sessionIds: Set<SessionId>,
         contents: String?,
-        feats: Features,
     ): String? {
         val host = deploymentURL.safeHost()
         val startBlock = "# --- START CODER JETBRAINS TOOLBOX $host"
@@ -397,23 +361,21 @@ class CoderCLIManager(
         val baseArgs =
             listOfNotNull(
                 localBinaryPath.toString(),
-                *workspaceAuthArgs(feats).toTypedArray(),
+                *workspaceAuthArgs().toTypedArray(),
                 context.settingsStore.headerCommand?.takeIf { it.isNotBlank() }?.let { "--header-command" },
                 context.settingsStore.headerCommand?.takeIf { it.isNotBlank() },
                 "ssh",
                 "--stdio",
-                if (context.settingsStore.disableAutostart && feats.disableAutostart) "--disable-autostart" else null,
+                if (context.settingsStore.disableAutostart) "--disable-autostart" else null,
                 "--network-info-dir",
                 context.settingsStore.networkInfoDir,
             )
         val proxyArgs = buildList {
             addAll(baseArgs)
-            if (feats.proxyLogDirectory) {
-                add("--log-dir")
-                add(getSshLogDirectory().toString())
-                add("-v")
-            }
-            if (feats.reportWorkspaceUsage) add("--usage-app=jetbrains")
+            add("--log-dir")
+            add(getSshLogDirectory().toString())
+            add("-v")
+            add("--usage-app=jetbrains")
         }
         val extraConfig = context.settingsStore.sshConfigOptions
             ?.takeIf { it.isNotBlank() }
@@ -427,7 +389,7 @@ class CoderCLIManager(
             SetEnv CODER_SSH_SESSION_TYPE=JetBrains
         """.trimIndent()
 
-        val blockContent = if (context.settingsStore.isSshWildcardConfigEnabled && feats.wildcardSsh) {
+        val blockContent = if (context.settingsStore.isSshWildcardConfigEnabled) {
             val hostnamePrefix = WorkspaceAddress.wildcardSshHostPrefix(deploymentURL.safeHost())
             val proxyCommand = ProxyCommandBuilder()
                 .arguments(proxyArgs)
@@ -639,7 +601,7 @@ class CoderCLIManager(
     internal suspend fun supportBundle(address: WorkspaceAddress, outputFile: Path) {
         val command = listOfNotNull(
             localBinaryPath.toString(),
-            *workspaceAuthArgs(features).toTypedArray(),
+            *workspaceAuthArgs().toTypedArray(),
             "support", "bundle", "--yes", "--output-file", outputFile.toAbsolutePath().toString(),
             "--", address.ownerAndWsName, address.agentName,
         )
@@ -669,25 +631,8 @@ class CoderCLIManager(
         }
     }
 
-    val features: Features
-        get() {
-            val version = tryVersion()
-            return if (version == null) {
-                Features()
-            } else {
-                Features(
-                    proxyLogDirectory = version >= SemVer(2, 4, 0),
-                    disableAutostart = version >= SemVer(2, 5, 0),
-                    reportWorkspaceUsage = version >= SemVer(2, 13, 0),
-                    wildcardSsh = version >= SemVer(2, 19, 0),
-                    buildReason = version >= SemVer(2, 25, 0),
-                    keyringAuth = version >= SemVer(2, 29, 0),
-                )
-            }
-        }
-
     internal fun getHostname(url: URL, workspaceAddress: WorkspaceAddress): String {
-        return if (context.settingsStore.isSshWildcardConfigEnabled && features.wildcardSsh) {
+        return if (context.settingsStore.isSshWildcardConfigEnabled) {
             workspaceAddress.wildcardSshHostAlias(url.safeHost())
         } else {
             workspaceAddress.sshHostAlias(url.safeHost())
@@ -714,14 +659,13 @@ class CoderCLIManager(
 
     private fun globalConfigArgs(): List<String> = listOf("--global-config", coderConfigPath.toString())
 
-    private fun workspaceAuthArgs(feats: Features): List<String> = buildList {
-        if (!shouldUseKeyringAuth(feats)) addAll(globalConfigArgs())
+    private fun workspaceAuthArgs(): List<String> = buildList {
+        val useKeyringAuth = shouldUseKeyringAuth()
+        if (!useKeyringAuth) addAll(globalConfigArgs())
         // Override inherited CODER_URL and CODER_USE_KEYRING for every authenticated command.
-        addAll(listOf("--url", deploymentURL.toString()))
-        if (feats.keyringAuth) add("--use-keyring=${shouldUseKeyringAuth(feats)}")
+        addAll(listOf("--url", deploymentURL.toString(), "--use-keyring=$useKeyringAuth"))
     }
 
-    private fun shouldUseKeyringAuth(feats: Features): Boolean =
-        useKeyring && feats.keyringAuth && supportsKeyringStorage(currentOs)
+    private fun shouldUseKeyringAuth(): Boolean = useKeyring && supportsKeyringStorage(currentOs)
 
 }

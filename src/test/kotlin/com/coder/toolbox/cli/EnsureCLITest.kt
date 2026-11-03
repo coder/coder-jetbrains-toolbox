@@ -98,17 +98,17 @@ internal class EnsureCLITest {
             DISABLE_SIGNATURE_VALIDATION to "true",
         )
         val expected = s.binPath(url)
-        createBinary(expected, "1.0.0")
+        createBinary(expected, "2.29.0")
 
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
         assertEquals(expected, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        assertEquals(SemVer(2, 29, 0), ccm.version())
     }
 
     @Test
     @IgnoreOnWindows
     fun `given binaryDestination is a directory and downloads are enabled, downloads and returns a fresh CLI when version mismatches`() {
-        val (srv, url) = mockServer(version = "2.0.0")
+        val (srv, url) = mockServer(version = "2.30.0")
         try {
             val s = settings(
                 BINARY_DESTINATION to testDir("dir-dest-dl-on-mismatch/bin").toString(),
@@ -116,12 +116,12 @@ internal class EnsureCLITest {
                 DISABLE_SIGNATURE_VALIDATION to "true",
             )
             val expected = s.binPath(url)
-            createBinary(expected, "1.0.0")
+            createBinary(expected, "2.29.0")
 
-            val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
+            val ccm = runBlocking { ensureCLI(ctx(s), url, "2.30.0", noOpTextProgress) }
             assertEquals(expected, ccm.localBinaryPath)
             assertTrue(ccm.localBinaryPath.toFile().exists())
-            assertEquals(SemVer(2, 0, 0), ccm.version())
+            assertEquals(SemVer(2, 30, 0), ccm.version())
         } finally {
             srv.stop(0)
         }
@@ -137,7 +137,7 @@ internal class EnsureCLITest {
                 DISABLE_SIGNATURE_VALIDATION to "true",
             )
             assertFailsWith(ResponseException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+                runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
             }
         } finally {
             srv.stop(0)
@@ -149,7 +149,7 @@ internal class EnsureCLITest {
     fun `given binaryDestination is an existing executable and downloads are enabled, returns the CLI when version already matches`() {
         val url = URL("http://test.coder.invalid")
         val binaryFile = testDir("exec-dest-dl-on-match/bin/my-coder")
-        createBinary(binaryFile, "1.0.0")
+        createBinary(binaryFile, "2.29.0")
         val s = settings(
             BINARY_DESTINATION to binaryFile.toString(),
             DATA_DIRECTORY to testDir("exec-dest-dl-on-match/data").toString(),
@@ -158,28 +158,28 @@ internal class EnsureCLITest {
         val expected = s.binPath(url)
         assertEquals(binaryFile.toAbsolutePath(), expected)
 
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
         assertEquals(expected, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        assertEquals(SemVer(2, 29, 0), ccm.version())
     }
 
     @Test
     @IgnoreOnWindows
     fun `given binaryDestination is an existing executable and downloads are enabled, downloads and returns a fresh CLI when version mismatches`() {
-        val (srv, url) = mockServer(version = "2.0.0")
+        val (srv, url) = mockServer(version = "2.30.0")
         try {
             val binaryFile = testDir("exec-dest-dl-on-mismatch/bin/my-coder")
-            createBinary(binaryFile, "1.0.0")
+            createBinary(binaryFile, "2.29.0")
             val s = settings(
                 BINARY_DESTINATION to binaryFile.toString(),
                 DATA_DIRECTORY to testDir("exec-dest-dl-on-mismatch/data").toString(),
                 DISABLE_SIGNATURE_VALIDATION to "true",
             )
             val expected = s.binPath(url)
-            val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
+            val ccm = runBlocking { ensureCLI(ctx(s), url, "2.30.0", noOpTextProgress) }
             assertEquals(expected, ccm.localBinaryPath)
             assertTrue(ccm.localBinaryPath.toFile().exists())
-            assertEquals(SemVer(2, 0, 0), ccm.version())
+            assertEquals(SemVer(2, 30, 0), ccm.version())
         } finally {
             srv.stop(0)
         }
@@ -191,14 +191,14 @@ internal class EnsureCLITest {
         val (srv, url) = mockServer(errorCode = HttpURLConnection.HTTP_INTERNAL_ERROR)
         try {
             val binaryFile = testDir("exec-dest-dl-on-error/bin/my-coder")
-            createBinary(binaryFile, "1.0.0")
+            createBinary(binaryFile, "2.29.0")
             val s = settings(
                 BINARY_DESTINATION to binaryFile.toString(),
                 DATA_DIRECTORY to testDir("exec-dest-dl-on-error/data").toString(),
                 DISABLE_SIGNATURE_VALIDATION to "true",
             )
             assertFailsWith(ResponseException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
+                runBlocking { ensureCLI(ctx(s), url, "2.30.0", noOpTextProgress) }
             }
         } finally {
             srv.stop(0)
@@ -210,15 +210,15 @@ internal class EnsureCLITest {
     fun `given binaryDestination is an existing executable and downloads are disabled, returns the CLI when version matches`() {
         val url = URL("http://test.coder.invalid")
         val binaryFile = testDir("exec-dest-dl-off-match/bin/my-coder")
-        createBinary(binaryFile, "1.0.0")
+        createBinary(binaryFile, "2.29.0")
         val s = settings(
             BINARY_DESTINATION to binaryFile.toString(),
             DATA_DIRECTORY to testDir("exec-dest-dl-off-match/data").toString(),
             ENABLE_DOWNLOADS to "false",
         )
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
         assertEquals(binaryFile.toAbsolutePath(), ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        assertEquals(SemVer(2, 29, 0), ccm.version())
     }
 
     @Test
@@ -226,15 +226,15 @@ internal class EnsureCLITest {
     fun `given binaryDestination is an existing executable and downloads are disabled, returns the stale CLI when version mismatches`() {
         val url = URL("http://test.coder.invalid")
         val binaryFile = testDir("exec-dest-dl-off-mismatch/bin/my-coder")
-        createBinary(binaryFile, "1.0.0")
+        createBinary(binaryFile, "2.29.0")
         val s = settings(
             BINARY_DESTINATION to binaryFile.toString(),
             DATA_DIRECTORY to testDir("exec-dest-dl-off-mismatch/data").toString(),
             ENABLE_DOWNLOADS to "false",
         )
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.30.0", noOpTextProgress) }
         assertEquals(binaryFile.toAbsolutePath(), ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        assertEquals(SemVer(2, 29, 0), ccm.version())
     }
 
     @Test
@@ -247,7 +247,7 @@ internal class EnsureCLITest {
             ENABLE_DOWNLOADS to "false",
         )
         assertFailsWith(IllegalStateException::class) {
-            runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+            runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
         }
     }
 
@@ -258,7 +258,7 @@ internal class EnsureCLITest {
 
         // Simulate e.g. /usr/local/bin/coder being a symlink created by a package manager.
         val realBinary = testDir("symlink-dest/real/my-coder")
-        createBinary(realBinary, "1.0.0")
+        createBinary(realBinary, "2.29.0")
         val symlinkDest = testDir("symlink-dest/link/my-coder")
         symlinkDest.parent.toFile().mkdirs()
         Files.createSymbolicLink(symlinkDest, realBinary.toAbsolutePath())
@@ -271,9 +271,9 @@ internal class EnsureCLITest {
 
         assertEquals(symlinkDest.toAbsolutePath(), s.binPath(url))
 
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
         assertEquals(symlinkDest.toAbsolutePath(), ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        assertEquals(SemVer(2, 29, 0), ccm.version())
     }
 
     @Test
@@ -286,11 +286,11 @@ internal class EnsureCLITest {
             ENABLE_DOWNLOADS to "false",
         )
         val expected = s.binPath(url)
-        createBinary(expected, "1.0.0")
+        createBinary(expected, "2.29.0")
 
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
         assertEquals(expected, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        assertEquals(SemVer(2, 29, 0), ccm.version())
     }
 
     @Test
@@ -303,11 +303,11 @@ internal class EnsureCLITest {
             ENABLE_DOWNLOADS to "false",
         )
         val expected = s.binPath(url)
-        createBinary(expected, "1.0.0")
+        createBinary(expected, "2.29.0")
 
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.30.0", noOpTextProgress) }
         assertEquals(expected, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        assertEquals(SemVer(2, 29, 0), ccm.version())
     }
 
     @Test
@@ -320,7 +320,7 @@ internal class EnsureCLITest {
             ENABLE_DOWNLOADS to "false",
         )
         assertFailsWith(IllegalStateException::class) {
-            runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+            runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
         }
     }
 
@@ -333,11 +333,11 @@ internal class EnsureCLITest {
             ENABLE_DOWNLOADS to "false",
         )
         val expected = s.binPath(url)
-        createBinary(expected, "1.0.0")
+        createBinary(expected, "2.29.0")
 
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
         assertEquals(expected, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        assertEquals(SemVer(2, 29, 0), ccm.version())
     }
 
     @Test
@@ -349,11 +349,11 @@ internal class EnsureCLITest {
             ENABLE_DOWNLOADS to "false",
         )
         val expected = s.binPath(url)
-        createBinary(expected, "1.0.0")
+        createBinary(expected, "2.29.0")
 
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.30.0", noOpTextProgress) }
         assertEquals(expected, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        assertEquals(SemVer(2, 29, 0), ccm.version())
     }
 
     @Test
@@ -364,7 +364,7 @@ internal class EnsureCLITest {
             ENABLE_DOWNLOADS to "false",
         )
         assertFailsWith(IllegalStateException::class) {
-            runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+            runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
         }
     }
 
@@ -377,29 +377,29 @@ internal class EnsureCLITest {
             DISABLE_SIGNATURE_VALIDATION to "true",
         )
         val expected = s.binPath(url)
-        createBinary(expected, "1.0.0")
+        createBinary(expected, "2.29.0")
 
-        val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+        val ccm = runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
         assertEquals(expected, ccm.localBinaryPath)
-        assertEquals(SemVer(1, 0, 0), ccm.version())
+        assertEquals(SemVer(2, 29, 0), ccm.version())
     }
 
     @Test
     @IgnoreOnWindows
     fun `given no binaryDestination configured and downloads are enabled, downloads and returns a fresh CLI when version mismatches`() {
-        val (srv, url) = mockServer(version = "2.0.0")
+        val (srv, url) = mockServer(version = "2.30.0")
         try {
             val s = settings(
                 DATA_DIRECTORY to testDir("no-dest-dl-on-mismatch/data").toString(),
                 DISABLE_SIGNATURE_VALIDATION to "true",
             )
             val expected = s.binPath(url)
-            createBinary(expected, "1.0.0")
+            createBinary(expected, "2.29.0")
 
-            val ccm = runBlocking { ensureCLI(ctx(s), url, "2.0.0", noOpTextProgress) }
+            val ccm = runBlocking { ensureCLI(ctx(s), url, "2.30.0", noOpTextProgress) }
             assertEquals(expected, ccm.localBinaryPath)
             assertTrue(ccm.localBinaryPath.toFile().exists())
-            assertEquals(SemVer(2, 0, 0), ccm.version())
+            assertEquals(SemVer(2, 30, 0), ccm.version())
         } finally {
             srv.stop(0)
         }
@@ -414,7 +414,7 @@ internal class EnsureCLITest {
                 DISABLE_SIGNATURE_VALIDATION to "true",
             )
             assertFailsWith(ResponseException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+                runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
             }
         } finally {
             srv.stop(0)
@@ -422,8 +422,9 @@ internal class EnsureCLITest {
     }
 
     @Test
+    @IgnoreOnWindows
     fun `given no binaryDestination configured and downloads are enabled, downloads and returns a fresh CLI when none exists yet`() {
-        val (srv, url) = mockServer(version = "1.0.0")
+        val (srv, url) = mockServer(version = "2.29.0")
         try {
             val s = settings(
                 DATA_DIRECTORY to testDir("no-dest-dl-on-no-cli/data").toString(),
@@ -431,12 +432,10 @@ internal class EnsureCLITest {
             )
             val expected = s.binPath(url)
 
-            val ccm = runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+            val ccm = runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
             assertEquals(expected, ccm.localBinaryPath)
             assertTrue(ccm.localBinaryPath.toFile().exists())
-            if (getOS() != OS.WINDOWS) {
-                assertEquals(SemVer(1, 0, 0), ccm.version())
-            }
+            assertEquals(SemVer(2, 29, 0), ccm.version())
         } finally {
             srv.stop(0)
         }
@@ -451,7 +450,7 @@ internal class EnsureCLITest {
                 DISABLE_SIGNATURE_VALIDATION to "true",
             )
             assertFailsWith(ResponseException::class) {
-                runBlocking { ensureCLI(ctx(s), url, "1.0.0", noOpTextProgress) }
+                runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
             }
         } finally {
             srv.stop(0)
@@ -461,6 +460,40 @@ internal class EnsureCLITest {
     // Utilities
 
     private fun testDir(id: String): Path = tmpdir.resolve(id)
+
+    @Test
+    @IgnoreOnWindows
+    fun `unsupported cached CLI is rejected when downloads are disabled`() {
+        val url = URL("http://test.coder.invalid")
+        val s = settings(
+            BINARY_DESTINATION to testDir("old-cli/bin").toString(),
+            DATA_DIRECTORY to testDir("old-cli/data").toString(),
+            ENABLE_DOWNLOADS to "false",
+        )
+        createBinary(s.binPath(url), "2.28.9")
+        val error = assertFailsWith<IllegalStateException> {
+            runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
+        }
+        assertEquals("Your Coder CLI is too old. Please upgrade to v2.29.0 or newer.", error.message)
+    }
+
+    @Test
+    @IgnoreOnWindows
+    fun `unsupported downloaded CLI is rejected when downloads are enabled`() {
+        val (srv, url) = mockServer(version = "2.28.9")
+        try {
+            val s = settings(
+                DATA_DIRECTORY to testDir("old-downloaded-cli/data").toString(),
+                DISABLE_SIGNATURE_VALIDATION to "true",
+            )
+            val error = assertFailsWith<IllegalStateException> {
+                runBlocking { ensureCLI(ctx(s), url, "2.29.0", noOpTextProgress) }
+            }
+            assertEquals("Your Coder CLI is too old. Please upgrade to v2.29.0 or newer.", error.message)
+        } finally {
+            srv.stop(0)
+        }
+    }
 
     private fun mkbin(str: String): String = if (getOS() == OS.WINDOWS) {
         listOf("@echo off", str)

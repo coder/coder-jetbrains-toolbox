@@ -1,6 +1,7 @@
 package com.coder.toolbox.sdk
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.cli.SupportedVersions
 import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.oauth.OAuthTokenResponse
 import com.coder.toolbox.sdk.convertors.ArchConverter
@@ -124,8 +125,9 @@ open class CoderRestClient(
      */
     suspend fun initializeSession(): User {
         isInvalidDeploymentDataWarningShown = false
-        me = me()
         buildVersion = buildInfo().version
+        SupportedVersions.requireSupportedServer(buildVersion)
+        me = me()
         appName = appearance().applicationName
         return me
     }

@@ -113,7 +113,7 @@ class CoderSettingsPage(
     )
     private val useKeyringField = CheckboxField(
         settings.useKeyring,
-        context.i18n.ptrl("Store CLI session in OS keyring when supported (CLI >= 2.29.0)")
+        context.i18n.ptrl("Store CLI session in OS keyring when supported")
     )
 
     private val tlsCertPathField = TextField(

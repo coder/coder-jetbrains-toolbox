@@ -90,7 +90,7 @@ class CoderRemoteProviderTest {
         remoteProvider.logout()
 
         verify { mockContext.secrets.clearSessionFor(match { it.toString() == "https://coder.example.com" }) }
-        coVerify(exactly = 1) { mockCli.logout(any()) }
+        coVerify(exactly = 1) { mockCli.logout() }
         assertFalse(remoteProvider.getAccountDropDown().visibility.value)
     }
 
@@ -99,7 +99,7 @@ class CoderRemoteProviderTest {
         every { mockCli.usesTokenAuth } returns true
         setPrivateField(remoteProvider, "client", mockClient)
         setPrivateField(remoteProvider, "cli", mockCli)
-        coEvery { mockCli.logout(any()) } throws IllegalStateException("keyring unavailable")
+        coEvery { mockCli.logout() } throws IllegalStateException("keyring unavailable")
 
         remoteProvider.logout()
 
@@ -115,7 +115,7 @@ class CoderRemoteProviderTest {
 
         remoteProvider.close()
 
-        coVerify(exactly = 0) { mockCli.logout(any()) }
+        coVerify(exactly = 0) { mockCli.logout() }
         verify(exactly = 0) { mockContext.secrets.clearSessionFor(any()) }
     }
 
@@ -127,7 +127,7 @@ class CoderRemoteProviderTest {
 
         remoteProvider.logout()
 
-        coVerify(exactly = 0) { mockCli.logout(any()) }
+        coVerify(exactly = 0) { mockCli.logout() }
     }
 
     @Test
@@ -150,7 +150,7 @@ class CoderRemoteProviderTest {
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
         val failure = FileNotFoundException("Permission denied")
-        every { mockCli.configSsh(any(), any(), any(), any()) } throws failure
+        every { mockCli.configSsh(any(), any(), any()) } throws failure
 
         // when
         val pollJob = remoteProvider.poll(mockClient, mockCli)
@@ -271,7 +271,7 @@ class CoderRemoteProviderTest {
             })
         }
         verify(exactly = 1) {
-            mockCli.configSsh(any(), setOf(sessionId), any(), any())
+            mockCli.configSsh(any(), setOf(sessionId), any())
         }
 
         pollJob.cancel()
@@ -284,7 +284,7 @@ class CoderRemoteProviderTest {
         val agent = mockAgent("agent1")
         val workspace = mockWorkspace("ws1", WorkspaceStatus.RUNNING, listOf(mockResource(listOf(agent))))
         coEvery { mockClient.workspaces(any()) } returns listOf(workspace)
-        every { mockCli.configSsh(any(), any(), any(), any()) } throws
+        every { mockCli.configSsh(any(), any(), any()) } throws
                 InvalidCoderIdentifierException("The deployment returned an invalid workspace name")
 
         val pollJob = remoteProvider.poll(mockClient, mockCli)

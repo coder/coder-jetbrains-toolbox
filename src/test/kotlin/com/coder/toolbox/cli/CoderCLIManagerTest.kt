@@ -19,6 +19,7 @@ import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.store.DATA_DIRECTORY
 import com.coder.toolbox.store.DISABLE_AUTOSTART
 import com.coder.toolbox.store.ENABLE_DOWNLOADS
+import com.coder.toolbox.store.ENABLE_SSH_WILDCARD_CONFIG
 import com.coder.toolbox.store.FALLBACK_ON_CODER_FOR_SIGNATURES
 import com.coder.toolbox.store.HEADER_COMMAND
 import com.coder.toolbox.store.NETWORK_INFO_DIR
@@ -107,7 +108,7 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun `proxy logging is gated and defaults to a deployment specific plugin directory`() {
+    fun `proxy logging defaults to a deployment specific plugin directory`() {
         val cli = supportBundleCli
         val sshConfig = supportBundleProcessRoot.resolve("ssh-config")
         val ws = workspace("dev", agents = mapOf("main" to UUID.randomUUID().toString()))
@@ -115,17 +116,21 @@ internal class CoderCLIManagerTest {
         context.settingsStore.updateSshLogDir("")
         val expectedDirectory = context.settingsStore.dataDir(URI("https://coder.example.test").toURL())
             .resolve("ssh-logs")
-        cli.configSsh(setOf(address), feats = Features(proxyLogDirectory = true), sshConfigPath = sshConfig.toString())
+        cli.configSsh(setOf(address), sshConfigPath = sshConfig.toString())
         assertContains(
             Files.readString(sshConfig),
             "--log-dir ${ProxyCommandBuilder().argument(expectedDirectory.toString()).render()} -v",
         )
         assertTrue(Files.isDirectory(expectedDirectory))
 
-        context.settingsStore.updateSshLogDir(supportBundleProcessRoot.resolve("custom").toString())
-        cli.configSsh(setOf(address), feats = Features(), sshConfigPath = sshConfig.toString())
-        assertFalse(Files.readString(sshConfig).contains("--log-dir"))
-        assertFalse(Files.exists(supportBundleProcessRoot.resolve("custom")))
+        val customDirectory = supportBundleProcessRoot.resolve("custom")
+        context.settingsStore.updateSshLogDir(customDirectory.toString())
+        cli.configSsh(setOf(address), sshConfigPath = sshConfig.toString())
+        assertContains(
+            Files.readString(sshConfig),
+            "--log-dir ${ProxyCommandBuilder().argument(customDirectory.toString()).render()} -v",
+        )
+        assertTrue(Files.isDirectory(customDirectory))
     }
 
     private fun waitingCommand(): List<String> = listOf(
@@ -583,7 +588,6 @@ internal class CoderCLIManagerTest {
         extraSettings: Array<out Pair<String, String>>,
         expectedArgsSubstring: String,
         expectGlobalConfig: Boolean,
-        feats: Features = Features(),
         osOverride: OS? = getOS(),
     ) {
         val binaryFile = tmpdir.resolve("login-env-${UUID.randomUUID()}")
@@ -627,36 +631,27 @@ internal class CoderCLIManagerTest {
             osOverride,
         )
 
-        assertEquals(stdout, runBlocking { ccm.login(token, feats) }.trim())
+        assertEquals(stdout, runBlocking { ccm.login(token) }.trim())
         val args = argsFile.toFile().readText()
         assertContains(args, expectedArgsSubstring)
         assertEquals(expectGlobalConfig, args.contains("--global-config"))
         assertContains(args, "--url https://test.coder.com")
-        if (feats.keyringAuth) {
-            assertContains(args, "--use-keyring=${!expectGlobalConfig}")
-        } else {
-            assertFalse(args.contains("--use-keyring"))
-        }
+        assertContains(args, "--use-keyring=${!expectGlobalConfig}")
         assertFalse(args.contains("--token"))
         assertFalse(args.contains(token))
         assertEquals(token, envFile.toFile().readText().trim())
     }
 
     @Test
-    fun `login selects keyring by default and honors opt out across platforms and CLI versions`() {
+    fun `login selects keyring by default and honors opt out across platforms`() {
         for (os in listOf(OS.MAC, OS.WINDOWS, OS.LINUX, null)) {
             for (setting in listOf(null, "true", "false")) {
-                for (supported in listOf(false, true)) {
-                    assertLoginUsesExpectedArgs(
-                        extraSettings = setting?.let { arrayOf(USE_KEYRING to it) } ?: emptyArray(),
-                        expectedArgsSubstring = "login --use-token-as-session https://test.coder.com",
-                        expectGlobalConfig = setting == "false" || !supported || !CoderCLIManager.supportsKeyringStorage(
-                            os
-                        ),
-                        feats = Features(keyringAuth = supported),
-                        osOverride = os,
-                    )
-                }
+                assertLoginUsesExpectedArgs(
+                    extraSettings = setting?.let { arrayOf(USE_KEYRING to it) } ?: emptyArray(),
+                    expectedArgsSubstring = "login --use-token-as-session https://test.coder.com",
+                    expectGlobalConfig = setting == "false" || !CoderCLIManager.supportsKeyringStorage(os),
+                    osOverride = os,
+                )
             }
         }
     }
@@ -693,7 +688,7 @@ internal class CoderCLIManagerTest {
         session.parentFile.mkdirs()
         session.writeText("old-token")
 
-        cli.login("new-token", Features(keyringAuth = true))
+        cli.login("new-token")
 
         assertFalse(session.exists())
     }
@@ -706,7 +701,7 @@ internal class CoderCLIManagerTest {
         session.parentFile.mkdirs()
         session.writeText("old-token")
 
-        assertFailsWith<ProcessExitException> { cli.login("new-token", Features(keyringAuth = true)) }
+        assertFailsWith<ProcessExitException> { cli.login("new-token") }
 
         assertEquals("old-token", session.readText())
     }
@@ -715,29 +710,17 @@ internal class CoderCLIManagerTest {
     fun `logout and token refresh retain active storage until the next sign in`() = runBlocking {
         val (cli, settings) = credentialCli()
         settings.updateUseKeyring(false)
-        val feats = Features(keyringAuth = true)
 
-        assertContains(cli.login("new-token", feats), "--use-keyring=true")
-        val args = cli.logout(feats)
+        assertContains(cli.login("new-token"), "--use-keyring=true")
+        val args = cli.logout()
         assertContains(args, "--url https://test.coder.com --use-keyring=true logout --yes")
         assertFalse(args.contains("--global-config"))
 
         val nextCli = CoderCLIManager(context.copy(settingsStore = settings), URL("https://test.coder.com"), OS.MAC)
-        val nextArgs = nextCli.login("next-token", feats)
+        val nextArgs = nextCli.login("next-token")
         assertContains(nextArgs, "--use-keyring=false")
         assertContains(nextArgs, "--global-config")
-        assertContains(nextCli.logout(feats), "--use-keyring=false logout --yes")
-    }
-
-    @Test
-    fun `unsupported CLI warns once per session`() = runBlocking {
-        val (cli, _) = credentialCli()
-        io.mockk.clearMocks(underlyingLogger, answers = false)
-
-        cli.login("token", Features())
-        cli.login("refreshed-token", Features())
-
-        verify(exactly = 1) { underlyingLogger.warn(match<String> { it.contains("2.29.0 or newer is required") }) }
+        assertContains(nextCli.logout(), "--use-keyring=false logout --yes")
     }
 
     @Test
@@ -777,14 +760,14 @@ internal class CoderCLIManagerTest {
         val keyringSupported = CoderCLIManager.supportsKeyringStorage(getOS())
         assertEquals(
             stdout,
-            ccm.startWorkspace(
-                WorkspaceAddress.from(workspace("dev").copy(ownerName = "alice")),
-                Features(keyringAuth = true)
-            ).trim()
+            ccm.startWorkspace(WorkspaceAddress.from(workspace("dev").copy(ownerName = "alice"))).trim()
         )
         val args = argsFile.toFile().readText()
         if (keyringSupported) {
-            assertContains(args, "--url https://test.coder.com --use-keyring=true start --yes -- alice/dev")
+            assertContains(
+                args,
+                "--url https://test.coder.com --use-keyring=true start --yes --reason jetbrains_connection -- alice/dev"
+            )
             assertFalse(args.contains("--global-config"))
         } else {
             assertContains(args, "--global-config")
@@ -792,50 +775,7 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun `start workspace keeps global config when keyring is enabled but CLI does not support it`() {
-        val binaryFile = tmpdir.resolve("start-workspace-${UUID.randomUUID()}")
-            .resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
-        val argsFile = binaryFile.parent.resolve("argv.txt")
-        val stdout = "start ok"
-        val script = if (getOS() == OS.WINDOWS) {
-            mkbin(
-                """
-                echo %* > "${argsFile.toAbsolutePath()}"
-                echo $stdout
-                """.trimIndent()
-            )
-        } else {
-            mkbin(
-                """
-                printf '%s\n' "$*" > '${argsFile.toAbsolutePath()}'
-                printf '$stdout\n'
-                """.trimIndent()
-            )
-        }
-        writeExecutable(binaryFile, script)
-
-        val settings = CoderSettingsStore(
-            pluginTestSettingsStore(
-                BINARY_DESTINATION to binaryFile.toString(),
-                ENABLE_DOWNLOADS to "false",
-                USE_KEYRING to "true",
-            ),
-            Environment(),
-            underlyingLogger
-        )
-        val ccm = CoderCLIManager(context.copy(settingsStore = settings), URL("https://test.coder.com"))
-
-        assertEquals(
-            stdout,
-            ccm.startWorkspace(WorkspaceAddress.from(workspace("dev").copy(ownerName = "alice")), Features()).trim()
-        )
-        val args = argsFile.toFile().readText()
-        assertContains(args, "--global-config")
-        assertFalse(args.contains("--url https://test.coder.com --use-keyring=true start --yes -- alice/dev"))
-    }
-
-    @Test
-    fun `start workspace keeps global config on linux even when keyring is enabled and CLI supports it`() {
+    fun `start workspace keeps global config on linux even when keyring is enabled`() {
         val binaryFile = tmpdir.resolve("start-workspace-${UUID.randomUUID()}")
             .resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
         val argsFile = binaryFile.parent.resolve("argv.txt")
@@ -874,14 +814,11 @@ internal class CoderCLIManagerTest {
 
         assertEquals(
             stdout,
-            ccm.startWorkspace(
-                WorkspaceAddress.from(workspace("dev").copy(ownerName = "alice")),
-                Features(keyringAuth = true)
-            ).trim()
+            ccm.startWorkspace(WorkspaceAddress.from(workspace("dev").copy(ownerName = "alice"))).trim()
         )
         val args = argsFile.toFile().readText()
         assertContains(args, "--global-config")
-        assertFalse(args.contains("--url https://test.coder.com --use-keyring=true start --yes -- alice/dev"))
+        assertFalse(args.contains("--url https://test.coder.com --use-keyring=true start --yes --reason jetbrains_connection -- alice/dev"))
     }
 
     @Test
@@ -948,11 +885,7 @@ internal class CoderCLIManagerTest {
         val remove: String,
         val headerCommand: String = "",
         val disableAutostart: Boolean = false,
-        // Default to the most common feature settings.
-        val features: Features = Features(
-            disableAutostart = false,
-            reportWorkspaceUsage = true,
-        ),
+        val wildcard: Boolean = false,
         val extraConfig: String = "",
         val env: Environment = Environment(),
         val sshLogDirectory: Path? = null,
@@ -1018,24 +951,8 @@ internal class CoderCLIManagerTest {
                     "blank",
                     "",
                     true,
-                    Features(
-                        disableAutostart = true,
-                        reportWorkspaceUsage = true,
-                    ),
                 ),
                 SSHTest(listOf(workspace), null, "no-disable-autostart", "blank", ""),
-                SSHTest(
-                    listOf(workspace),
-                    null,
-                    "no-report-usage",
-                    "blank",
-                    "",
-                    true,
-                    Features(
-                        disableAutostart = false,
-                        reportWorkspaceUsage = false,
-                    ),
-                ),
                 SSHTest(
                     listOf(workspace),
                     null,
@@ -1056,7 +973,6 @@ internal class CoderCLIManagerTest {
                     "log-dir",
                     "blank",
                     sshLogDirectory = tmpdir.resolve("ssh-logs"),
-                    features = Features(proxyLogDirectory = true, reportWorkspaceUsage = true),
                 ),
                 SSHTest(
                     listOf(workspace),
@@ -1082,9 +998,7 @@ internal class CoderCLIManagerTest {
                     input = null,
                     output = "wildcard",
                     remove = "blank",
-                    features = Features(
-                        wildcardSsh = true,
-                    ),
+                    wildcard = true,
                 ),
             )
 
@@ -1095,6 +1009,8 @@ internal class CoderCLIManagerTest {
                 CoderSettingsStore(
                     pluginTestSettingsStore(
                         DISABLE_AUTOSTART to it.disableAutostart.toString(),
+                        ENABLE_SSH_WILDCARD_CONFIG to it.wildcard.toString(),
+                        USE_KEYRING to "false",
                         DATA_DIRECTORY to tmpdir.resolve("configure-ssh").toString(),
                         HEADER_COMMAND to it.headerCommand,
                         SSH_CONFIG_PATH to tmpdir.resolve(it.input + "_to_" + it.output + ".conf").toString(),
@@ -1147,16 +1063,10 @@ internal class CoderCLIManagerTest {
                             .argument((it.url ?: URI.create("https://test.coder.invalid").toURL()).toString())
                             .render(),
                     )
-                    .let { conf ->
-                        if (it.sshLogDirectory != null) {
-                            conf.replace(
-                                "/tmp/coder-toolbox/test.coder.invalid/logs",
-                                ProxyCommandBuilder().argument(it.sshLogDirectory.toString()).render(),
-                            )
-                        } else {
-                            conf
-                        }
-                    }
+                    .replace(
+                        "/tmp/coder-toolbox/test.coder.invalid/logs",
+                        ProxyCommandBuilder().argument(ccm.getSshLogDirectory().toString()).render(),
+                    )
 
             // Add workspaces.
             ccm.configSsh(
@@ -1165,7 +1075,6 @@ internal class CoderCLIManagerTest {
                         WorkspaceAddress.from(ws, a)
                     }
                 }.toSet(),
-                feats = it.features,
             )
 
             assertEquals(expectedConf, sshConfigPath.toFile().readText())
@@ -1176,7 +1085,7 @@ internal class CoderCLIManagerTest {
             }
 
             // Remove configuration.
-            ccm.configSsh(emptySet(), feats = it.features)
+            ccm.configSsh(emptySet())
 
             // Remove is the configuration we expect after removing.
             assertEquals(
@@ -1188,7 +1097,7 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun `SSH setup keeps feature detection sessionless and correlates configuration logs`() {
+    fun `SSH setup correlates configuration logs with the session`() {
         val testDirectory = tmpdir.resolve("session-correlated-config-${UUID.randomUUID()}")
         val binaryPath = if (getOS() == OS.WINDOWS) {
             testDirectory.resolve("coder.bat")
@@ -1232,12 +1141,6 @@ internal class CoderCLIManagerTest {
         verify(exactly = 1) {
             underlyingLogger.info("$sessionPrefix Configuring SSH config at $sshConfigPath")
         }
-        verify(atLeast = 1) {
-            underlyingLogger.info(match<String> {
-                it.startsWith("`${ccm.localBinaryPath} version --output json`:") &&
-                        it.contains("\"version\": \"2.25.0\"")
-            })
-        }
         verify(exactly = 1) {
             underlyingLogger.info("No existing SSH config to modify")
         }
@@ -1247,10 +1150,9 @@ internal class CoderCLIManagerTest {
         verify(exactly = 1) {
             underlyingLogger.info("$sessionPrefix Finished configuring SSH config")
         }
+        // SSH setup no longer runs the CLI to detect features.
         verify(exactly = 0) {
-            underlyingLogger.info(match<String> {
-                it.startsWith("$sessionPrefix `${ccm.localBinaryPath} version --output json`:")
-            })
+            underlyingLogger.info(match<String> { it.contains("${ccm.localBinaryPath} version --output json") })
         }
     }
 
@@ -1265,7 +1167,6 @@ internal class CoderCLIManagerTest {
         ccm.configSsh(
             workspaceAddresses = emptySet(),
             sessionIds = setOf(sessionId),
-            feats = Features(),
             sshConfigPath = sshConfigPath.toString(),
         )
 
@@ -1310,7 +1211,6 @@ internal class CoderCLIManagerTest {
 
         val output = ccm.startWorkspace(
             WorkspaceAddress.from(workspace),
-            Features(),
             progressMessages::add,
         )
 
@@ -1376,7 +1276,6 @@ internal class CoderCLIManagerTest {
                 .filter { it.agents != null }
                 .flatMap { resource -> resource.agents!!.map { agent -> WorkspaceAddress.from(workspace, agent) } }
                 .toSet(),
-            feats = Features(reportWorkspaceUsage = true, keyringAuth = true),
         )
 
         val keyringSupported = CoderCLIManager.supportsKeyringStorage(getOS())
@@ -1386,38 +1285,7 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun `ssh config keeps global config when keyring is enabled but CLI does not support it`() {
-        val workspace = workspace("foo", agents = mapOf("agent1" to UUID.randomUUID().toString()))
-        val settings = CoderSettingsStore(
-            pluginTestSettingsStore(
-                USE_KEYRING to "true",
-                SSH_CONFIG_PATH to tmpdir.resolve("keyring-ssh-unsupported.conf").toString(),
-                DATA_DIRECTORY to tmpdir.resolve("keyring-ssh-unsupported-data").toString(),
-                NETWORK_INFO_DIR to tmpdir.resolve("keyring-ssh-unsupported-network-info").toString(),
-            ),
-            Environment(),
-            context.logger
-        )
-        val ccm = CoderCLIManager(
-            context.copy(settingsStore = settings),
-            URI.create("https://test.coder.invalid").toURL()
-        )
-
-        ccm.configSsh(
-            workspace.latestBuild.resources
-                .filter { it.agents != null }
-                .flatMap { resource -> resource.agents!!.map { agent -> WorkspaceAddress.from(workspace, agent) } }
-                .toSet(),
-            feats = Features(reportWorkspaceUsage = true),
-        )
-
-        val sshConfig = Path.of(settings.sshConfigPath).toFile().readText()
-        assertContains(sshConfig, "--global-config")
-        assertContains(sshConfig, "--url https://test.coder.invalid")
-    }
-
-    @Test
-    fun `ssh config keeps global config on linux even when keyring is enabled and CLI supports it`() {
+    fun `ssh config keeps global config on linux even when keyring is enabled`() {
         val workspace = workspace("foo", agents = mapOf("agent1" to UUID.randomUUID().toString()))
         val settings = CoderSettingsStore(
             pluginTestSettingsStore(
@@ -1440,7 +1308,6 @@ internal class CoderCLIManagerTest {
                 .filter { it.agents != null }
                 .flatMap { resource -> resource.agents!!.map { agent -> WorkspaceAddress.from(workspace, agent) } }
                 .toSet(),
-            feats = Features(reportWorkspaceUsage = true, keyringAuth = true),
         )
 
         val sshConfig = Path.of(settings.sshConfigPath).toFile().readText()
@@ -1503,7 +1370,7 @@ internal class CoderCLIManagerTest {
         }
 
         assertFailsWith<InvalidCoderIdentifierException> {
-            ccm.configSsh(setOf(WorkspaceAddress.from(workspace, agent)), feats = Features())
+            ccm.configSsh(setOf(WorkspaceAddress.from(workspace, agent)))
         }
         assertFalse(sshConfigPath.toFile().exists())
 
@@ -1512,7 +1379,7 @@ internal class CoderCLIManagerTest {
             every { name } returns "workspace"
         }
         assertFailsWith<InvalidCoderIdentifierException> {
-            ccm.startWorkspace(WorkspaceAddress.from(unsafeOwnerWorkspace), Features())
+            ccm.startWorkspace(WorkspaceAddress.from(unsafeOwnerWorkspace))
         }
     }
 
@@ -1543,7 +1410,7 @@ internal class CoderCLIManagerTest {
         val workspace = workspace("safe", agents = mapOf("agent" to UUID.randomUUID().toString()))
         val withAgent = workspace.latestBuild.resources.single().agents!!.single()
 
-        ccm.configSsh(setOf(WorkspaceAddress.from(workspace, withAgent)), feats = Features())
+        ccm.configSsh(setOf(WorkspaceAddress.from(workspace, withAgent)))
 
         val updatedConfig = sshConfigPath.toFile().readText()
         assertFalse(updatedConfig.contains("unsafe-command"))
@@ -1687,78 +1554,6 @@ internal class CoderCLIManagerTest {
             }
 
             assertEquals(it.third, ccm.matchesVersion(it.second), it.first)
-        }
-    }
-
-    @Test
-    fun testFeatures() {
-        val tests =
-            listOf(
-                Pair("2.5.0", Features(proxyLogDirectory = true, disableAutostart = true)),
-                Pair(
-                    "2.13.0",
-                    Features(proxyLogDirectory = true, disableAutostart = true, reportWorkspaceUsage = true)
-                ),
-                Pair(
-                    "2.25.0",
-                    Features(
-                        proxyLogDirectory = true,
-                        disableAutostart = true,
-                        reportWorkspaceUsage = true,
-                        wildcardSsh = true,
-                        buildReason = true
-                    )
-                ),
-                Pair(
-                    "4.9.0", Features(
-                        proxyLogDirectory = true,
-                        disableAutostart = true,
-                        reportWorkspaceUsage = true,
-                        wildcardSsh = true,
-                        buildReason = true,
-                        keyringAuth = true,
-                    )
-                ),
-                Pair(
-                    "2.29.0",
-                    Features(
-                        proxyLogDirectory = true,
-                        disableAutostart = true,
-                        reportWorkspaceUsage = true,
-                        wildcardSsh = true,
-                        buildReason = true,
-                        keyringAuth = true,
-                    )
-                ),
-                Pair("2.4.9", Features(proxyLogDirectory = true)),
-                Pair("2.4.0", Features(proxyLogDirectory = true)),
-                Pair("2.3.9", Features()),
-                Pair("1.0.1", Features()),
-            )
-
-        tests.forEach {
-            val (srv, url) = mockServer(version = it.first)
-            val ccm = CoderCLIManager(
-                context.copy(
-                    settingsStore = CoderSettingsStore(
-                        pluginTestSettingsStore(
-                            DATA_DIRECTORY to tmpdir.resolve("features").toString(),
-                            FALLBACK_ON_CODER_FOR_SIGNATURES to "allow"
-                        ),
-                        Environment(),
-                        context.logger,
-                    )
-                ),
-                url,
-            )
-            assertEquals(true, runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
-            // On Windows the downloaded script is saved as .exe and cannot be executed
-            // as a batch script, so skip the features check.
-            if (getOS() != OS.WINDOWS) {
-                assertEquals(it.second, ccm.features, "version: ${it.first}")
-            }
-
-            srv.stop(0)
         }
     }
 

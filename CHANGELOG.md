@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Removed
+
+- Support for Coder server and CLI versions older than v2.29.0. Unsupported versions now show an upgrade message.
+
 ## 0.9.5 - 2026-10-30
 
 ### Added
