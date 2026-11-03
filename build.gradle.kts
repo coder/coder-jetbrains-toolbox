@@ -38,7 +38,7 @@ dependencies {
     compileOnly(libs.bundles.serialization)
     compileOnly(libs.coroutines.core)
     implementation(libs.okhttp)
-    implementation(libs.exec)
+    implementation(libs.zip4j)
     implementation(libs.moshi)
     ksp(libs.moshi.codegen)
     implementation(libs.retrofit)

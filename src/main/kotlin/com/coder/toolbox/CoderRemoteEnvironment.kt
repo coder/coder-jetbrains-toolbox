@@ -40,6 +40,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -80,8 +81,14 @@ class CoderRemoteEnvironment(
         MutableStateFlow(environmentStatus.toEnvironmentDescription(context))
     override val additionalEnvironmentInformation: MutableMap<LocalizableString, String> = mutableMapOf()
     override val actionsList: MutableStateFlow<List<ActionDescription>> = MutableStateFlow(emptyList())
-    override val diagnosticInfoCollector: DiagnosticInfoCollector =
-        CoderSupportBundleCollector(context.logger) { outputFile ->
+    override val diagnosticInfoCollector: DiagnosticInfoCollector
+        get() = CoderSupportBundleCollector(
+            context.logger,
+            cli.getSshLogDirectory(),
+            context.settingsStore,
+            ::currentSessionId,
+            sshPid,
+        ) { outputFile ->
             cli.supportBundle(WorkspaceAddress.from(workspace, agent), outputFile)
         }
     override val deleteActionFlow: StateFlow<(() -> Unit)?> = MutableStateFlow(null)
@@ -89,6 +96,9 @@ class CoderRemoteEnvironment(
     private val networkMetricsMarshaller = Moshi.Builder().build().adapter(NetworkMetrics::class.java)
     private val proxyCommandHandle = SshCommandProcessHandle(context)
     private var pollJob: Job? = null
+
+    @Volatile
+    private var sshPid: Long? = null
     private var progressWatcher: WorkspaceProgressWatcher? = null
 
     init {
@@ -117,7 +127,6 @@ class CoderRemoteEnvironment(
 
     private fun refreshAvailableActions() {
         val actions = mutableListOf<ActionDescription>()
-        context.logger.debug("Refreshing available actions for workspace $id with status: $environmentStatus")
         if (environmentStatus.canStop() && agent != null) {
             actions.add(Action(context, "Open web terminal") {
                 context.logger.debug("Launching web terminal for $id...")
@@ -178,6 +187,7 @@ class CoderRemoteEnvironment(
                     Action(context, "Update and restart") {
                         runWorkspaceBuildAction("Updating and restarting workspace…") {
                             context.logger.debug(currentSessionId(), "Updating and re-starting $id...")
+                            context.logger.flush("workspace_restarting $id", currentSessionId())
                             client.updateWorkspace(workspace)
                         }
                     }.withCurrentSessionId(::currentSessionId)
@@ -188,6 +198,7 @@ class CoderRemoteEnvironment(
                     runWorkspaceBuildAction("Stopping workspace…") {
                         tryStopSshConnection()
                         context.logger.debug(currentSessionId(), "Stopping $id...")
+                        context.logger.flush("workspace_stopping $id", currentSessionId())
                         client.stopWorkspace(workspace)
                     }
                 }.withCurrentSessionId(::currentSessionId)
@@ -213,6 +224,7 @@ class CoderRemoteEnvironment(
                 if (confirmation == workspace.name) {
                     withProgress("Deleting workspace…") {
                         context.logger.debug(currentSessionId(), "Deleting $id...")
+                        context.logger.flush("workspace_deleting $id", currentSessionId())
                         deleteWorkspace()
                     }
                 }
@@ -337,6 +349,7 @@ class CoderRemoteEnvironment(
         val previousEnvironmentStatus = environmentStatus
         val previousWorkspace = workspace
         val previousAgent = agent
+        val wasReachable = state.value.isReachable
         val sessionId = currentSessionId()
 
         environmentStatus = newState
@@ -357,6 +370,9 @@ class CoderRemoteEnvironment(
                     "agent lifecycle state: ${previousAgent?.lifecycleState} -> ${agent?.lifecycleState}, " +
                     "login before ready: ${previousAgent?.loginBeforeReady} -> ${agent?.loginBeforeReady}"
         context.logger.info(sessionId, message)
+        if (wasReachable && !state.value.isReachable) {
+            context.logger.flush("environment_status_changed $id", sessionId)
+        }
     }
 
     private suspend fun tryStopSshConnection() {
@@ -370,6 +386,7 @@ class CoderRemoteEnvironment(
                     "The SSH connection to workspace $name could not be dropped in time, " +
                             "going to stop the workspace while the SSH connection is live"
                 context.logger.warn(currentSessionId(), message)
+                context.logger.flush("ssh_disconnect_timeout $id", currentSessionId())
             }
         }
     }
@@ -415,17 +432,21 @@ class CoderRemoteEnvironment(
         // Toolbox can invoke this hook again while retrying without first reporting a disconnect.
         // Replace the previous poller so one environment never leaves multiple pollers behind.
         pollJob?.cancel()
+        sshPid = null
         pollJob = pollNetworkMetrics()
     }
 
     private fun pollNetworkMetrics(): Job =
         context.cs.launch(CoroutineName("Network Metrics Poller")) {
+            cli.cleanupSshLogs(currentSessionId())
             context.logger.info(currentSessionId(), "Starting the network metrics poll job for $id")
             while (isActive) {
                 val currentAgent = agent ?: break
                 val sessionId = currentSessionId()
                 context.logger.debug(sessionId, "Searching SSH command's PID for workspace $id...")
                 val pid = proxyCommandHandle.findByWorkspaceAndAgent(workspace, currentAgent)
+                ensureActive()
+                sshPid = pid
                 if (pid == null) {
                     context.logger.debug(sessionId, "No SSH command PID was found for workspace $id")
                     delay(POLL_INTERVAL)
@@ -479,9 +500,11 @@ class CoderRemoteEnvironment(
             "Toolbox is disconnecting SSH from $id $disconnectKind.$stateInference " +
                     "Latest known Coder state: $latestCoderState",
         )
+        context.logger.flush("ssh_disconnected $id", sessionId)
         context.logger.info(sessionId, "Stopping the network metrics poll job for $id")
         pollJob?.cancel()
         pollJob = null
+        sshPid = null
         connectionRequest.update { false }
         isConnected.update { false }
         if (isManual) {
@@ -491,6 +514,7 @@ class CoderRemoteEnvironment(
                 SessionIdRegistry.removeSession(workspace.name, it.name)
             }?.let {
                 context.logger.info(it, "Removed Toolbox SSH session for $id after manual disconnect")
+                context.logger.flush("ssh_session_removed_after_manual_disconnect $id", it)
             }
         }
     }
@@ -556,6 +580,7 @@ class CoderRemoteEnvironment(
     fun dispose() {
         pollJob?.cancel()
         pollJob = null
+        sshPid = null
         closeProgressWatcher(progressWatcher)
         isConnected.update { false }
         val removedSessionId = agent?.let {
@@ -563,6 +588,7 @@ class CoderRemoteEnvironment(
         }
         removedSessionId?.let { sessionId ->
             context.logger.info(sessionId, "Removed Toolbox SSH session for $id")
+            context.logger.flush("ssh_session_removed $id", sessionId)
         }
     }
 

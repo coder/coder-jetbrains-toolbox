@@ -46,6 +46,7 @@ import com.jetbrains.toolbox.api.ui.components.UiPage
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -115,8 +116,10 @@ class CoderRemoteProvider(
     private val linkHandler =
         CoderProtocolHandler(context, IdeFeedManager(context), workspaceRefreshTrigger, environments)
     private val accountDropdownField = dropDownFactory(context.i18n.pnotr("")) {
-        logout()
-        context.envPageManager.showPluginEnvironmentsPage(false)
+        context.cs.launch(CoroutineName("Logout")) {
+            logout()
+            context.envPageManager.showPluginEnvironmentsPage(false)
+        }
     }.apply {
         visibility.update { false }
     }
@@ -192,6 +195,7 @@ class CoderRemoteProvider(
                                 "Your Coder session has expired. Please re-authenticate and try again.",
                                 ex
                             )
+                            context.logger.flush("coder_session_expired")
                             break
                         }
                         context.logger.error(sessionIds, ex, "workspace polling error encountered")
@@ -350,15 +354,34 @@ class CoderRemoteProvider(
         }.sortedBy { it.id }
     }
 
-    /**
-     * Stop polling, clear the client and environments, then go back to the
-     * first page.
-     */
-    private fun logout() {
+    /** Sign out explicitly; provider shutdown alone must preserve credentials. */
+    internal suspend fun logout() {
         val sessionIds = lastEnvironments.currentSessionIds()
-        context.logger.info(sessionIds, "Logging out ${client?.me?.username}...")
-        close()
-        context.logger.info(sessionIds, "User ${client?.me?.username} logged out successfully")
+        val activeClient = client
+        val activeCli = cli
+        context.logger.info(sessionIds, "Logging out ${activeClient?.me?.username}...")
+        context.logger.flush("logout")
+        try {
+            pollJob?.cancelAndJoin()
+            activeClient?.close()
+            if (activeClient != null) {
+                context.secrets.clearSessionFor(activeClient.url)
+                if (activeCli?.usesTokenAuth == true) activeCli.logout()
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            context.logger.logAndShowWarning(
+                sessionIds,
+                "CLI logout failed",
+                "Toolbox has signed out, but the CLI credential may remain stored. " +
+                        "Sign in and try logging out again to remove it.",
+                ex,
+            )
+            context.logger.flush("cli_logout_failed")
+        } finally {
+            close()
+        }
     }
 
     /**
@@ -402,6 +425,7 @@ class CoderRemoteProvider(
         accountDropdownField.visibility.update { false }
         router.clear()
         context.logger.info(sessionIds, "Coder plugin is now closed")
+        context.logger.flush("provider_closed")
     }
 
     private fun softClose() {
@@ -615,7 +639,7 @@ class CoderRemoteProvider(
         return deploymentURL
     }
 
-    private suspend fun resolveToken(params: Map<String, String>): String? {
+    private fun resolveToken(params: Map<String, String>): String? {
         val token = params.token()
         if (token.isNullOrBlank()) {
             context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"$TOKEN\" is missing from URI")

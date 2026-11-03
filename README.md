@@ -10,8 +10,8 @@ Connects your JetBrains IDE to Coder workspaces
 
 To install this plugin using JetBrains Toolbox, follow the steps below.
 
-1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/). Make sure it's the `2.6.0.40632` release or
-   above.
+1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/) **3.9 or newer**. Earlier versions are not
+   supported.
 2. Launch the Toolbox app and sign in with your JetBrains account (if needed).
 
 ### Install Coder plugin via URI
@@ -348,12 +348,124 @@ error.
 
 ## Debugging and Reporting issues
 
-Enabling debug logging is essential for diagnosing issues with the Toolbox plugin, especially when SSH connections to
-the remote environment fail — it provides detailed output that includes SSH negotiation and command execution, which is
-not visible at the default log level.
+The plugin's flight recorder keeps recent messages below Toolbox's log level in memory and replays them at connection
+diagnostic checkpoints and when collecting a Coder support bundle. This can preserve the context leading up to an issue
+without enabling debug logging beforehand. Enable debug logging when you need continuous detailed output, including
+messages from Toolbox itself.
 
 If you encounter a problem with Coder's JetBrains Toolbox plugin, follow the steps below to gather more information and
 help us diagnose and resolve it quickly.
+
+### Flight recorder
+
+The flight recorder is enabled by default with a capacity of **1000 log entries** from the Coder plugin logger. You can
+configure the capacity up to **10000 entries** using **Connection log buffer size**. Messages that Toolbox accepts at
+its current log level are logged normally; messages it filters out are captured in a fixed capacity array ring buffer.
+When the buffer fills, each new entry replaces the oldest entry.
+
+Each entry preserves its original log level, message text, and exception details when present. Its UTC timestamp marks
+when the prepared entry is accepted into the buffer, after any lazy message evaluation and exception formatting.
+Entries are replayed and evicted in that acceptance order. The limit counts entries, not lines or bytes: a multiline
+message or a message with a stack trace occupies one entry, so memory usage depends on message size. Capture covers
+messages sent through the Coder plugin logger; CLI SSH file logs are collected separately as described in
+[Coder Support Bundles](#coder-support-bundles).
+
+There is one shared buffer per running plugin instance, so a replay can contain context from several workspaces.
+Messages retain any `client_session_id` recorded with them. Environment-specific replays add the triggering
+environment's current session ID only to the replay header and footer; entry chunks keep their original session IDs,
+and entries without an ID remain unscoped. Provider-wide replays do not add a session prefix. The buffer remains in
+memory until replayed or discarded. Entries that have not been replayed are lost when the plugin instance ends or
+Toolbox exits.
+
+#### Configuring the buffer
+
+Open the **Coder main page** (the page listing your environments), click the **action menu on the right side of the
+page header**, and select **Settings**. Under **General**, change **Connection log buffer size** and click **Save**.
+
+| Setting                    | Plugin settings key       | Default        | Valid values                                 |
+|----------------------------|---------------------------|----------------|----------------------------------------------|
+| Connection log buffer size | `connectionLogBufferSize` | `1000` entries | Whole numbers from `0` to `10000`, inclusive |
+
+Changes take effect without restarting Toolbox:
+
+- Reducing the capacity keeps the newest entries that fit and discards older entries.
+- Increasing the capacity preserves all retained entries and allows more entries to be recorded.
+- Setting the capacity to `0` clears the buffer and disables recording and replay. Normal Toolbox logging continues.
+- The settings page rejects invalid input. An absent, malformed, or out-of-range stored value falls back to `1000`.
+
+#### Toolbox log levels and replay levels
+
+The recorder follows Toolbox's effective log level, including `--debug` and `--trace` launch flags. Changes to the
+Toolbox log level apply live. Each replay call uses a level Toolbox currently persists, while the original level of
+each entry stays in the message text.
+
+| Toolbox effective level | Logged normally          | New entries captured in memory | Replay level                                    |
+|-------------------------|--------------------------|--------------------------------|-------------------------------------------------|
+| ERROR                   | ERROR                    | WARN, INFO, DEBUG, TRACE       | ERROR                                           |
+| WARN                    | ERROR, WARN              | INFO, DEBUG, TRACE             | WARN                                            |
+| INFO                    | ERROR, WARN, INFO        | DEBUG, TRACE                   | INFO                                            |
+| DEBUG                   | ERROR, WARN, INFO, DEBUG | TRACE                          | INFO                                            |
+| TRACE                   | All levels               | None                           | INFO for entries retained from an earlier level |
+| OFF                     | None                     | None                           | No replay                                       |
+
+With Toolbox logging set to **OFF**, neither recording nor replay runs. Existing buffered entries remain available
+after logging is re-enabled, unless the capacity is set to `0` or the plugin instance ends in the meantime.
+
+The plugin's **HTTP logging level** is independent of this setting. For example, the recorder cannot capture HTTP
+headers or bodies when the HTTP logging setting does not generate those messages. See
+[HTTP Request Logging](#http-request-logging).
+
+#### Automatic replay triggers
+
+The following events flush the recorder. The reason appears in the replay header and footer; `<id>` is the environment
+ID, normally `workspace.agent`.
+
+| Event                                                                              | Replay reason                                                                     |
+|------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
+| An environment changes from reachable to unreachable                               | `environment_status_changed <id>`                                                 |
+| The workspace filter changes                                                       | `workspace_filter_changed`                                                        |
+| A workspace restart, stop, or deletion is requested                                | `workspace_restarting <id>`, `workspace_stopping <id>`, `workspace_deleting <id>` |
+| An SSH disconnect request times out before workspace stop                          | `ssh_disconnect_timeout <id>`                                                     |
+| Toolbox invokes the SSH disconnect callback                                        | `ssh_disconnected <id>`                                                           |
+| An environment's SSH session is removed during disposal or after manual disconnect | `ssh_session_removed <id>`, `ssh_session_removed_after_manual_disconnect <id>`    |
+| Logout begins, CLI logout fails, or the provider closes                            | `logout`, `cli_logout_failed`, `provider_closed`                                  |
+| The Coder session expires or access token refresh fails                            | `coder_session_expired`, `token_refresh_failed`                                   |
+| Unsafe deployment-controlled workspace, owner, or agent identifiers are reported   | `invalid_deployment_data`                                                         |
+| A workspace/deployment action fails                                                | `action_failed <action description>`                                              |
+| Workspace log collection starts Coder support bundle export                        | `support_bundle`                                                                  |
+
+Lifecycle flushes run immediately after their triggering log message, so that message is included if Toolbox filters
+it. Support bundle export flushes before collecting the bundle. These checkpoints also include normal state changes
+and user actions; a replay block alone does not mean that a connection failed.
+
+#### Reading replayed logs
+
+A flush replays entries from oldest to newest and removes each batch after it is logged. An empty buffer produces no
+header, entries, or footer. A completed flush makes one call for the header, one call per chunk of up to **100
+entries**,
+and one call for the footer. For example, 250 entries produce five Toolbox log calls.
+
+Example message text, before Toolbox adds its own timestamp and metadata:
+
+```text
+[buffered] replaying 2 buffered entries (support_bundle)
+[buffered] 2026-10-22T06:10:01.002Z DEBUG Connecting to demo.agent
+[buffered] retry scheduled
+[buffered] 2026-10-22T06:10:03.415Z TRACE Waiting for agent
+[buffered] end of buffered logs (support_bundle)
+```
+
+The `retry scheduled` line is a continuation of the first entry. Every continuation line gets a bare `[buffered] `
+prefix. Entry timestamps use ISO 8601 in UTC with millisecond precision and show when the prepared entry was accepted
+into the buffer. Toolbox adds its own timestamp for the replay time, which can use a different time zone.
+
+Each chunk is one multiline Toolbox record. Only its first line receives Toolbox's usual timestamp, severity, and
+other metadata; subsequent lines contain the buffered message text. Original severity labels such as `DEBUG` and
+`TRACE` therefore remain visible even when the Toolbox record itself is logged as INFO, WARN, or ERROR.
+
+Capture and export are best-effort because Toolbox schedules its own log writes and the effective level can change
+between recording and writing a message. Successfully replayed entries are not repeated by later flushes. If logging
+is switched to OFF during replay, the remaining entries stay buffered until another flush can run.
 
 ### Enable Debug Logging
 
@@ -375,10 +487,23 @@ There is no need to restart Toolbox, as it will begin logging at the __DEBUG__ l
 > [!WARNING]
 > Toolbox does not persist log level configuration between restarts.
 
-#### Viewing the Logs
+### Viewing the Logs
 
-Once enabled, debug logs will be written to the Toolbox log files. You can access logs directly via Toolbox App Menu >
-About > Show log files.
+Normal plugin logs and replayed flight recorder entries are written through Toolbox's logger into the **Toolbox App
+log files**. Search for `[buffered]` to find replay blocks and their reasons. The recorder does not create a separate
+log file, and the **SSH proxy log directory** and plugin **Data directory** settings do not change where replayed
+entries are written.
+
+Open **Toolbox App Menu > Settings > About > Show log files** to locate the files. The standard directories are:
+
+| Operating system | Toolbox App log directory                |
+|------------------|------------------------------------------|
+| Windows          | `%LOCALAPPDATA%\JetBrains\Toolbox\logs\` |
+| macOS            | `~/Library/Logs/JetBrains/Toolbox/`      |
+| Linux            | `~/.local/share/JetBrains/Toolbox/logs/` |
+
+These locations are documented in
+the [JetBrains Toolbox App FAQ](https://www.jetbrains.com/help/toolbox-app/frequently-asked-questions.html).
 
 Alternatively, use the workspace environment's _Collect logs_ action to generate a ZIP file with Toolbox diagnostics
 and a Coder support bundle. See [Coder Support Bundles](#coder-support-bundles) below for the navigation steps and
@@ -403,21 +528,78 @@ To collect logs with a Coder support bundle:
 
 > [!NOTE]
 > The general Toolbox **Settings > About > Collect logs and diagnostic data** action does **not** generate a Coder
-> support bundle.
+> support bundle or explicitly flush the flight recorder. The **Collect logs** action in an individual environment's
+> action menu requests both. Previously replayed entries remain available in the Toolbox App log files.
 
 The plugin runs `coder support bundle` using the deployment's existing CLI login and targets the selected workspace
 and its agent, when available. It places `coder-support.zip` inside the environment's diagnostic directory in the
 Toolbox log archive. Collection does not start a stopped workspace.
+
+Before running the Coder CLI, the plugin flushes the flight recorder with reason `support_bundle` and the current
+session ID when available. Replayed entries go into the Toolbox App logs collected with the diagnostics; the recorder
+does not write a separate file into `coder-support.zip`. This replay is requested even if Coder bundle generation
+subsequently fails. Keep Toolbox logging enabled when collecting logs, since OFF disables replay.
+
+Recent local CLI SSH logs are added in place to `coder-support.zip` under `toolbox-logs/ssh/`. If the bundle could
+not be generated or is not a valid archive, the logs are written to a separate `coder-ssh.zip` in the diagnostic
+directory instead, using the same layout.
+
+The same archive includes `toolbox-logs/settings.json`, an explicit allowlist of Coder Toolbox settings. Each entry
+contains `defaultValue`, `storedValue`, and `effective`. Defaults and effective values retain their JSON types;
+`storedValue` is the raw persisted string, or `null` when unset, so invalid overrides remain visible alongside the
+fallback value actually used. OS-dependent and default directory values reflect the current host. Settings with an
+environment fallback also include `environmentVariable` and `environmentValue`; `binaryDestination` includes
+`legacyKey` and `legacyValue` for its fallback to `binaryDirectory`. Getters and diagnostics share the same parsing
+and fallback rules. This is a diagnostic snapshot, not a copy of the raw settings file.
+
+`headerCommand`, `tlsCertRefreshCommand`, and `sshConfigOptions` are masked as `<set>` or `<empty>` in every layer
+because they can contain commands or credentials, including unused environment overrides. Other allowlisted values,
+including URLs and file paths, are kept as configured or resolved by the settings store. Credentials, per-workspace
+auto-connect entries, and the contents of referenced files are not collected. New settings must be reviewed and
+explicitly added to the allowlist. Settings are included even when no SSH logs are available; a settings collection failure does not
+prevent collecting the other diagnostics. Running `coder support bundle` directly does not add Toolbox settings.
+
+For CLI versions **2.4.0 and newer**, the plugin passes `--log-dir <directory> -v` to the SSH ProxyCommand, enabling
+verbose file logging even on CLIs that do not log by default. The directory is the configured SSH log directory,
+then `CODER_SSH_LOG_DIR`, then `ssh-logs/` inside the deployment's plugin data directory. The plugin does not infer
+the CLI's default state directory, so logs written there by earlier setups are not collected. CLI versions older than
+2.4.0, or whose version is not recognized, receive neither logging flag and skip cleanup. Their SSH logs go wherever
+the CLI writes them by default, so collection only finds logs if you point the configured SSH log directory or
+`CODER_SSH_LOG_DIR` at that location.
+
+Only regular files directly inside the SSH log directory named `coder-ssh*-<pid>.log` are eligible, where `<pid>`
+contains only digits. Collection skips subdirectories, symbolic links, and other filenames, including bare PID names
+such as `12345.log` and rotated `.log.<number>` files. These local logs can include sessions for other workspaces
+that share the log directory.
+
+The following fixed limits apply and are not configurable:
+
+- **Age:** include files modified within the last **3 days (72 hours)**, based on the file's last-modified time.
+  The identified active SSH session's log for the selected workspace/agent is included regardless of age.
+  If the active log cannot be identified, the cutoff applies to every file.
+- **Size:** copy only the last **50 MiB (52,428,800 bytes) per file**, including the active log. This is a limit on
+  each file's uncompressed contents, not on the total archive size.
+
+These limits apply only to the archived copies; the original log files are unchanged. Missing or unreadable SSH
+logs do not prevent collecting the remaining diagnostics.
+
+On each connection attempt with a supported CLI, background cleanup keeps the newest **20** `coder-ssh*-<pid>.log`
+files by modification time and deletes other matching regular files only if they are older than **7 days**, so more
+than 20 files can remain when the extra ones are newer. Cleanup does not recurse or delete symlinks. Collection itself
+never deletes source logs.
+CLI 2.38+ also applies its own 50-file pruning in this directory.
 
 The bundle can contain deployment health and configuration, network diagnostics, workspace build logs, template
 source, and agent diagnostics. Available information depends on your permissions and workspace connectivity.
 Review the bundle before sharing, following
 [Coder's support-bundle guidance](https://coder.com/docs/support/support-bundle).
 
-Support bundles require a Coder CLI that supports `coder support bundle` (Coder 2.10 or newer). Collection runs until
-the CLI finishes or you cancel log collection. If the CLI is unavailable or unsupported, or authentication or
-connectivity fails, the plugin removes any partial bundle and attempts to include
-`coder-support-error.txt` instead. Toolbox's other diagnostics remain available.
+Support bundles require **Coder server and CLI 2.10.0 or newer**, which introduced
+[`coder support bundle`](https://coder.com/changelog/coder-v2-10-0). Collection runs until the CLI finishes or you
+cancel
+log collection. If the CLI is unavailable or unsupported, or authentication or connectivity fails, the plugin removes
+any partial bundle and attempts to include
+`coder-support-error.txt` instead. Local SSH logs and Toolbox's other diagnostics remain available.
 
 ### HTTP Request Logging
 
@@ -428,8 +610,8 @@ issues with Coder deployments. This feature allows you to monitor all HTTP reque
 
 You can configure HTTP logging verbosity through the Coder Settings page:
 
-1. Navigate to the Coder Workspaces page
-2. Click on the deployment action menu (three dots)
+1. Open the Coder main page, which lists your environments
+2. Click the action menu (three dots) on the right side of the page header
 3. Select "Settings"
 4. Find the "HTTP logging level" dropdown
 
@@ -479,7 +661,8 @@ When reporting issues, include HTTP logs to help diagnose:
 ## Coder Settings
 
 The Coder Settings allows users to control CLI download behavior, SSH configuration, TLS parameters, and data storage
-paths. The options can be configured from the plugin's main Workspaces page > deployment action menu > Settings.
+paths. On the Coder main page (the page listing your environments), click the action menu on the right side of the
+page header and select **Settings**.
 
 ### Workspace list filtering
 
@@ -528,6 +711,14 @@ explicit entry per resolved workspace/agent using
 `Host coder-jetbrains-toolbox--<owner>--<workspace>.<agent>--<host>`, and its proxy command targets
 `<owner>/<workspace>.<agent>`.
 
+### Connection logging settings
+
+- `Connection log buffer size` (`connectionLogBufferSize`) sets the maximum number of log entries below Toolbox's
+  log level to keep in memory for connection diagnostics. It defaults to `1000` and accepts whole numbers from `0`
+  to `10000`; `0` clears the buffer and disables buffering. Invalid stored values fall back to `1000`. Saving a new
+  value resizes the buffer without a restart, keeping the newest entries that fit. See
+  [Flight recorder](#flight-recorder) for capture, automatic replay, log levels, and output details.
+
 ### CLI related settings
 
 - `Binary source` specifies the source URL or relative path from which the Coder CLI should be downloaded. If a relative
@@ -540,12 +731,17 @@ explicit entry per resolved workspace/agent using
   as-is) or a base directory (the CLI is placed under a host-specific subdirectory). If blank, the data directory is
   used. Supports `~` and `$HOME` expansion.
 
-- `Data directory` directory where deployment-specific data such as session tokens and CLI binaries are stored. Each
-  deployment gets a host-specific subdirectory (e.g. `coder.example.com`). Supports `~` and `$HOME`
-  expansion.
+- `Data directory` directory where deployment-specific data such as session tokens and CLI binaries
+  are stored. Each deployment gets a host-specific subdirectory (e.g. `coder.example.com`). Supports `~` and `$HOME`
+  expansion. When keyring-backed CLI storage is enabled, the session token is no longer persisted in this directory.
 
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
   When this setting is left blank, the `CODER_HEADER_COMMAND` environment variable is used instead, if set.
+
+- `Store CLI session in OS keyring when supported (CLI >= 2.29.0)` is enabled by default on macOS and Windows.
+  An unset or `true` `useKeyring` setting uses the OS keyring; `false` opts out and stores the CLI session in the
+  plugin's deployment-specific data directory. Linux and older CLIs use file storage. Changes apply on the next
+  sign-in or plugin restart.
 
 - `lastDeploymentURL` the last Coder deployment URL that Coder Toolbox successfully authenticated to.
 
@@ -575,6 +771,40 @@ Once the binary location is resolved:
    error is reported to the user.
 3. If **downloads are disabled** and the CLI exists but its version does not match, the stale CLI is used with a
    warning. If no CLI exists at all, an error is raised.
+
+#### How keyring-backed CLI login works
+
+Toolbox passes session tokens to `coder login` through `CODER_SESSION_TOKEN` and uses `--use-token-as-session` so
+REST requests and CLI commands share the same token. The token is not passed in command-line arguments.
+
+On macOS and Windows with Coder CLI `2.29.0` or newer, Toolbox enables the OS keyring by default. It passes
+`--use-keyring=true` and the deployment URL, and omits the plugin-specific `--global-config` directory. After a
+successful keyring login, Toolbox removes any old plaintext session file from that deployment's plugin data directory.
+A keyring write failure is reported as a login failure; Toolbox does not retry the write using file storage.
+
+To opt out, uncheck **Store CLI session in OS keyring when supported (CLI >= 2.29.0)** or set `useKeyring` to `false`.
+Toolbox then uses its deployment-specific `--global-config` directory and passes `--use-keyring=false` to CLIs that
+support the flag. Linux also uses this file storage. On older CLIs, Toolbox omits the unsupported flag and warns at
+login on macOS and Windows when the requested keyring storage is unavailable. Certificate-based authentication
+continues to use the plugin-specific CLI configuration without storing a session token.
+
+Saving the setting does not change the current session's credential backend or rewrite its SSH commands to use a
+new backend. The change takes effect on the next sign-in or plugin restart, when Toolbox stores the token and
+regenerates SSH configuration. Workspace starts, SSH connections, support bundles, token refreshes, and logout use
+the active session's storage choice consistently.
+
+The OS keyring entry is shared with the Coder CLI and VS Code extension for the same deployment. Explicitly logging
+out of Toolbox runs `coder logout --yes`, which revokes the session and removes its stored credential, and clears
+Toolbox's saved API token and OAuth credentials. Other clients using that shared session will need to sign in again.
+If CLI cleanup fails, Toolbox still signs out and displays a warning. Closing the plugin alone preserves credentials.
+
+Credential commands and header commands have a 60-second timeout. Workspace starts and SSH sessions are not subject
+to that limit. Timeout and cancellation cleanup is best-effort for child processes: a command that forks and exits
+before its children are observed can leave orphan processes running. Workspace start progress is reported one
+complete line at a time, including carriage-return updates.
+
+Toolbox retains its own credentials in the Toolbox secret store for automatic sign-in. Importing a token created by
+an independent terminal login is tracked separately in DEVEX-403.
 
 ### TLS settings
 
@@ -627,6 +857,10 @@ support, may trigger regeneration of SSH configurations.
 
 > [!IMPORTANT]
 > Token authentication is required when TLS certificates are not configured.
+
+When the plugin logs the Coder CLI in with a session token, it passes that token through the
+`CODER_SESSION_TOKEN` environment variable instead of `--token`. This reduces the chances of the token showing up in
+process listings, shell history, or command-line audit logs.
 
 ## Releasing
 

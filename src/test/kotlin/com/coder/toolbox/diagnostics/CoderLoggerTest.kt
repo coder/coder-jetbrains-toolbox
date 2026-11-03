@@ -17,7 +17,7 @@ class CoderLoggerTest {
     private val delegate = mockk<Logger>(relaxed = true)
     private val ui = mockk<ToolboxUi>(relaxed = true)
     private val i18n = mockk<LocalizableStringFactory>(relaxed = true)
-    private val logger = CoderLogger(delegate, ui, CoroutineScope(Dispatchers.Unconfined), i18n)
+    private val logger = CoderLogger(delegate, ui, CoroutineScope(Dispatchers.Unconfined), i18n, mockk(relaxed = true))
     private val sessionId = SessionId.generate()
     private val prefix = "client_session_id=$sessionId"
 

@@ -1,17 +1,22 @@
 package com.coder.toolbox.views
 
 import com.coder.toolbox.CoderToolboxContext
+import com.coder.toolbox.settings.CONNECTION_LOG_BUFFER_SIZE_RANGE
 import com.coder.toolbox.settings.HttpLoggingVerbosity.BASIC
 import com.coder.toolbox.settings.HttpLoggingVerbosity.BODY
 import com.coder.toolbox.settings.HttpLoggingVerbosity.HEADERS
 import com.coder.toolbox.settings.HttpLoggingVerbosity.NONE
+import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.canCreateDirectory
 import com.coder.toolbox.util.expand
+import com.coder.toolbox.util.getOS
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField
 import com.jetbrains.toolbox.api.ui.components.ComboBoxField.LabelledValue
 import com.jetbrains.toolbox.api.ui.components.FieldModifier
+import com.jetbrains.toolbox.api.ui.components.LabelField
+import com.jetbrains.toolbox.api.ui.components.LabelStyleType
 import com.jetbrains.toolbox.api.ui.components.SectionField
 import com.jetbrains.toolbox.api.ui.components.TextField
 import com.jetbrains.toolbox.api.ui.components.TextType
@@ -43,6 +48,7 @@ class CoderSettingsPage(
 ) :
     CoderPage(MutableStateFlow(context.i18n.ptrl("Coder Settings")), false) {
     private val settings = context.settingsStore.readOnly()
+    private val shouldShowKeyringField = getOS() == OS.MAC || getOS() == OS.WINDOWS
 
     private val preferOAuth2IfAvailableField = CheckboxField(
         context.settingsStore.preferOAuth2IfAvailable,
@@ -84,6 +90,30 @@ class CoderSettingsPage(
         context.i18n.ptrl("Header command"),
         settings.headerCommand ?: "",
         TextType.General
+    )
+
+    private val connectionLogBufferSizeField = TextField(
+        context.i18n.ptrl("Connection log buffer size"),
+        settings.connectionLogBufferSize.toString(),
+        TextType.Integer,
+        validator = { value ->
+            if (value.toIntOrNull()?.let { it in CONNECTION_LOG_BUFFER_SIZE_RANGE } == true) {
+                ValidationResult.Valid
+            } else {
+                ValidationResult.Invalid(
+                    context.i18n.ptrl("Connection log buffer size must be a whole number between 0 and 10000")
+                )
+            }
+        }
+    )
+
+    private val connectionLogBufferDescription = LabelField(
+        context.i18n.ptrl("Flight recorder capacity. Set to 0 to disable."),
+        LabelStyleType.Secondary
+    )
+    private val useKeyringField = CheckboxField(
+        settings.useKeyring,
+        context.i18n.ptrl("Store CLI session in OS keyring when supported (CLI >= 2.29.0)")
     )
 
     private val tlsCertPathField = TextField(
@@ -191,13 +221,16 @@ class CoderSettingsPage(
                     useAppNameField,
                     disableAutostartField,
                     httpLoggingField,
+                    connectionLogBufferSizeField,
+                    connectionLogBufferDescription,
                 )
             ),
             SectionField(
                 "Security & Authentication",
                 false,
-                listOf(
+                listOfNotNull(
                     preferOAuth2IfAvailableField,
+                    useKeyringField.takeIf { shouldShowKeyringField },
                     headerCommandField,
                     tlsCertPathField,
                     tlsKeyPathField,
@@ -244,7 +277,10 @@ class CoderSettingsPage(
                     updateDisableSignatureVerification(disableSignatureVerificationField.checkedState.value)
                     updateSignatureFallbackStrategy(signatureFallbackStrategyField.checkedState.value)
                     updateHttpClientLogLevel(httpLoggingField.selectedValueState.value)
+                    updateConnectionLogBufferSize(connectionLogBufferSizeField.contentState.value.toInt())
                     updateHeaderCommand(headerCommandField.contentState.value)
+                    // The active CLI keeps its credential backend until the next sign-in.
+                    if (shouldShowKeyringField) updateUseKeyring(useKeyringField.checkedState.value)
                     updatePreferAuthViaOAuth2(preferOAuth2IfAvailableField.checkedState.value)
                     updateCertPath(tlsCertPathField.contentState.value)
                     updateKeyPath(tlsKeyPathField.contentState.value)
@@ -283,6 +319,9 @@ class CoderSettingsPage(
 
     override fun beforeShow() {
         // update the value of all fields
+        connectionLogBufferSizeField.contentState.update {
+            settings.connectionLogBufferSize.toString()
+        }
         binarySourceField.contentState.update {
             settings.binarySource ?: ""
         }
@@ -304,6 +343,10 @@ class CoderSettingsPage(
 
         headerCommandField.contentState.update {
             settings.headerCommand ?: ""
+        }
+
+        useKeyringField.checkedState.update {
+            settings.useKeyring
         }
 
         preferOAuth2IfAvailableField.checkedState.update {

@@ -23,11 +23,15 @@ internal const val FALLBACK_ON_CODER_FOR_SIGNATURES = "signatureFallbackStrategy
 
 internal const val HTTP_CLIENT_LOG_LEVEL = "httpClientLogLevel"
 
+internal const val CONNECTION_LOG_BUFFER_SIZE = "connectionLogBufferSize"
+
 internal const val DATA_DIRECTORY = "dataDirectory"
 
 internal const val ENABLE_DOWNLOADS = "enableDownloads"
 
 internal const val HEADER_COMMAND = "headerCommand"
+
+internal const val USE_KEYRING = "useKeyring"
 
 internal const val TLS_CERT_PATH = "tlsCertPath"
 

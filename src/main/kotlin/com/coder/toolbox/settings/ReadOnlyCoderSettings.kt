@@ -1,13 +1,41 @@
 package com.coder.toolbox.settings
 
+import kotlinx.coroutines.flow.Flow
 import java.net.URL
 import java.nio.file.Path
 import java.util.Locale.getDefault
+
+internal const val DEFAULT_CONNECTION_LOG_BUFFER_SIZE = 1_000
+internal val CONNECTION_LOG_BUFFER_SIZE_RANGE = 0..10_000
 
 /**
  * Read-only interface for accessing Coder settings
  */
 interface ReadOnlyCoderSettings {
+
+    /**
+     * Observes the effective value returned by [select], starting with its current value.
+     * Subsequent values are emitted only when they differ according to [Any.equals].
+     * Select immutable values, or immutable data classes when observing several settings together.
+     * The selector must be a quick, side-effect-free read of these settings.
+     *
+     * Changes made through this settings instance are observed. Slow collectors may skip intermediate
+     * updates and receive the latest value. Cancelling collection unsubscribes the observer.
+     */
+    fun <T> observe(select: (ReadOnlyCoderSettings) -> T): Flow<T>
+
+    /**
+     * Serializes the plugin settings to a UTF-8 JSON document for support bundles.
+     *
+     * Each setting is reported with its default, the value persisted by the user, and the value
+     * the plugin actually uses, so explicit configuration can be told apart from defaults.
+     * Settings that can also come from an environment variable or a legacy key report that source too.
+     * Only reviewed settings are included, and values that may contain secrets are masked.
+     * Credentials and the contents of referenced files are never included.
+     *
+     * @return the JSON document as UTF-8 encoded bytes.
+     */
+    fun marshalToJson(): ByteArray
 
     /**
      * The last used deployment URL.
@@ -59,6 +87,13 @@ interface ReadOnlyCoderSettings {
     val httpClientLogLevel: HttpLoggingVerbosity
 
     /**
+     * Maximum number of entries below Toolbox's log level to retain for connection diagnostics.
+     * Defaults to 1000, accepts 0 through 10000, and uses 0 to disable buffering.
+     * Captured entries retain their original log level, timestamp, and message.
+     */
+    val connectionLogBufferSize: Int
+
+    /**
      * Default CLI binary name based on OS and architecture
      */
     val defaultCliBinaryNameByOsAndArch: String
@@ -70,7 +105,8 @@ interface ReadOnlyCoderSettings {
 
     /**
      * Where to save plugin data like the Coder binary (if not configured with
-     * binaryDestination) and the deployment URL and session token.
+     * binaryDestination) and the deployment URL. When keyring storage is not
+     * enabled, this also stores the CLI session token.
      */
     val dataDirectory: String?
 
@@ -97,6 +133,14 @@ interface ReadOnlyCoderSettings {
      * variable (the same variable the Coder CLI reads) is used instead, if set.
      */
     val headerCommand: String?
+
+    /**
+     * Whether CLI login should allow the Coder CLI to persist the session in
+     * the operating system keyring when supported. This only takes effect on
+     * macOS and Windows. Defaults to true when unset; false opts out.
+     * Changes apply on the next sign-in or plugin restart.
+     */
+    val useKeyring: Boolean
 
     /**
      * Optional TLS settings

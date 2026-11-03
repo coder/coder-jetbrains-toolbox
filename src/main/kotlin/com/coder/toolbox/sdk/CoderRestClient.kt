@@ -27,6 +27,7 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceBuildReason
 import com.coder.toolbox.sdk.v2.models.WorkspaceTransition
 import com.coder.toolbox.sdk.v2.models.WorkspaceWatchEvent
 import com.coder.toolbox.util.ReloadableTlsContext
+import com.coder.toolbox.util.runProcess
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.hasRefreshToken
 import com.squareup.moshi.Moshi
@@ -38,7 +39,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import org.zeroturnaround.exec.ProcessExecutor
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -486,6 +486,7 @@ open class CoderRestClient(
     private fun reportInvalidDeploymentData(ex: InvalidCoderIdentifierException) {
         if (isInvalidDeploymentDataWarningShown) {
             context.logger.warn(ex, "Ignoring invalid deployment-controlled identifiers")
+            context.logger.flush("invalid_deployment_data")
             return
         }
 
@@ -495,6 +496,7 @@ open class CoderRestClient(
             INVALID_DEPLOYMENT_DATA_WARNING,
             ex,
         )
+        context.logger.flush("invalid_deployment_data")
     }
 
     /**
@@ -520,6 +522,7 @@ open class CoderRestClient(
                         true
                     } catch (e: Exception) {
                         context.logger.error(e, "Failed to refresh access token")
+                        context.logger.flush("token_refresh_failed")
                         // propagate the exception to the main workspace polling loop
                         throw e
                     }
@@ -558,18 +561,17 @@ open class CoderRestClient(
         if (command.isNullOrBlank()) return@withContext false
 
         return@withContext try {
-            val result = ProcessExecutor()
-                .command(command.split(" ").toList())
-                .exitValueAny()
-                .readOutput(true)
-                .execute()
+            val result = runProcess(
+                command.split(" ").filter { it.isNotBlank() },
+                expectedExitCodes = Int.MIN_VALUE..Int.MAX_VALUE,
+            )
             if (tlsContext.reload()) {
                 context.logger.info("Certificate refresh successful. Reloading TLS and evicting pool.")
                 // forces OkHttp to close the broken HTTP/2 connection.
                 httpClient.connectionPool.evictAll()
                 return@withContext true
             } else {
-                context.logger.error("Refresh command failed with code ${result.exitValue}")
+                context.logger.error("Refresh command failed with code ${result.exitCode}")
                 false
             }
         } catch (ex: Exception) {

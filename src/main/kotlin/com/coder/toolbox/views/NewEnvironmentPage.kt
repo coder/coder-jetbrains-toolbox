@@ -127,6 +127,7 @@ class NewEnvironmentPage(
                         mutableWorkspaceSearchQuery.value = query
                         workspaceRefreshTrigger.send(true)
                         context.logger.info("Workspace filter changed, refreshing workspaces...")
+                        context.logger.flush("workspace_filter_changed")
                     }
             }
             // 2. Reflect the query back into the dropdowns

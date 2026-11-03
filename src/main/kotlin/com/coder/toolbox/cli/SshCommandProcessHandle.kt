@@ -26,11 +26,10 @@ class SshCommandProcessHandle(private val ctx: CoderToolboxContext) {
         while (stack.isNotEmpty()) {
             val processHandle = stack.removeLast()
             val cmdLine = processHandle.info().commandLine().getOrNull()
-            ctx.logger.debug(sessionId, "SSH command PID: ${processHandle.pid()} Command: $cmdLine")
             if (cmdLine != null && cmdLine.isSshCommandFor(ws, agent)) {
                 ctx.logger.debug(
                     sessionId,
-                    "SSH command with PID: ${processHandle.pid()} and Command: $cmdLine matches ${ws.name}.${agent.name}"
+                    "SSH command with PID: ${processHandle.pid()} matches ${ws.name}.${agent.name}"
                 )
                 return processHandle.pid()
             } else {
