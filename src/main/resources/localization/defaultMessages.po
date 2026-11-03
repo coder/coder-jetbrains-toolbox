@@ -67,6 +67,15 @@ msgstr ""
 msgid "Coder Settings"
 msgstr ""
 
+msgid "Connection log buffer size"
+msgstr ""
+
+msgid "Connection log buffer size must be a whole number between 0 and 10000"
+msgstr ""
+
+msgid "Flight recorder capacity. Set to 0 to disable."
+msgstr ""
+
 msgid "Binary source"
 msgstr ""
 

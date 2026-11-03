@@ -23,6 +23,7 @@ import com.coder.toolbox.store.TLS_ALTERNATE_HOSTNAME
 import com.coder.toolbox.store.TLS_CA_PATH
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.util.sslContextFromPEMs
+import com.jetbrains.toolbox.api.core.diagnostics.LogLevel
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
 import com.jetbrains.toolbox.api.localization.LocalizableString
@@ -43,9 +44,11 @@ import com.sun.net.httpserver.HttpServer
 import com.sun.net.httpserver.HttpsConfigurator
 import com.sun.net.httpserver.HttpsServer
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import okio.buffer
 import okio.source
@@ -103,7 +106,10 @@ internal class BaseHttpHandler(
 
 class CoderRestClientTest {
     private val ui = mockk<ToolboxUi>(relaxed = true)
-    private val logger = mockk<Logger>(relaxed = true)
+    private val logger = mockk<Logger>(relaxed = true) {
+        every { effectiveLevel } returns MutableStateFlow(LogLevel.INFO)
+        every { isEnabled(any()) } answers { firstArg<LogLevel>() >= LogLevel.INFO }
+    }
     private val moshi =
         Moshi.Builder()
             .add(InstantConverter())

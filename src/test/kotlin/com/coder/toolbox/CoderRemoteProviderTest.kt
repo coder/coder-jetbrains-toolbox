@@ -67,6 +67,7 @@ class CoderRemoteProviderTest {
             mockk<ToolboxUi>(relaxed = true),
             CoroutineScope(Dispatchers.Unconfined),
             mockk<LocalizableStringFactory>(relaxed = true),
+            mockk(relaxed = true),
         )
         val settingsStore = mockk<CoderSettingsStore>(relaxed = true)
         every { mockContext.settingsStore } returns settingsStore

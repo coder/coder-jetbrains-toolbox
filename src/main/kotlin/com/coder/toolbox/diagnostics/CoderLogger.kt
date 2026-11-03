@@ -3,6 +3,8 @@
 package com.coder.toolbox.diagnostics
 
 import com.coder.toolbox.session.SessionId
+import com.coder.toolbox.settings.ReadOnlyCoderSettings
+import com.jetbrains.toolbox.api.core.diagnostics.LogLevel
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
 import com.jetbrains.toolbox.api.ui.ToolboxUi
@@ -30,84 +32,157 @@ class CoderLogger(
     private val ui: ToolboxUi,
     private val cs: CoroutineScope,
     private val i18n: LocalizableStringFactory,
+    settings: ReadOnlyCoderSettings,
 ) : Logger by delegate {
+    private val flightRecorder = FlightRecorder(settings, cs, delegate)
+
     override inline fun error(message: String) {
+        record(LogLevel.ERROR, message)
         delegate.error(message)
     }
 
+    override inline fun error(noinline message: () -> String) {
+        delegate.error(record(LogLevel.ERROR, null, message))
+    }
+
     override inline fun error(exception: Throwable, message: String) {
+        record(LogLevel.ERROR, message, exception)
         delegate.error(exception, message)
     }
 
+    override inline fun error(exception: Throwable, noinline message: () -> String) {
+        delegate.error(exception, record(LogLevel.ERROR, exception, message))
+    }
+
     inline fun error(sessionId: SessionId?, exception: Throwable, message: String) {
-        delegate.error(exception, withSessionId(sessionId, message))
+        error(exception, withSessionId(sessionId, message))
     }
 
     inline fun error(sessionIds: Set<SessionId>, exception: Throwable, message: String) {
-        sessionIds.onceOrForEach { delegate.error(exception, withSessionId(it, message)) }
+        sessionIds.onceOrForEach { error(exception, withSessionId(it, message)) }
     }
 
     override inline fun warn(message: String) {
+        record(LogLevel.WARN, message)
         delegate.warn(message)
     }
 
+    override inline fun warn(noinline message: () -> String) {
+        delegate.warn(record(LogLevel.WARN, null, message))
+    }
+
     override inline fun warn(exception: Throwable, message: String) {
+        record(LogLevel.WARN, message, exception)
         delegate.warn(exception, message)
     }
 
+    override inline fun warn(exception: Throwable, noinline message: () -> String) {
+        delegate.warn(exception, record(LogLevel.WARN, exception, message))
+    }
+
     inline fun warn(sessionId: SessionId?, message: String) {
-        delegate.warn(withSessionId(sessionId, message))
+        warn(withSessionId(sessionId, message))
     }
 
     inline fun warn(sessionId: SessionId?, exception: Throwable, message: String) {
-        delegate.warn(exception, withSessionId(sessionId, message))
+        warn(exception, withSessionId(sessionId, message))
     }
 
     inline fun warn(sessionIds: Set<SessionId>, exception: Throwable, message: String) {
-        sessionIds.onceOrForEach { delegate.warn(exception, withSessionId(it, message)) }
+        sessionIds.onceOrForEach { warn(exception, withSessionId(it, message)) }
     }
 
     override inline fun debug(message: String) {
+        record(LogLevel.DEBUG, message)
         delegate.debug(message)
     }
 
+    override inline fun debug(noinline message: () -> String) {
+        delegate.debug(record(LogLevel.DEBUG, null, message))
+    }
+
+    override inline fun debug(exception: Throwable, message: String) {
+        record(LogLevel.DEBUG, message, exception)
+        delegate.debug(exception, message)
+    }
+
+    override inline fun debug(exception: Throwable, noinline message: () -> String) {
+        delegate.debug(exception, record(LogLevel.DEBUG, exception, message))
+    }
+
     inline fun debug(sessionId: SessionId?, message: String) {
-        delegate.debug(withSessionId(sessionId, message))
+        debug(withSessionId(sessionId, message))
     }
 
     inline fun debug(sessionIds: Set<SessionId>, message: String) {
-        sessionIds.onceOrForEach { delegate.debug(withSessionId(it, message)) }
+        sessionIds.onceOrForEach { debug(withSessionId(it, message)) }
     }
 
     override inline fun info(message: String) {
+        record(LogLevel.INFO, message)
         delegate.info(message)
     }
 
+    override inline fun info(noinline message: () -> String) {
+        delegate.info(record(LogLevel.INFO, null, message))
+    }
+
+    override inline fun info(exception: Throwable, message: String) {
+        record(LogLevel.INFO, message, exception)
+        delegate.info(exception, message)
+    }
+
+    override inline fun info(exception: Throwable, noinline message: () -> String) {
+        delegate.info(exception, record(LogLevel.INFO, exception, message))
+    }
+
     inline fun info(sessionId: SessionId?, message: String) {
-        delegate.info(withSessionId(sessionId, message))
+        info(withSessionId(sessionId, message))
     }
 
     inline fun info(sessionIds: Set<SessionId>, message: String) {
-        sessionIds.onceOrForEach { delegate.info(withSessionId(it, message)) }
+        sessionIds.onceOrForEach { info(withSessionId(it, message)) }
+    }
+
+    override inline fun trace(message: String) {
+        record(LogLevel.TRACE, message)
+        delegate.trace(message)
+    }
+
+    override inline fun trace(noinline message: () -> String) {
+        delegate.trace(record(LogLevel.TRACE, null, message))
+    }
+
+    @Deprecated("Do not trace with exceptions", level = DeprecationLevel.ERROR)
+    @Suppress("DEPRECATION_ERROR")
+    override inline fun trace(exception: Throwable, message: String) {
+        record(LogLevel.TRACE, message, exception)
+        delegate.trace(exception, message)
+    }
+
+    @Deprecated("Do not trace with exceptions", level = DeprecationLevel.ERROR)
+    @Suppress("DEPRECATION_ERROR")
+    override inline fun trace(exception: Throwable, noinline message: () -> String) {
+        delegate.trace(exception, record(LogLevel.TRACE, exception, message))
     }
 
     inline fun logAndShowError(title: String, error: String) {
-        delegate.error(error)
+        error(error)
         showInfoPopup(title, error)
     }
 
     inline fun logAndShowError(sessionId: SessionId?, title: String, error: String) {
-        delegate.error(withSessionId(sessionId, error))
+        error(withSessionId(sessionId, error))
         showInfoPopup(title, error)
     }
 
     inline fun logAndShowError(title: String, error: String, exception: Throwable) {
-        delegate.error(exception, error)
+        error(exception, error)
         showInfoPopup(title, error)
     }
 
     inline fun logAndShowError(sessionId: SessionId?, title: String, error: String, exception: Throwable) {
-        delegate.error(exception, withSessionId(sessionId, error))
+        error(exception, withSessionId(sessionId, error))
         showInfoPopup(title, error)
     }
 
@@ -117,17 +192,17 @@ class CoderLogger(
         error: String,
         exception: Throwable,
     ) {
-        sessionIds.onceOrForEach { delegate.error(exception, withSessionId(it, error)) }
+        sessionIds.onceOrForEach { error(exception, withSessionId(it, error)) }
         showInfoPopup(title, error)
     }
 
     inline fun logAndShowWarning(title: String, warning: String) {
-        delegate.warn(warning)
+        warn(warning)
         showInfoPopup(title, warning)
     }
 
     inline fun logAndShowWarning(sessionId: SessionId?, title: String, warning: String) {
-        delegate.warn(withSessionId(sessionId, warning))
+        warn(withSessionId(sessionId, warning))
         showInfoPopup(title, warning)
     }
 
@@ -137,18 +212,32 @@ class CoderLogger(
         warning: String,
         exception: Throwable,
     ) {
-        sessionIds.onceOrForEach { delegate.warn(exception, withSessionId(it, warning)) }
+        sessionIds.onceOrForEach { warn(exception, withSessionId(it, warning)) }
         showInfoPopup(title, warning)
     }
 
     inline fun logAndShowWarning(title: String, warning: String, exception: Throwable) {
-        delegate.warn(exception, warning)
+        warn(exception, warning)
         showInfoPopup(title, warning)
     }
 
     inline fun logAndShowInfo(title: String, info: String) {
-        delegate.info(info)
+        info(info)
         showInfoPopup(title, info)
+    }
+
+    @PublishedApi
+    internal fun record(level: LogLevel, message: String, exception: Throwable? = null) {
+        flightRecorder.record(level, message, exception)
+    }
+
+    @PublishedApi
+    internal fun record(level: LogLevel, exception: Throwable?, message: () -> String): () -> String =
+        flightRecorder.record(level, exception, message)
+
+    /** Replays and removes buffered logs, oldest first, with an optional session prefix on the header and footer. */
+    fun flush(reason: String, sessionId: SessionId? = null) {
+        flightRecorder.flush(reason, sessionId)
     }
 
     /**
@@ -175,7 +264,7 @@ class CoderLogger(
             } catch (_: CancellationException) {
                 // Expected when the plugin scope shuts down while the popup is open.
             } catch (ex: Exception) {
-                delegate.error(ex, "Failed to display popup with title '$title'")
+                error(ex, "Failed to display popup with title '$title'")
             }
         }
     }

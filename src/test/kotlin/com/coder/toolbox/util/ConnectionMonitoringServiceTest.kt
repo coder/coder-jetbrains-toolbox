@@ -33,6 +33,7 @@ class ConnectionMonitoringServiceTest {
         mockk<ToolboxUi>(relaxed = true),
         CoroutineScope(Dispatchers.Unconfined),
         mockk<LocalizableStringFactory>(relaxed = true),
+        mockk(relaxed = true),
     )
 
     init {

@@ -27,6 +27,7 @@ class ActionTest {
             mockk<ToolboxUi>(relaxed = true),
             testScope,
             mockk<LocalizableStringFactory>(relaxed = true),
+            mockk(relaxed = true),
         )
         every { context.cs } returns testScope
         every { context.logger } returns coderLogger
@@ -55,6 +56,7 @@ class ActionTest {
             mockk<ToolboxUi>(relaxed = true),
             testScope,
             mockk<LocalizableStringFactory>(relaxed = true),
+            mockk(relaxed = true),
         )
         every { context.cs } returns testScope
         every { context.logger } returns coderLogger

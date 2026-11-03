@@ -30,6 +30,7 @@ import com.sun.net.httpserver.HttpServer
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeAll
 import java.net.HttpURLConnection
@@ -68,7 +69,7 @@ internal class EnsureCLITest {
         mockk<RemoteToolsHelper>(),
         mockk<ClientHelper>(),
         mockk<LocalDesktopManager>(),
-        mockk<CoroutineScope>(),
+        CoroutineScope(Dispatchers.Unconfined),
         mockk<Logger>(relaxed = true),
         mockk<LocalizableStringFactory>(relaxed = true),
         CoderSettingsStore(pluginTestSettingsStore(), Environment(), mockk<Logger>(relaxed = true)),

@@ -34,7 +34,9 @@ data class CoderToolboxContext(
     val secrets: CoderSecretsStore,
     val proxySettings: ToolboxProxySettings,
 ) {
-    val logger: CoderLogger = CoderLogger(underlyingLogger, ui, cs, i18n)
+    val logger: CoderLogger =
+        underlyingLogger as? CoderLogger ?: CoderLogger(underlyingLogger, ui, cs, i18n, settingsStore.readOnly())
+
     val connectionMonitoringService: ConnectionMonitoringService = ConnectionMonitoringService(this)
 
     /**

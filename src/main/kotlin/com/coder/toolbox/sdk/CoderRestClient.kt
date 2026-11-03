@@ -417,6 +417,7 @@ open class CoderRestClient(
     private fun reportInvalidDeploymentData(ex: InvalidCoderIdentifierException) {
         if (isInvalidDeploymentDataWarningShown) {
             context.logger.warn(ex, "Ignoring invalid deployment-controlled identifiers")
+            context.logger.flush("invalid_deployment_data")
             return
         }
 
@@ -426,6 +427,7 @@ open class CoderRestClient(
             INVALID_DEPLOYMENT_DATA_WARNING,
             ex,
         )
+        context.logger.flush("invalid_deployment_data")
     }
 
     /**
@@ -451,6 +453,7 @@ open class CoderRestClient(
                         true
                     } catch (e: Exception) {
                         context.logger.error(e, "Failed to refresh access token")
+                        context.logger.flush("token_refresh_failed")
                         // propagate the exception to the main workspace polling loop
                         throw e
                     }

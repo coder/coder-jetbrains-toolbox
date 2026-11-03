@@ -1,11 +1,18 @@
 package com.coder.toolbox.diagnostics
 
 import com.coder.toolbox.session.SessionId
+import com.coder.toolbox.settings.Environment
+import com.coder.toolbox.settings.ReadOnlyCoderSettings
+import com.coder.toolbox.store.CoderSettingsStore
+import com.coder.toolbox.util.pluginTestSettingsStore
+import com.jetbrains.toolbox.api.core.diagnostics.LogLevel
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import io.mockk.confirmVerified
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -24,13 +31,62 @@ class CoderSupportBundleCollectorTest {
     lateinit var root: Path
 
     @Test
+    fun `support export replays buffered logs before collecting the bundle and drains the recorder`() = runTest {
+        // given
+        val messages = mutableListOf<String>()
+        val delegate = mockk<Logger>(relaxed = true) {
+            every { effectiveLevel } returns MutableStateFlow(LogLevel.INFO)
+            every { isEnabled(any()) } answers { firstArg<LogLevel>() >= LogLevel.INFO }
+            every { info(any<String>()) } answers { messages += firstArg<String>() }
+        }
+        val bufferSize = MutableStateFlow(2)
+        val settings = mockk<ReadOnlyCoderSettings> {
+            every { connectionLogBufferSize } returns bufferSize.value
+            every { observe(any<(ReadOnlyCoderSettings) -> Int>()) } returns bufferSize
+        }
+        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk(), settings)
+        val sessionId = SessionId.generate()
+        var messagesAtCollection: List<String>? = null
+        val collector = CoderSupportBundleCollector(
+            logger, root.resolve("ssh-logs"), snapshotSettings(), currentSessionId = { sessionId },
+        ) {
+            messagesAtCollection = messages.toList()
+            writeBundle(it)
+        }
+        logger.debug("before export")
+        logger.trace("connection details")
+
+        // when
+        collector.collectAdditionalDiagnostics(root.resolve("diagnostics"))
+
+        // then
+        val prefix = "client_session_id=$sessionId "
+        assertEquals(3, messages.size)
+        assertEquals(messages, messagesAtCollection)
+        assertEquals("${prefix}[buffered] replaying 2 buffered entries (support_bundle)", messages.first())
+        val lines = messages[1].lines()
+        assertTrue(lines[0].endsWith("DEBUG before export"))
+        assertTrue(lines[1].endsWith("TRACE connection details"))
+        assertEquals("${prefix}[buffered] end of buffered logs (support_bundle)", messages.last())
+        assertTrue(Files.exists(root.resolve("diagnostics/coder-support.zip")))
+
+        // when
+        messages.clear()
+        logger.flush("after_export")
+
+        // then
+        assertTrue(messages.isEmpty())
+    }
+
+    @Test
     fun `unavailable diagnostics directory stops collection and logs one warning`() = runTest {
         val destination = Files.writeString(root.resolve("diagnostics"), "existing file")
         val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
         val sshLog = Files.writeString(sshLogs.resolve("coder-ssh-session-1.log"), "SSH session")
-        val logger = mockk<CoderLogger>(relaxed = true)
+        val delegate = mockk<Logger>(relaxed = true)
+        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk(), mockk(relaxed = true))
         var bundleCollected = false
-        val collector = CoderSupportBundleCollector(logger, sshLogs) {
+        val collector = CoderSupportBundleCollector(logger, sshLogs, snapshotSettings()) {
             bundleCollected = true
         }
 
@@ -39,20 +95,24 @@ class CoderSupportBundleCollectorTest {
         assertFalse(bundleCollected)
         assertEquals("existing file", Files.readString(destination))
         assertEquals("SSH session", Files.readString(sshLog))
-        verify(exactly = 1) { logger.warn(any<Throwable>(), "Could not collect Coder workspace diagnostics") }
-        confirmVerified(logger)
+        verify(exactly = 1) { delegate.warn(any<Throwable>(), "Could not collect Coder workspace diagnostics") }
+        confirmVerified(delegate)
     }
 
     @Test
-    fun `appends SSH logs inside the bundle and preserves original entries and source logs`() = runTest {
+    fun `appends settings and SSH logs inside the bundle and preserves original entries and source logs`() = runTest {
         val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
         Files.writeString(sshLogs.resolve("coder-ssh-session-1.log"), "SSH session")
-        val collector = CoderSupportBundleCollector(mockk(relaxed = true), sshLogs) {
+        val collector = CoderSupportBundleCollector(mockk(relaxed = true), sshLogs, snapshotSettings()) {
             writeBundle(it)
         }
         collector.collectAdditionalDiagnostics(root.resolve("diagnostics"))
         ZipFile(root.resolve("diagnostics/coder-support.zip").toFile()).use { zip ->
             assertEquals("bundle", zip.getInputStream(zip.getEntry("agent.txt")).reader().readText())
+            assertEquals(
+                snapshotSettings().marshalToJson().toString(Charsets.UTF_8),
+                zip.getInputStream(zip.getEntry("toolbox-logs/settings.json")).reader().readText(),
+            )
             assertEquals(
                 "SSH session",
                 zip.getInputStream(zip.getEntry("toolbox-logs/ssh/coder-ssh-session-1.log")).reader().readText(),
@@ -68,9 +128,11 @@ class CoderSupportBundleCollectorTest {
         val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
         Files.writeString(sshLogs.resolve("coder-ssh-session-1.log"), "SSH session")
         val delegate = mockk<Logger>(relaxed = true)
-        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk())
+        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk(), mockk(relaxed = true))
         val sessionId = SessionId.generate()
-        val collector = CoderSupportBundleCollector(logger, sshLogs, currentSessionId = { sessionId }) {
+        val collector = CoderSupportBundleCollector(
+            logger, sshLogs, snapshotSettings(), currentSessionId = { sessionId },
+        ) {
             Files.writeString(it, "partial")
             error("sensitive command output")
         }
@@ -81,6 +143,7 @@ class CoderSupportBundleCollectorTest {
         assertTrue(report.contains("IllegalStateException"))
         assertFalse(report.contains("sensitive command output"))
         assertEquals("SSH session", readSshLog(root.resolve("coder-ssh.zip")))
+        assertSettingsPresent(root.resolve("coder-ssh.zip"))
         verify(exactly = 1) {
             delegate.warn(any<Throwable>(), "client_session_id=$sessionId Could not collect the Coder support bundle")
         }
@@ -90,7 +153,7 @@ class CoderSupportBundleCollectorTest {
     fun `cancellation propagates and removes partial output`() = runTest {
         val sshLogs = Files.createDirectories(root.resolve("ssh-logs"))
         Files.writeString(sshLogs.resolve("coder-ssh-session-1.log"), "SSH session")
-        val collector = CoderSupportBundleCollector(mockk(relaxed = true), sshLogs) {
+        val collector = CoderSupportBundleCollector(mockk(relaxed = true), sshLogs, snapshotSettings()) {
             Files.writeString(it, "partial")
             throw CancellationException("cancelled")
         }
@@ -104,13 +167,16 @@ class CoderSupportBundleCollectorTest {
     fun `SSH log failure preserves the support bundle`() = runTest {
         val invalidDirectory = Files.writeString(root.resolve("ssh-logs"), "not a directory")
         val delegate = mockk<Logger>(relaxed = true)
-        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk())
+        val logger = CoderLogger(delegate, mockk(), backgroundScope, mockk(), mockk(relaxed = true))
         val sessionId = SessionId.generate()
-        val collector = CoderSupportBundleCollector(logger, invalidDirectory, currentSessionId = { sessionId }) {
+        val collector = CoderSupportBundleCollector(
+            logger, invalidDirectory, snapshotSettings(), currentSessionId = { sessionId },
+        ) {
             Files.writeString(it, "bundle")
         }
         collector.collectAdditionalDiagnostics(root)
         assertEquals("bundle", Files.readString(root.resolve("coder-support.zip")))
+        assertSettingsPresent(root.resolve("coder-ssh.zip"))
         assertFalse(Files.exists(root.resolve("coder-support-error.txt")))
         verify(exactly = 1) {
             delegate.warn(
@@ -124,13 +190,71 @@ class CoderSupportBundleCollectorTest {
     fun `invalid bundle is untouched and SSH logs go into their own archive`() = runTest {
         val logs = Files.createDirectories(root.resolve("ssh-logs"))
         Files.writeString(logs.resolve("coder-ssh-session-1.log"), "session")
-        val collector = CoderSupportBundleCollector(mockk(relaxed = true), logs) {
+        val collector = CoderSupportBundleCollector(mockk(relaxed = true), logs, snapshotSettings()) {
             Files.writeString(it, "invalid zip")
         }
         collector.collectAdditionalDiagnostics(root)
         assertEquals("invalid zip", Files.readString(root.resolve("coder-support.zip")))
         assertEquals("session", readSshLog(root.resolve("coder-ssh.zip")))
+        assertSettingsPresent(root.resolve("coder-ssh.zip"))
     }
+
+    @Test
+    fun `settings failure preserves the bundle and still collects SSH logs`() = runTest {
+        val logs = Files.createDirectories(root.resolve("ssh-logs"))
+        Files.writeString(logs.resolve("coder-ssh-session-1.log"), "session")
+        val failure = IllegalStateException("Settings unavailable")
+        val settings = mockk<ReadOnlyCoderSettings> {
+            every { marshalToJson() } throws failure
+        }
+        val logger = mockk<CoderLogger>(relaxed = true)
+        val sessionId = SessionId.generate()
+        val collector = CoderSupportBundleCollector(logger, logs, settings, currentSessionId = { sessionId }) {
+            writeBundle(it)
+        }
+
+        collector.collectAdditionalDiagnostics(root)
+
+        assertEquals("session", readSshLog(root.resolve("coder-support.zip")))
+        ZipFile(root.resolve("coder-support.zip").toFile()).use { zip ->
+            assertEquals("bundle", zip.getInputStream(zip.getEntry("agent.txt")).reader().readText())
+            assertEquals(null, zip.getEntry("toolbox-logs/settings.json"))
+        }
+        verify(exactly = 1) {
+            logger.error(
+                sessionId,
+                failure,
+                "Could not collect Coder Toolbox settings; diagnostic collection will continue without the settings",
+            )
+        }
+    }
+
+    @Test
+    fun `settings are collected when both the bundle and SSH logs are unavailable`() = runTest {
+        val collector = CoderSupportBundleCollector(
+            mockk(relaxed = true), root.resolve("missing"), snapshotSettings(),
+        ) {
+            error("CLI unavailable")
+        }
+
+        collector.collectAdditionalDiagnostics(root)
+
+        assertSettingsPresent(root.resolve("coder-ssh.zip"))
+        assertFalse(Files.exists(root.resolve("coder-support.zip")))
+    }
+
+    private fun assertSettingsPresent(archive: Path) = ZipFile(archive.toFile()).use { zip ->
+        assertEquals(
+            snapshotSettings().marshalToJson().toString(Charsets.UTF_8),
+            zip.getInputStream(zip.getEntry("toolbox-logs/settings.json")).reader().readText(),
+        )
+    }
+
+    private fun snapshotSettings() = CoderSettingsStore(
+        pluginTestSettingsStore(),
+        Environment(mapOf("CODER_HEADER_COMMAND" to "", "CODER_SSH_CONFIG_OPTIONS" to "")),
+        mockk(relaxed = true),
+    )
 
     private fun readSshLog(archive: Path): String = ZipFile(archive.toFile()).use { zip ->
         zip.getInputStream(zip.getEntry("toolbox-logs/ssh/coder-ssh-session-1.log")).reader().readText()
