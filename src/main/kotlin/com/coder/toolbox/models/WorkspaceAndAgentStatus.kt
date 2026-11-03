@@ -53,7 +53,7 @@ sealed class WorkspaceAndAgentStatus(
 
     class AgentStarting(workspace: Workspace) : WorkspaceAndAgentStatus("Starting", workspace)
 
-    class AgentStartingReady(workspace: Workspace) : WorkspaceAndAgentStatus("Startup scripts running", workspace)
+    class AgentStartingConnectable(workspace: Workspace) : WorkspaceAndAgentStatus("Startup scripts running", workspace)
 
     class Created(workspace: Workspace) : WorkspaceAndAgentStatus("Created", workspace)
 
@@ -112,7 +112,7 @@ sealed class WorkspaceAndAgentStatus(
      * Return true if the agent is in a connectable state.
      */
     fun canConnect(): Boolean =
-        this is Ready || this is AgentStartingReady || this is StartError || this is StartTimeout
+        this is Ready || this is AgentStartingConnectable || this is StartError || this is StartTimeout
 
     fun unhealthy(): Boolean {
         return this is StartError || this is StartTimeout
@@ -151,7 +151,7 @@ sealed class WorkspaceAndAgentStatus(
                             // Startup failures and timeouts still accept SSH.
                             WorkspaceAgentLifecycleState.STARTING ->
                                 if (agent.scripts.any { it.runOnStart && it.startBlocksLogin }) AgentStarting(workspace)
-                                else AgentStartingReady(workspace)
+                                else AgentStartingConnectable(workspace)
 
                             WorkspaceAgentLifecycleState.START_TIMEOUT -> StartTimeout(workspace)
                             WorkspaceAgentLifecycleState.START_ERROR -> StartError(workspace)
