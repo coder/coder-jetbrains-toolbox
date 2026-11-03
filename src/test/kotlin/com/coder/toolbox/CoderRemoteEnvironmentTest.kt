@@ -9,6 +9,7 @@ import com.coder.toolbox.sdk.v2.models.ProvisionerJobLog
 import com.coder.toolbox.sdk.v2.models.Workspace
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgent
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
+import com.coder.toolbox.sdk.v2.models.WorkspaceAgentScript
 import com.coder.toolbox.sdk.v2.models.WorkspaceAgentStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.sdk.v2.models.WorkspaceWatchEvent
@@ -313,6 +314,59 @@ class CoderRemoteEnvironmentTest {
         } finally {
             fixture.environment.dispose()
             fixture.removeSession()
+        }
+    }
+
+    @Test
+    fun `auto-connect and explicit requests honor non-blocking startup and terminal failures`() = runTest {
+        for (autoConnect in listOf(false, true)) {
+            for (blocking in listOf(false, true)) {
+                for (lifecycle in listOf(
+                    WorkspaceAgentLifecycleState.STARTING,
+                    WorkspaceAgentLifecycleState.START_ERROR,
+                    WorkspaceAgentLifecycleState.START_TIMEOUT,
+                )) {
+                    val fixture = fixture(
+                        backgroundScope, autoConnect = autoConnect, lifecycleState = lifecycle,
+                        scripts = listOf(WorkspaceAgentScript(true, blocking))
+                    )
+                    try {
+                        if (!autoConnect) fixture.environment.startSshConnection()
+                        assertEquals(
+                            lifecycle != WorkspaceAgentLifecycleState.STARTING || !blocking,
+                            fixture.environment.connectionRequest.value, "$autoConnect / $blocking / $lifecycle"
+                        )
+                    } finally {
+                        fixture.environment.dispose()
+                        fixture.removeSession()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `auto-connect resumes when polling observes a connectable agent`() = runTest {
+        for (autoConnect in listOf(false, true)) {
+            val fixture = fixture(
+                backgroundScope, autoConnect = autoConnect,
+                lifecycleState = WorkspaceAgentLifecycleState.CREATED
+            )
+            try {
+                assertEquals(false, fixture.environment.connectionRequest.value)
+                val starting = fixture.agent.copy(lifecycleState = WorkspaceAgentLifecycleState.STARTING)
+                val resource = fixture.workspace.latestBuild.resources.single().copy(agents = listOf(starting))
+                val updated = fixture.workspace.copy(
+                    latestBuild = fixture.workspace.latestBuild.copy(
+                        resources = listOf(resource)
+                    )
+                )
+                fixture.environment.update(updated, starting)
+                assertEquals(autoConnect, fixture.environment.connectionRequest.value)
+            } finally {
+                fixture.environment.dispose()
+                fixture.removeSession()
+            }
         }
     }
 
@@ -1170,6 +1224,8 @@ class CoderRemoteEnvironmentTest {
         autoConnect: Boolean = false,
         workspaceStatus: WorkspaceStatus = WorkspaceStatus.RUNNING,
         outdated: Boolean = false,
+        lifecycleState: WorkspaceAgentLifecycleState = WorkspaceAgentLifecycleState.READY,
+        scripts: List<WorkspaceAgentScript> = emptyList(),
     ): Fixture {
         val suffix = UUID.randomUUID().toString().take(8)
         val workspaceName = "workspace-$suffix"
@@ -1184,7 +1240,9 @@ class CoderRemoteEnvironmentTest {
                     outdated = outdated,
                 )
             }
-        val agent = requireNotNull(workspace.latestBuild.resources.single().agents).single()
+        val agent = requireNotNull(workspace.latestBuild.resources.single().agents).single().copy(
+            lifecycleState = lifecycleState, scripts = scripts,
+        )
         val context = mockk<CoderToolboxContext>(relaxed = true)
         val logger = mockk<Logger>(relaxed = true)
         val settingsStore = mockk<CoderSettingsStore>(relaxed = true)

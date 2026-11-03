@@ -12,6 +12,13 @@
 - stream build status and provisioner output while updating, restarting, or stopping workspaces, falling back to
   polling when the WebSocket connection is unavailable
 
+### Fixed
+
+- SSH connections being blocked while non-blocking startup scripts run or after startup scripts fail or time out
+  ([#380](https://github.com/coder/coder-jetbrains-toolbox/issues/380)). Startup failures remain visible as unhealthy
+  states.
+- Automatic connection not starting when a workspace agent becomes connectable after the initial workspace load.
+
 ## 0.9.5 - 2026-10-30
 
 ### Added

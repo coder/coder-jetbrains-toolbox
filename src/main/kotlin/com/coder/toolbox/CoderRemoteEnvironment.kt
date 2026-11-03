@@ -110,7 +110,7 @@ class CoderRemoteEnvironment(
     }
 
     /**
-     * Schedules the SSH connection to start as soon as possible if the workspace is ready and
+     * Schedules the SSH connection to start as soon as possible if the workspace can accept connections and
      * there is no connection already established.
      *
      * The session is created or reactivated by [beforeConnection], when Toolbox confirms that it
@@ -118,7 +118,7 @@ class CoderRemoteEnvironment(
      */
     fun startSshConnection() {
         if (agent == null) return
-        if (environmentStatus.ready() && !isConnected.value) {
+        if (environmentStatus.canConnect() && !isConnected.value) {
             connectionRequest.update {
                 true
             }
@@ -341,6 +341,9 @@ class CoderRemoteEnvironment(
         // we have to regenerate the action list in order to force a redraw
         // because the actions don't have a state flow on the enabled property
         refreshAvailableActions()
+        if (context.settingsStore.shouldAutoConnect(id)) {
+            startSshConnection()
+        }
     }
 
     private fun updateStatus(
@@ -369,7 +372,7 @@ class CoderRemoteEnvironment(
                     "Workspace status: ${previousWorkspace.latestBuild.status} -> ${workspace.latestBuild.status}, " +
                     "agent status: ${previousAgent?.status} -> ${agent?.status}, " +
                     "agent lifecycle state: ${previousAgent?.lifecycleState} -> ${agent?.lifecycleState}, " +
-                    "login before ready: ${previousAgent?.loginBeforeReady} -> ${agent?.loginBeforeReady}"
+                    "startup scripts: ${previousAgent?.scripts} -> ${agent?.scripts}"
         context.logger.info(sessionId, message)
         if (wasReachable && !state.value.isReachable) {
             context.logger.flush("environment_status_changed $id", sessionId)
@@ -486,7 +489,7 @@ class CoderRemoteEnvironment(
             if (isManual) "after an explicit user disconnect"
             else "without an explicit user disconnect"
         val stateInference =
-            if (!isManual && !environmentStatus.ready()) {
+            if (!isManual && !environmentStatus.canConnect()) {
                 " The latest state may indicate a workspace or agent change."
             } else {
                 ""
@@ -540,7 +543,7 @@ class CoderRemoteEnvironment(
     }
 
     /**
-     * Automatically launches the SSH connection if the workspace is visible, is ready and there is no
+     * Automatically launches the SSH connection if the workspace is visible, can accept connections and there is no
      * connection already established.
      */
     override fun setVisible(visibilityState: EnvironmentVisibilityState) {

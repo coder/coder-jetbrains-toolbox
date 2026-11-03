@@ -64,11 +64,9 @@ open class CoderProtocolHandler(
             // errors like: no agent available while workspace is starting or stopping
             // we also need to retrieve the workspace again to have the latest resources (ex: agent)
             // attached to the workspace.
-            val agent: WorkspaceAgent = resolveAgent(
-                params,
-                restClient.workspace(workspace.id)
-            ) ?: return
-            if (!ensureAgentIsReady(workspace, agent)) return
+            val currentWorkspace = restClient.workspace(workspace.id)
+            val agent: WorkspaceAgent = resolveAgent(params, currentWorkspace) ?: return
+            if (!ensureAgentCanConnect(currentWorkspace, agent)) return
             val environmentId = "${workspace.name}.${agent.name}"
             // If the workspace was just started, its agent environment (and the SSH
             // config entry, which is written in the same poll iteration) only exists
@@ -254,17 +252,18 @@ open class CoderProtocolHandler(
         return agent
     }
 
-    private fun ensureAgentIsReady(
+    private fun ensureAgentCanConnect(
         workspace: Workspace,
         agent: WorkspaceAgent
     ): Boolean {
         val status = WorkspaceAndAgentStatus.from(workspace, agent)
 
-        if (!status.ready()) {
+        if (!status.canConnect()) {
             context.logger.logAndShowError(
                 SessionIdRegistry.findSession(workspace.name, agent.name),
                 CAN_T_HANDLE_URI_TITLE,
-                "Agent ${agent.name} for workspace ${workspace.name} is not ready"
+                "Agent ${agent.name} for workspace ${workspace.name} cannot accept connections " +
+                        "(status: ${status.label})"
             )
             return false
         }

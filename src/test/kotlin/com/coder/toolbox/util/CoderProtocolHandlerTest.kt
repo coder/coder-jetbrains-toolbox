@@ -10,6 +10,9 @@ import com.coder.toolbox.feed.IdeType
 import com.coder.toolbox.feed.JetBrainsFeedService
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
+import com.coder.toolbox.sdk.v2.models.WorkspaceAgentLifecycleState
+import com.coder.toolbox.sdk.v2.models.WorkspaceAgentScript
+import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.session.SessionIdRegistry
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
@@ -518,6 +521,45 @@ class CoderProtocolHandlerTest {
             verify(exactly = 0) { underlyingLogger.info("Launching RR-241.1 on $environmentId") }
         } finally {
             SessionIdRegistry.removeSession(workspace.name, AGENT_BOB.name)
+        }
+    }
+
+    @Test
+    fun `URI connection uses refreshed startup policy`() = runTest(dispatcher) {
+        for (lifecycle in listOf(
+            WorkspaceAgentLifecycleState.STARTING,
+            WorkspaceAgentLifecycleState.START_ERROR,
+            WorkspaceAgentLifecycleState.START_TIMEOUT,
+        )) {
+            for (blocking in listOf(false, true)) {
+                val original = DataGen.workspace("startup", agents = SINGLE_AGENT)
+                val resource = original.latestBuild.resources.single()
+                val agent = resource.agents!!.single().copy(
+                    lifecycleState = lifecycle,
+                    scripts = listOf(WorkspaceAgentScript(true, blocking))
+                )
+                val running = original.copy(
+                    latestBuild = original.latestBuild.copy(
+                        resources = listOf(resource.copy(agents = listOf(agent)))
+                    )
+                )
+                val starting = original.copy(latestBuild = original.latestBuild.copy(status = WorkspaceStatus.STARTING))
+                val env = mockk<CoderRemoteEnvironment>(relaxed = true)
+                every { env.id } returns "${running.name}.${agent.name}"
+                val restClient = mockk<CoderRestClient>(relaxed = true)
+                coEvery { restClient.workspaces(null) } returns listOf(starting)
+                coEvery { restClient.workspace(starting.id) } returns running
+                val protocol = CoderProtocolHandler(
+                    context, ideFeedManager, Channel(Channel.CONFLATED),
+                    MutableStateFlow(LoadableState.Value(listOf(env)))
+                )
+                protocol.handle(
+                    mapOf("workspace" to running.name), URI("https://coder.example.com").toURL(),
+                    restClient, mockk(relaxed = true)
+                )
+                val expected = if (lifecycle == WorkspaceAgentLifecycleState.STARTING && blocking) 0 else 1
+                verify(exactly = expected) { env.startSshConnection() }
+            }
         }
     }
 
