@@ -19,10 +19,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 class WorkspaceAndAgentStatusTest {
     private val workspace = DataGen.workspace("startup", agents = mapOf("dev" to UUID.randomUUID().toString()))
-    private val agent = workspace.latestBuild.resources.single().agents!!.single()
+    private val agent = workspace.latestBuild.resources.single().agents?.single()
+        ?: fail("The test workspace has no agents")
 
     @Test
     fun `SSH eligibility follows lifecycle and startup script policy`() {
@@ -100,7 +102,7 @@ class WorkspaceAndAgentStatusTest {
         val decoded = adapter.fromJson("""{
             "id":"${agent.id}", "name":"dev", "status":"connected", "lifecycle_state":"starting",
             "scripts":[{"run_on_start":true,"start_blocks_login":false,"script":"sleep 180"}]
-        }""")!!
+        }""") ?: fail("The agent JSON decoded to null")
         assertTrue(WorkspaceAndAgentStatus.from(workspace, decoded).canConnect())
         assertEquals(listOf(WorkspaceAgentScript(true, false)), decoded.scripts)
     }

@@ -39,6 +39,7 @@ import org.junit.jupiter.api.BeforeEach
 import java.net.URI
 import java.util.UUID
 import kotlin.test.Test
+import kotlin.test.fail
 
 class CoderProtocolHandlerTest {
 
@@ -534,10 +535,10 @@ class CoderProtocolHandlerTest {
             for (blocking in listOf(false, true)) {
                 val original = DataGen.workspace("startup", agents = SINGLE_AGENT)
                 val resource = original.latestBuild.resources.single()
-                val agent = resource.agents!!.single().copy(
+                val agent = resource.agents?.single()?.copy(
                     lifecycleState = lifecycle,
                     scripts = listOf(WorkspaceAgentScript(true, blocking))
-                )
+                ) ?: fail("The test workspace has no agents")
                 val running = original.copy(
                     latestBuild = original.latestBuild.copy(
                         resources = listOf(resource.copy(agents = listOf(agent)))
