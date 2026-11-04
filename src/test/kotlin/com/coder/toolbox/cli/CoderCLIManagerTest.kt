@@ -77,7 +77,8 @@ import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
-import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -1186,7 +1187,9 @@ internal class CoderCLIManagerTest {
         val messages = mutableListOf<String>()
         val output = ccm.startWorkspace(WorkspaceAddress.from(workspace("start-progress")), messages::add)
 
-        assertEquals(listOf("Preparing workspace", "Waiting for Git authentication..."), messages)
+        // stdout and stderr are read on separate threads, so their relative order is not guaranteed.
+        assertEquals(2, messages.size)
+        assertEquals(setOf("Preparing workspace", "Waiting for Git authentication..."), messages.toSet())
         assertContains(output, "Preparing workspace")
         assertFalse(output.contains("Waiting for Git authentication..."))
     }
@@ -1217,19 +1220,26 @@ internal class CoderCLIManagerTest {
                 printf 'Ready' >&2
             """.trimIndent(),
         )
-        val messages = LinkedBlockingQueue<String>()
+        val messages = ConcurrentLinkedQueue<String>()
+        val earlyMessages = CountDownLatch(2)
         val command = async(Dispatchers.IO) {
-            ccm.startWorkspace(WorkspaceAddress.from(workspace("live-start")), messages::add)
+            ccm.startWorkspace(WorkspaceAddress.from(workspace("live-start"))) { message ->
+                messages.add(message)
+                earlyMessages.countDown()
+            }
         }
         try {
-            assertEquals("Preparing workspace", messages.poll(5, TimeUnit.SECONDS))
-            assertEquals("Waiting for authentication", messages.poll(5, TimeUnit.SECONDS))
+            assertTrue(earlyMessages.await(5, TimeUnit.SECONDS), "Expected two messages, got $messages")
+            // stdout and stderr are read on separate threads, so their relative order is not guaranteed.
+            assertEquals(setOf("Preparing workspace", "Waiting for authentication"), messages.toSet())
             assertFalse(command.isCompleted)
         } finally {
             Files.writeString(releaseFile, "continue")
         }
         val output = command.await()
-        assertEquals("Ready", messages.poll(5, TimeUnit.SECONDS))
+        // The process runner delivers every line before returning, and Ready follows Waiting on stderr.
+        assertEquals(3, messages.size)
+        assertEquals("Ready", messages.last())
         assertContains(output, "Preparing workspace")
         assertFalse(output.contains("Waiting for authentication"))
     }
