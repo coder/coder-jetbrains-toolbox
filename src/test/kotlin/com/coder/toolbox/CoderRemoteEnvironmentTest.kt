@@ -1,7 +1,6 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
-import com.coder.toolbox.cli.Features
 import com.coder.toolbox.cli.SshCommandProcessHandle
 import com.coder.toolbox.diagnostics.CoderLogger
 import com.coder.toolbox.sdk.CoderRestClient
@@ -579,7 +578,6 @@ class CoderRemoteEnvironmentTest {
         val fixture = fixture(
             this,
             workspaceStatus = WorkspaceStatus.STOPPED,
-            workspaceProgressWebSockets = true,
         )
         val workspaceMessage = slot<(WorkspaceWatchEvent) -> Unit>()
         val workspaceOpen = slot<() -> Unit>()
@@ -593,7 +591,7 @@ class CoderRemoteEnvironmentTest {
         val commandStarted = CountDownLatch(1)
         val finishCommand = CountDownLatch(1)
         val cliProgress = slot<(String) -> Unit>()
-        every { fixture.cli.startWorkspace(any(), any(), capture(cliProgress)) } answers {
+        every { fixture.cli.startWorkspace(any(), capture(cliProgress)) } answers {
             commandStarted.countDown()
             check(finishCommand.await(5, TimeUnit.SECONDS))
             ""
@@ -633,7 +631,7 @@ class CoderRemoteEnvironmentTest {
 
         finishCommand.countDown()
         advanceUntilIdle()
-        verify(exactly = 1) { fixture.cli.startWorkspace(any(), any(), any()) }
+        verify(exactly = 1) { fixture.cli.startWorkspace(any(), any()) }
         fixture.environment.dispose()
     }
 
@@ -684,15 +682,14 @@ class CoderRemoteEnvironmentTest {
         val fixture = fixture(
             backgroundScope,
             workspaceStatus = WorkspaceStatus.STOPPED,
-            workspaceProgressWebSockets = true,
         )
         val socket = mockk<WebSocket>(relaxed = true)
         every { fixture.client.streamWorkspace(any(), any(), any(), any(), any()) } returns socket
         val releaseCommand = CountDownLatch(1)
         val failure = IllegalStateException("Authentication failed")
-        every { fixture.cli.startWorkspace(any(), any(), any()) } answers {
+        every { fixture.cli.startWorkspace(any(), any()) } answers {
             check(releaseCommand.await(5, TimeUnit.SECONDS))
-            thirdArg<(String) -> Unit>()("Authentication failed")
+            secondArg<(String) -> Unit>()("Authentication failed")
             throw failure
         }
         val errorReported = CompletableDeferred<Unit>()
@@ -718,7 +715,7 @@ class CoderRemoteEnvironmentTest {
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
     fun `failed build action restores status and closes its watcher`() = runTest {
-        val fixture = fixture(backgroundScope, outdated = true, workspaceProgressWebSockets = true)
+        val fixture = fixture(backgroundScope, outdated = true)
         val socket = mockk<WebSocket>(relaxed = true)
         every { fixture.client.streamWorkspace(any(), any(), any(), any(), any()) } returns socket
         val finishRequest = CompletableDeferred<Unit>()
@@ -743,7 +740,7 @@ class CoderRemoteEnvironmentTest {
     fun `cancelling a build action cancels its request and closes its watcher`() = runTest {
         val pluginJob = Job(backgroundScope.coroutineContext[Job])
         val pluginScope = CoroutineScope(backgroundScope.coroutineContext + pluginJob)
-        val fixture = fixture(pluginScope, outdated = true, workspaceProgressWebSockets = true)
+        val fixture = fixture(pluginScope, outdated = true)
         val socket = mockk<WebSocket>(relaxed = true)
         every { fixture.client.streamWorkspace(any(), any(), any(), any(), any()) } returns socket
         val finishRequest = CompletableDeferred<Unit>()
@@ -811,7 +808,6 @@ class CoderRemoteEnvironmentTest {
             this,
             workspaceStatus = WorkspaceStatus.STOPPED,
             outdated = true,
-            workspaceProgressWebSockets = true,
         )
         val workspaceMessage = slot<(WorkspaceWatchEvent) -> Unit>()
         val workspaceOpen = slot<() -> Unit>()
@@ -939,7 +935,6 @@ class CoderRemoteEnvironmentTest {
             val fixture = fixture(
                 backgroundScope,
                 workspaceStatus = WorkspaceStatus.STARTING,
-                workspaceProgressWebSockets = true,
             )
             val workspaceSocket = mockk<WebSocket>(relaxed = true)
             val workspaceMessage = slot<(WorkspaceWatchEvent) -> Unit>()
@@ -989,7 +984,7 @@ class CoderRemoteEnvironmentTest {
 
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun `workspace poll shows the latest log from an active build`() = runTest {
+    fun `workspace poll shows the latest log from an active build while the log stream is unavailable`() = runTest {
         val fixture = fixture(this, workspaceStatus = WorkspaceStatus.PENDING)
         val build = fixture.workspace.latestBuild
         coEvery { fixture.client.workspaceBuildLogs(build.id) } returnsMany listOf(
@@ -1021,15 +1016,6 @@ class CoderRemoteEnvironmentTest {
             fixture.localizedStrings.getValue("Starting workspace applications"),
             nextProgress.description,
         )
-        verify(exactly = 0) {
-            fixture.client.streamWorkspace(
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-            )
-        }
 
         fixture.environment.update(
             workspaceSnapshot.copy(latestBuild = build.copy(status = WorkspaceStatus.RUNNING)),
@@ -1047,7 +1033,6 @@ class CoderRemoteEnvironmentTest {
             this,
             workspaceStatus = WorkspaceStatus.STOPPED,
             outdated = true,
-            workspaceProgressWebSockets = true,
         )
         val workspaceMessage = slot<(WorkspaceWatchEvent) -> Unit>()
         val workspaceOpen = slot<() -> Unit>()
@@ -1103,7 +1088,6 @@ class CoderRemoteEnvironmentTest {
             this,
             workspaceStatus = WorkspaceStatus.STOPPED,
             outdated = true,
-            workspaceProgressWebSockets = true,
         )
         val onFailure = slot<(Throwable) -> Unit>()
         every {
@@ -1186,7 +1170,6 @@ class CoderRemoteEnvironmentTest {
         autoConnect: Boolean = false,
         workspaceStatus: WorkspaceStatus = WorkspaceStatus.RUNNING,
         outdated: Boolean = false,
-        workspaceProgressWebSockets: Boolean = false,
     ): Fixture {
         val suffix = UUID.randomUUID().toString().take(8)
         val workspaceName = "workspace-$suffix"
@@ -1224,7 +1207,6 @@ class CoderRemoteEnvironmentTest {
 
         val client = mockk<CoderRestClient>(relaxed = true)
         val cli = mockk<CoderCLIManager>(relaxed = true)
-        every { cli.features } returns Features(workspaceProgressWebSockets = workspaceProgressWebSockets)
         val environment = CoderRemoteEnvironment(
             context = context,
             client = client,

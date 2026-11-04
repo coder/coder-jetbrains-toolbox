@@ -8,6 +8,9 @@ Connects your JetBrains IDE to Coder workspaces
 
 ## Getting Started
 
+Coder server and CLI **v2.29.0 or newer** are required. The plugin checks these versions during sign-in and asks you to
+upgrade unsupported installations. It normally downloads a CLI matching your server.
+
 To install this plugin using JetBrains Toolbox, follow the steps below.
 
 1. Install [JetBrains Toolbox](https://www.jetbrains.com/toolbox-app/) **3.9 or newer**. Earlier versions are not
@@ -559,13 +562,10 @@ auto-connect entries, and the contents of referenced files are not collected. Ne
 explicitly added to the allowlist. Settings are included even when no SSH logs are available; a settings collection failure does not
 prevent collecting the other diagnostics. Running `coder support bundle` directly does not add Toolbox settings.
 
-For CLI versions **2.4.0 and newer**, the plugin passes `--log-dir <directory> -v` to the SSH ProxyCommand, enabling
-verbose file logging even on CLIs that do not log by default. The directory is the configured SSH log directory,
-then `CODER_SSH_LOG_DIR`, then `ssh-logs/` inside the deployment's plugin data directory. The plugin does not infer
-the CLI's default state directory, so logs written there by earlier setups are not collected. CLI versions older than
-2.4.0, or whose version is not recognized, receive neither logging flag and skip cleanup. Their SSH logs go wherever
-the CLI writes them by default, so collection only finds logs if you point the configured SSH log directory or
-`CODER_SSH_LOG_DIR` at that location.
+The plugin passes `--log-dir <directory> -v` to the SSH ProxyCommand, enabling verbose file logging even on CLIs
+that do not log by default. The directory is the configured SSH log directory, then `CODER_SSH_LOG_DIR`, then
+`ssh-logs/` inside the deployment's plugin data directory. The plugin does not infer the CLI's default state
+directory, so logs written there by earlier setups are not collected.
 
 Only regular files directly inside the SSH log directory named `coder-ssh*-<pid>.log` are eligible, where `<pid>`
 contains only digits. Collection skips subdirectories, symbolic links, and other filenames, including bare PID names
@@ -738,7 +738,7 @@ explicit entry per resolved workspace/agent using
 - `Header command` command that outputs additional HTTP headers. Each line of output must be in the format key=value.
   When this setting is left blank, the `CODER_HEADER_COMMAND` environment variable is used instead, if set.
 
-- `Store CLI session in OS keyring when supported (CLI >= 2.29.0)` is enabled by default on macOS and Windows.
+- `Store CLI session in OS keyring when supported` is enabled by default on macOS and Windows.
   An unset or `true` `useKeyring` setting uses the OS keyring; `false` opts out and stores the CLI session in the
   plugin's deployment-specific data directory. Linux and older CLIs use file storage. Changes apply on the next
   sign-in or plugin restart.
@@ -777,15 +777,14 @@ Once the binary location is resolved:
 Toolbox passes session tokens to `coder login` through `CODER_SESSION_TOKEN` and uses `--use-token-as-session` so
 REST requests and CLI commands share the same token. The token is not passed in command-line arguments.
 
-On macOS and Windows with Coder CLI `2.29.0` or newer, Toolbox enables the OS keyring by default. It passes
+On macOS and Windows, Toolbox enables the OS keyring by default. It passes
 `--use-keyring=true` and the deployment URL, and omits the plugin-specific `--global-config` directory. After a
 successful keyring login, Toolbox removes any old plaintext session file from that deployment's plugin data directory.
 A keyring write failure is reported as a login failure; Toolbox does not retry the write using file storage.
 
-To opt out, uncheck **Store CLI session in OS keyring when supported (CLI >= 2.29.0)** or set `useKeyring` to `false`.
-Toolbox then uses its deployment-specific `--global-config` directory and passes `--use-keyring=false` to CLIs that
-support the flag. Linux also uses this file storage. On older CLIs, Toolbox omits the unsupported flag and warns at
-login on macOS and Windows when the requested keyring storage is unavailable. Certificate-based authentication
+To opt out, uncheck **Store CLI session in OS keyring when supported** or set `useKeyring` to `false`.
+Toolbox then uses its deployment-specific `--global-config` directory and passes `--use-keyring=false`. Linux also
+uses this file storage. Certificate-based authentication
 continues to use the plugin-specific CLI configuration without storing a session token.
 
 Saving the setting does not change the current session's credential backend or rewrite its SSH commands to use a

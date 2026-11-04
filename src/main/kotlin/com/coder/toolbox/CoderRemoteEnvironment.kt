@@ -277,7 +277,8 @@ class CoderRemoteEnvironment(
         progressWatcher?.close()
         return WorkspaceProgressWatcher(
             workspace,
-            cli.features.workspaceProgressWebSockets,
+            // Every supported Coder version streams workspace progress over WebSockets.
+            workspaceProgressSupportedViaWebSockets = true,
             context.cs,
             client,
             onBuild = ::onBuildProgress,
