@@ -4,6 +4,12 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import java.util.UUID
 
+internal val IN_PROGRESS_BUILD_STATUSES = setOf(
+    WorkspaceStatus.PENDING,
+    WorkspaceStatus.STARTING,
+    WorkspaceStatus.STOPPING,
+)
+
 /**
  * WorkspaceBuild is an at-point representation of a workspace state.
  * BuildNumbers start at 1 and increase by 1 for each subsequent build.

@@ -107,6 +107,7 @@ data class Features(
     val disableAutostart: Boolean = false,
     val reportWorkspaceUsage: Boolean = false,
     val wildcardSsh: Boolean = false,
+    val workspaceProgressWebSockets: Boolean = false,
     val buildReason: Boolean = false,
     val keyringAuth: Boolean = false,
 )
@@ -320,7 +321,8 @@ class CoderCLIManager(
     }
 
     /**
-     * Start a workspace. Throws if the command execution fails.
+     * Start a workspace, reporting stdout and stderr lines as progress.
+     * Throws if the command execution fails.
      */
     internal fun startWorkspace(
         wsAddress: WorkspaceAddress,
@@ -680,6 +682,7 @@ class CoderCLIManager(
                     disableAutostart = version >= SemVer(2, 5, 0),
                     reportWorkspaceUsage = version >= SemVer(2, 13, 0),
                     wildcardSsh = version >= SemVer(2, 19, 0),
+                    workspaceProgressWebSockets = version >= SemVer(2, 22, 0),
                     buildReason = version >= SemVer(2, 25, 0),
                     keyringAuth = version >= SemVer(2, 29, 0),
                 )

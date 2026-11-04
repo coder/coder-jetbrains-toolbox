@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- stream build status and provisioner output while updating, restarting, or stopping workspaces, falling back to
+  polling for older Coder deployments
+
 ## 0.9.5 - 2026-10-30
 
 ### Added
