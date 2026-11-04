@@ -4,6 +4,8 @@
     <version>${version}</version>
     <vendor>coder</vendor>
 
+    <idea-version since-build="263"/>
+
     <description>Connects your JetBrains IDE to Coder workspaces</description>
 
     <dependencies>
