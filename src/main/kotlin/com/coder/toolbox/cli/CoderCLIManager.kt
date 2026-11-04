@@ -298,7 +298,8 @@ class CoderCLIManager(
     }
 
     /**
-     * Start a workspace. Throws if the command execution fails.
+     * Start a workspace, reporting stdout and stderr lines as progress.
+     * Throws if the command execution fails.
      */
     internal fun startWorkspace(
         wsAddress: WorkspaceAddress,

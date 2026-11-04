@@ -7,6 +7,11 @@
 - drop support for Coder server and CLI versions older than v2.29.0. Connecting to an older deployment, or with an
   older CLI binary, now stops with a message asking to upgrade to v2.29.0 or newer
 
+### Changed
+
+- stream build status and provisioner output while updating, restarting, or stopping workspaces, falling back to
+  polling when the WebSocket connection is unavailable
+
 ## 0.9.5 - 2026-10-30
 
 ### Added
