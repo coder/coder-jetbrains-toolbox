@@ -147,10 +147,9 @@ sealed class WorkspaceAndAgentStatus(
                     WorkspaceAgentStatus.CONNECTED ->
                         when (agent.lifecycleState) {
                             WorkspaceAgentLifecycleState.CREATED -> Created(workspace)
-                            // Like `coder ssh`, only scripts that block login delay the connection.
                             // Startup failures and timeouts still accept SSH.
                             WorkspaceAgentLifecycleState.STARTING ->
-                                if (agent.scripts.any { it.runOnStart && it.startBlocksLogin }) AgentStarting(workspace)
+                                if (agent.hasLoginBlockingStartupScripts()) AgentStarting(workspace)
                                 else AgentStartingConnectable(workspace)
 
                             WorkspaceAgentLifecycleState.START_TIMEOUT -> StartTimeout(workspace)
@@ -178,3 +177,11 @@ sealed class WorkspaceAndAgentStatus(
         }
     }
 }
+
+/**
+ * Return true if a startup script must finish before the agent accepts connections.
+ *
+ * Like `coder ssh`, only scripts that run on start and block login delay the connection.
+ */
+private fun WorkspaceAgent.hasLoginBlockingStartupScripts(): Boolean =
+    scripts.any { it.runOnStart && it.startBlocksLogin }
