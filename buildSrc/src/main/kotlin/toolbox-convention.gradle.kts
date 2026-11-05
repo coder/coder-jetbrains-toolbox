@@ -81,7 +81,7 @@ val publishPlugin by tasks.registering(PublishToolboxPluginTask::class) {
 
 val packageIdeaPlugin by tasks.registering(Zip::class) {
     dependsOn(tasks.named<Jar>("jar"), generatedDependenciesJson)
-    archiveBaseName.set("coder-toolbox-idea")
+    archiveBaseName.set("coder-idea")
     val pluginDir = project.group.toString()
     from(tasks.named<Jar>("jar")) {
         into("$pluginDir/lib")
