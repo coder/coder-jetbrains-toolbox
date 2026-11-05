@@ -16,7 +16,13 @@ data class WorkspaceAgent(
     @Json(name = "directory") val directory: String?,
     @Json(name = "expanded_directory") val expandedDirectory: String?,
     @Json(name = "lifecycle_state") val lifecycleState: WorkspaceAgentLifecycleState,
-    @Json(name = "login_before_ready") val loginBeforeReady: Boolean?,
+    @Json(name = "scripts") val scripts: List<WorkspaceAgentScript>,
+)
+
+@JsonClass(generateAdapter = true)
+data class WorkspaceAgentScript(
+    @Json(name = "run_on_start") val runOnStart: Boolean,
+    @Json(name = "start_blocks_login") val startBlocksLogin: Boolean,
 )
 
 enum class WorkspaceAgentStatus {

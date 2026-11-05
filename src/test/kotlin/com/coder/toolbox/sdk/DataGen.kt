@@ -31,7 +31,7 @@ class DataGen {
                         directory = null,
                         expandedDirectory = null,
                         lifecycleState = WorkspaceAgentLifecycleState.READY,
-                        loginBeforeReady = false,
+                        scripts = emptyList(),
                     ),
                 ),
         )

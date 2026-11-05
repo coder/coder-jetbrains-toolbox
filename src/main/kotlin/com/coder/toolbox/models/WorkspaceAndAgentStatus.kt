@@ -53,15 +53,13 @@ sealed class WorkspaceAndAgentStatus(
 
     class AgentStarting(workspace: Workspace) : WorkspaceAndAgentStatus("Starting", workspace)
 
-    class AgentStartingReady(workspace: Workspace) : WorkspaceAndAgentStatus("Starting", workspace)
+    class AgentStartingConnectable(workspace: Workspace) : WorkspaceAndAgentStatus("Startup scripts running", workspace)
 
     class Created(workspace: Workspace) : WorkspaceAndAgentStatus("Created", workspace)
 
     class StartError(workspace: Workspace) : WorkspaceAndAgentStatus("Started with error", workspace)
 
-    class StartTimeout(workspace: Workspace) : WorkspaceAndAgentStatus("Starting", workspace)
-
-    class StartTimeoutReady(workspace: Workspace) : WorkspaceAndAgentStatus("Starting", workspace)
+    class StartTimeout(workspace: Workspace) : WorkspaceAndAgentStatus("Startup script timed out", workspace)
 
     class ShuttingDown(workspace: Workspace) : WorkspaceAndAgentStatus("Shutting down", workspace)
 
@@ -77,8 +75,8 @@ sealed class WorkspaceAndAgentStatus(
      * Return the environment state for Toolbox, which tells it the label, color
      * and whether the environment is reachable.
      *
-     * Note that a reachable environment will always display "connected" or
-     * "disconnected" regardless of the label we give that status.
+     * The priority label keeps startup progress and failures visible even
+     * when Toolbox has established a connection.
      */
     fun toRemoteEnvironmentState(context: CoderToolboxContext): CustomRemoteEnvironmentStateV2 {
         return CustomRemoteEnvironmentStateV2(
@@ -95,8 +93,8 @@ sealed class WorkspaceAndAgentStatus(
         return if (this is Failed) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.FailedToStart)
         else if (this is Deleting) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleting)
         else if (this is Deleted) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Deleted)
-        else if (ready()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Active)
         else if (unhealthy()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Unhealthy)
+        else if (canConnect()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Active)
         else if (canStart() || this is Stopping) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Hibernating)
         else if (pending()) context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Activating)
         else context.envStateColorPalette.getColor(StandardRemoteEnvironmentState.Unreachable)
@@ -105,7 +103,7 @@ sealed class WorkspaceAndAgentStatus(
     private fun getStateIcon(): EnvironmentStateIcons {
         return if (this is Failed) EnvironmentStateIcons.Error
         else if (pending() || this is Deleting || this is Deleted || this is Stopping) CircularSpinner
-        else if (ready() || unhealthy()) EnvironmentStateIcons.Active
+        else if (canConnect()) EnvironmentStateIcons.Active
         else if (canStart()) EnvironmentStateIcons.Offline
         else EnvironmentStateIcons.NoIcon
     }
@@ -113,18 +111,18 @@ sealed class WorkspaceAndAgentStatus(
     /**
      * Return true if the agent is in a connectable state.
      */
-    fun ready(): Boolean = this is Ready
+    fun canConnect(): Boolean =
+        this is Ready || this is AgentStartingConnectable || this is StartError || this is StartTimeout
 
     fun unhealthy(): Boolean {
-        return this is StartError || this is StartTimeoutReady
+        return this is StartError || this is StartTimeout
     }
 
     /**
      * Return true if the agent might soon be in a connectable state.
      */
     fun pending(): Boolean {
-        // See ready() for why `CREATED` is not in this list.
-        return this is Created || this is Connecting || this is Timeout || this is AgentStarting || this is StartTimeout || this is Queued || this is Starting
+        return this is Created || this is Connecting || this is Timeout || this is AgentStarting || this is Queued || this is Starting
     }
 
     /**
@@ -135,22 +133,8 @@ sealed class WorkspaceAndAgentStatus(
     /**
      * Return true if the workspace can be stopped.
      */
-    fun canStop(): Boolean = ready() || pending() || unhealthy()
+    fun canStop(): Boolean = canConnect() || pending()
 
-    // We want to check that the workspace is `running`, the agent is
-    // `connected`, and the agent lifecycle state is `ready` to ensure the best
-    // possible scenario for attempting a connection.
-    //
-    // We can also choose to allow `start_error` for the agent lifecycle state;
-    // this means the startup script did not successfully complete but the agent
-    // will still accept SSH connections.
-    //
-    // Lastly we can also allow connections when the agent lifecycle state is
-    // `starting` or `start_timeout` if `login_before_ready` is true on the
-    // workspace response since this bypasses the need to wait for the script.
-    //
-    // Note that latest_build.status is derived from latest_build.job.status and
-    // latest_build.job.transition so there is no need to check those.
     companion object {
         fun from(
             workspace: Workspace,
@@ -163,14 +147,12 @@ sealed class WorkspaceAndAgentStatus(
                     WorkspaceAgentStatus.CONNECTED ->
                         when (agent.lifecycleState) {
                             WorkspaceAgentLifecycleState.CREATED -> Created(workspace)
-                            WorkspaceAgentLifecycleState.STARTING -> if (agent.loginBeforeReady == true) AgentStartingReady(
-                                workspace
-                            ) else AgentStarting(workspace)
+                            // Startup failures and timeouts still accept SSH.
+                            WorkspaceAgentLifecycleState.STARTING ->
+                                if (agent.hasLoginBlockingStartupScripts()) AgentStarting(workspace)
+                                else AgentStartingConnectable(workspace)
 
-                            WorkspaceAgentLifecycleState.START_TIMEOUT -> if (agent.loginBeforeReady == true) StartTimeoutReady(
-                                workspace
-                            ) else StartTimeout(workspace)
-
+                            WorkspaceAgentLifecycleState.START_TIMEOUT -> StartTimeout(workspace)
                             WorkspaceAgentLifecycleState.START_ERROR -> StartError(workspace)
                             WorkspaceAgentLifecycleState.READY -> Ready(workspace)
                             WorkspaceAgentLifecycleState.SHUTTING_DOWN -> ShuttingDown(workspace)
@@ -195,3 +177,11 @@ sealed class WorkspaceAndAgentStatus(
         }
     }
 }
+
+/**
+ * Return true if a startup script must finish before the agent accepts connections.
+ *
+ * Like `coder ssh`, only scripts that run on start and block login delay the connection.
+ */
+private fun WorkspaceAgent.hasLoginBlockingStartupScripts(): Boolean =
+    scripts.any { it.runOnStart && it.startBlocksLogin }

@@ -203,7 +203,7 @@ class ConnectionMonitoringServiceTest {
             directory = null,
             expandedDirectory = null,
             lifecycleState = lifecycleState,
-            loginBeforeReady = false
+            scripts = emptyList()
         )
     }
 }
