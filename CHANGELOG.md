@@ -1,18 +1,16 @@
 # Coder Toolbox Plugin Changelog
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-
 ## Unreleased
+
+### Breaking changes
+
+- drop support for Coder server and CLI versions older than v2.29.0. Connecting to an older deployment, or with an
+  older CLI binary, now stops with a message asking to upgrade to v2.29.0 or newer
 
 ### Changed
 
-- Stream build status and provisioner output while updating, restarting, or stopping workspaces, falling back to
-  polling when the WebSocket connection is unavailable.
-
-### Removed
-
-- **Breaking:** Support for Coder server and CLI versions older than v2.29.0. Connecting to an older deployment, or
-  with an older CLI binary, now stops with a message asking to upgrade to v2.29.0 or newer.
+- stream build status and provisioner output while updating, restarting, or stopping workspaces, falling back to
+  polling when the WebSocket connection is unavailable
 
 ### Fixed
 
