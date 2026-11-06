@@ -201,12 +201,15 @@ internal class CoderCLIManagerTest {
             context.logger,
         )
         try {
-            val url = "https://coder.example.test".toURL()
             val ws = workspace("diagnostic-workspace", agents = mapOf("main" to UUID.randomUUID().toString()))
             val agent = ws.latestBuild.resources.flatMap { it.agents.orEmpty() }.first()
             for (keyring in listOf(true, false)) {
                 settings.updateUseKeyring(keyring)
-                val cli = CoderCLIManager(context.copy(settingsStore = settings), url, OS.MAC)
+                val cli = CoderCLIManager(
+                    context.copy(settingsStore = settings),
+                    "https://coder.example.test".toURL(),
+                    OS.MAC,
+                )
                 for (selectedAgent in listOf(agent, null)) {
                     val output = root.resolve("bundle with spaces.zip")
                     cli.supportBundle(WorkspaceAddress.from(ws, selectedAgent), output)
@@ -214,7 +217,7 @@ internal class CoderCLIManagerTest {
                         listOfNotNull(
                             if (!keyring) "--global-config" else null,
                             if (!keyring) cli.coderConfigPath.toString() else null,
-                            "--url", url.toString(), "--use-keyring=$keyring",
+                            "--url", "https://coder.example.test", "--use-keyring=$keyring",
                             "support", "bundle", "--yes", "--output-file", output.toString(),
                             "--", "${ws.ownerName}/${ws.name}", selectedAgent?.name,
                         ),
@@ -352,12 +355,10 @@ internal class CoderCLIManagerTest {
             Environment(),
             context.logger
         )
-        val url = URL("http://localhost")
-
-        val ccm = CoderCLIManager(context.copy(settingsStore = settings), url)
-        assertEquals(settings.binSource(url), ccm.remoteBinaryURL)
-        assertEquals(settings.dataDir(url), ccm.coderConfigPath.parent)
-        assertEquals(settings.binPath(url), ccm.localBinaryPath)
+        val ccm = CoderCLIManager(context.copy(settingsStore = settings), "http://localhost".toURL())
+        assertEquals(settings.binSource("http://localhost".toURL()), ccm.remoteBinaryURL)
+        assertEquals(settings.dataDir("http://localhost".toURL()), ccm.coderConfigPath.parent)
+        assertEquals(settings.binPath("http://localhost".toURL()), ccm.localBinaryPath)
     }
 
     @Test
@@ -420,7 +421,6 @@ internal class CoderCLIManagerTest {
     @Suppress("DEPRECATION")
     fun `test binaryDirectory fallback to BINARY_DESTINATION`() {
         val binDir = tmpdir.resolve("bin-dir-fallback")
-        val url = URL("http://localhost")
 
         // Using the deprecated BINARY_DIRECTORY key should still work
         // because binaryDestination falls back to it.
@@ -432,7 +432,7 @@ internal class CoderCLIManagerTest {
             context.logger
         )
         val expectedOldKey = binDir.resolve("localhost").resolve(settingsWithOldKey.defaultCliBinaryNameByOsAndArch)
-        assertEquals(expectedOldKey.toAbsolutePath(), settingsWithOldKey.binPath(url))
+        assertEquals(expectedOldKey.toAbsolutePath(), settingsWithOldKey.binPath("http://localhost".toURL()))
 
         // BINARY_DESTINATION takes priority over BINARY_DIRECTORY.
         val overrideDir = tmpdir.resolve("bin-dest-override")
@@ -446,7 +446,7 @@ internal class CoderCLIManagerTest {
         )
         val expectedNewKey =
             overrideDir.resolve("localhost").resolve(settingsWithBothKeys.defaultCliBinaryNameByOsAndArch)
-        assertEquals(expectedNewKey.toAbsolutePath(), settingsWithBothKeys.binPath(url))
+        assertEquals(expectedNewKey.toAbsolutePath(), settingsWithBothKeys.binPath("http://localhost".toURL()))
     }
 
     @Test
@@ -631,7 +631,7 @@ internal class CoderCLIManagerTest {
         )
         val ccm = CoderCLIManager(
             context.copy(settingsStore = settings),
-            URL("https://test.coder.com"),
+            "https://test.coder.com".toURL(),
             osOverride,
         )
 
@@ -660,7 +660,28 @@ internal class CoderCLIManagerTest {
         }
     }
 
-    private fun credentialCli(keyring: Boolean = true): Pair<CoderCLIManager, CoderSettingsStore> {
+    @Test
+    fun `HTTP login selects keyring by default and honors opt out across platforms`() = runBlocking {
+        for (os in listOf(OS.MAC, OS.WINDOWS, OS.LINUX, null)) {
+            for (setting in listOf(null, true, false)) {
+                val settings = credentialSettings(keyring = setting)
+                val cli = CoderCLIManager(
+                    context.copy(settingsStore = settings),
+                    "http://test.coder.com".toURL(),
+                    os,
+                )
+
+                val args = cli.login("token")
+                val expectsKeyring = setting != false && CoderCLIManager.supportsKeyringStorage(os)
+                assertContains(args, "login --use-token-as-session http://test.coder.com")
+                assertContains(args, "--url http://test.coder.com")
+                assertContains(args, "--use-keyring=$expectsKeyring")
+                assertEquals(!expectsKeyring, args.contains("--global-config"))
+            }
+        }
+    }
+
+    private fun credentialSettings(keyring: Boolean? = null): CoderSettingsStore {
         val root = tmpdir.resolve("credentials-${UUID.randomUUID()}")
         val binary = root.resolve(if (getOS() == OS.WINDOWS) "coder.bat" else "coder")
         writeExecutable(
@@ -670,24 +691,94 @@ internal class CoderCLIManagerTest {
                 mkbin("printf '%s' \"$*\"")
             }
         )
-        val settings = CoderSettingsStore(
+        return CoderSettingsStore(
             pluginTestSettingsStore(
                 BINARY_DESTINATION to binary.toString(),
                 DATA_DIRECTORY to root.resolve("data").toString(),
-                USE_KEYRING to keyring.toString(),
+                *(keyring?.let { arrayOf(USE_KEYRING to it.toString()) } ?: emptyArray()),
             ),
             Environment(), underlyingLogger,
         )
-        return CoderCLIManager(
-            context.copy(settingsStore = settings),
-            URL("https://test.coder.com"),
-            OS.MAC
-        ) to settings
+    }
+
+    @Test
+    fun `HTTP uses the keyring across supported CLI versions`() = runBlocking {
+        for (version in listOf("v2.29.0", "v2.38.0", "v2.39.0")) {
+            val settings = credentialSettings()
+            val cli = CoderCLIManager(
+                context.copy(settingsStore = settings),
+                "http://test.coder.com".toURL(),
+                OS.MAC,
+            )
+            val script = if (getOS() == OS.WINDOWS) {
+                "if \"%1\"==\"version\" (echo {\"version\":\"$version\"}) else (echo %*)"
+            } else {
+                "if [ \"${'$'}1\" = version ]; then printf '%s' '{\"version\":\"$version\"}'; " +
+                        "else printf '%s' \"${'$'}*\"; fi"
+            }
+            writeExecutable(cli.localBinaryPath, mkbin(script))
+            val session = cli.coderConfigPath.resolve("session").toFile()
+            session.parentFile.mkdirs()
+            session.writeText("old-token")
+
+            val loginArgs = cli.login("token")
+            assertContains(loginArgs, "--url http://test.coder.com --use-keyring=true", message = version)
+            assertFalse(loginArgs.contains("--global-config"), version)
+            assertFalse(session.exists(), "Successful keyring login removes the plaintext token")
+            val workspace = workspace("dev", agents = mapOf("main" to UUID.randomUUID().toString()))
+            val agent = workspace.latestBuild.resources.first { !it.agents.isNullOrEmpty() }.agents!!.first()
+            val address = WorkspaceAddress.from(workspace, agent)
+            val config = cli.coderConfigPath.parent.resolve("ssh-config")
+            cli.configSsh(setOf(address), sshConfigPath = config.toString())
+            assertContains(Files.readString(config), "--use-keyring=true", message = version)
+            assertContains(cli.startWorkspace(address), "--use-keyring=true", message = version)
+            assertContains(cli.logout(), "--url http://test.coder.com --use-keyring=true", message = version)
+        }
+    }
+
+    @Test
+    fun `HTTPS uses the keyring across supported CLI versions`() = runBlocking {
+        for (version in listOf("v2.29.0", "v2.38.0", "v2.39.0")) {
+            val settings = credentialSettings()
+            val cli = CoderCLIManager(
+                context.copy(settingsStore = settings),
+                "https://test.coder.com".toURL(),
+                OS.MAC,
+            )
+            val script = if (getOS() == OS.WINDOWS) {
+                "if \"%1\"==\"version\" (echo {\"version\":\"$version\"}) else (echo %*)"
+            } else {
+                "if [ \"${'$'}1\" = version ]; then printf '%s' '{\"version\":\"$version\"}'; " +
+                        "else printf '%s' \"${'$'}*\"; fi"
+            }
+            writeExecutable(cli.localBinaryPath, mkbin(script))
+            val session = cli.coderConfigPath.resolve("session").toFile()
+            session.parentFile.mkdirs()
+            session.writeText("old-token")
+
+            val loginArgs = cli.login("token")
+            assertContains(loginArgs, "--url https://test.coder.com --use-keyring=true", message = version)
+            assertFalse(loginArgs.contains("--global-config"), version)
+            assertFalse(session.exists(), "Successful keyring login removes the plaintext token")
+            val workspace = workspace("dev", agents = mapOf("main" to UUID.randomUUID().toString()))
+            val agent = workspace.latestBuild.resources.first { !it.agents.isNullOrEmpty() }.agents!!.first()
+            val address = WorkspaceAddress.from(workspace, agent)
+            val config = cli.coderConfigPath.parent.resolve("ssh-config")
+            cli.configSsh(setOf(address), sshConfigPath = config.toString())
+            assertContains(Files.readString(config), "--use-keyring=true", message = version)
+            assertContains(cli.startWorkspace(address), "--use-keyring=true", message = version)
+            assertContains(cli.logout(), "--url https://test.coder.com --use-keyring=true", message = version)
+        }
     }
 
     @Test
     fun `successful keyring login removes the old plaintext session`() = runBlocking {
-        val (cli, _) = credentialCli()
+        val settings = credentialSettings()
+        val cli = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            "https://test.coder.com".toURL(),
+            OS.MAC,
+        )
         val session = cli.coderConfigPath.resolve("session").toFile()
         session.parentFile.mkdirs()
         session.writeText("old-token")
@@ -699,7 +790,12 @@ internal class CoderCLIManagerTest {
 
     @Test
     fun `failed keyring login preserves the previous plaintext session`() = runBlocking {
-        val (cli, _) = credentialCli()
+        val settings = credentialSettings()
+        val cli = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            "https://test.coder.com".toURL(),
+            OS.MAC,
+        )
         writeExecutable(cli.localBinaryPath, mkbin(if (getOS() == OS.WINDOWS) "exit /b 1" else "exit 1"))
         val session = cli.coderConfigPath.resolve("session").toFile()
         session.parentFile.mkdirs()
@@ -712,7 +808,12 @@ internal class CoderCLIManagerTest {
 
     @Test
     fun `logout and token refresh retain active storage until the next sign in`() = runBlocking {
-        val (cli, settings) = credentialCli()
+        val settings = credentialSettings()
+        val cli = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            "https://test.coder.com".toURL(),
+            OS.MAC,
+        )
         settings.updateUseKeyring(false)
 
         assertContains(cli.login("new-token"), "--use-keyring=true")

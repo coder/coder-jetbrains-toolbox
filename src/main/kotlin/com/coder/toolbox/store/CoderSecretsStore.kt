@@ -1,6 +1,7 @@
 package com.coder.toolbox.store
 
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
+import com.coder.toolbox.util.origin
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.StoredOAuthSession
 import com.jetbrains.toolbox.api.core.PluginSecretStore
@@ -22,14 +23,18 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
     )
     val lastDeploymentURL: String = store["last-deployment-url"] ?: ""
 
-    fun apiTokenFor(url: URL): String? = store[url.host]
+    fun apiTokenFor(url: URL): String? = apiSessionKey(url)?.let { store[it] }
 
     fun storeApiTokenFor(url: URL, apiToken: String) {
-        store[url.host] = apiToken
+        val key = requireNotNull(apiSessionKey(url)) { "Session credentials require an HTTP(S) deployment URL" }
+        store[key] = apiToken
     }
 
+    private fun apiSessionKey(url: URL): String? =
+        url.origin()?.let { "api-session:$it" }
+
     fun clearSessionFor(url: URL) {
-        store.clear(url.host)
+        apiSessionKey(url)?.let { store.clear(it) }
         listOf(
             OAUTH_CLIENT_ID_PREFIX, OAUTH_CLIENT_SECRET_PREFIX, OAUTH_REFRESH_TOKEN,
             OAUTH_TOKEN_AUTH_METHOD, OAUTH_TOKEN_ENDPOINT

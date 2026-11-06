@@ -106,7 +106,7 @@ suspend fun ensureCLI(
 class CoderCLIManager(
     private val context: CoderToolboxContext,
     // The URL of the deployment this CLI is for.
-    private val deploymentURL: URL,
+    internal val deploymentURL: URL,
     private val currentOs: OS? = getOS(),
 ) {
     internal val usesTokenAuth = context.settingsStore.requiresTokenAuth
