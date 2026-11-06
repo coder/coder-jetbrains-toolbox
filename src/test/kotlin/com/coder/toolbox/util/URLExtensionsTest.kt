@@ -5,8 +5,25 @@ import java.net.URL
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 internal class URLExtensionsTest {
+    @Test
+    fun `origins compare scheme canonical hostname and effective port`() {
+        val url = "https://coder.example.com".toURL()
+        assertTrue(url.hasSameOrigin("https://CODER.example.com:443/path".toURL()))
+        assertFalse(url.hasSameOrigin("http://coder.example.com".toURL()))
+        assertFalse(url.hasSameOrigin("https://coder.example.com:8443".toURL()))
+        assertFalse(url.hasSameOrigin("https://other.example.com".toURL()))
+        assertFalse(url.hasSameOrigin(null))
+        assertFalse("file:///tmp".toURL().hasSameOrigin("file:///tmp".toURL()))
+        assertEquals(
+            "https://coder.example.com",
+            "https://user:password@CODER.example.com:443/path?q=1#fragment".toURL().origin()
+        )
+    }
+
     @Test
     fun testToURL() {
         assertEquals(

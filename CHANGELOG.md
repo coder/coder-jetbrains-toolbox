@@ -17,6 +17,14 @@
 - SSH connections being blocked while non-blocking startup scripts run or after startup scripts fail or time out.
 - Automatic connection not starting when a workspace agent becomes connectable after the initial workspace load.
 
+### Security
+
+- Require confirmation before a workspace link connects to a different Coder deployment or starts a fresh connection.
+  Links to the currently connected deployment continue without a prompt.
+- Store Toolbox API tokens separately for each deployment scheme, host, and port to prevent cross-deployment reuse.
+  Tokens saved by older plugin versions require one new sign-in because they were stored without an origin.
+- Prevent delayed OAuth refreshes from updating CLI credentials for a different deployment.
+
 ## 0.9.5 - 2026-10-30
 
 ### Added

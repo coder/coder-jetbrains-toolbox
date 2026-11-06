@@ -16,9 +16,11 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.store.CoderSettingsStore
+import com.coder.toolbox.util.CoderProtocolHandler
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.state.StoredOAuthSession
 import com.coder.toolbox.views.state.WizardStep
+import com.coder.toolbox.views.state.toSessionContext
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.util.LoadableState
 import com.jetbrains.toolbox.api.localization.LocalizableStringFactory
@@ -29,7 +31,9 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.spyk
 import io.mockk.verify
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,11 +45,13 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertTrue
 import java.io.FileNotFoundException
 import java.net.URI
+import java.net.URLEncoder
 import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -56,6 +62,7 @@ class CoderRemoteProviderTest {
     private lateinit var mockClient: CoderRestClient
     private lateinit var mockCli: CoderCLIManager
     private lateinit var mockContext: CoderToolboxContext
+    private lateinit var mockUi: ToolboxUi
     private lateinit var mockLogger: CoderLogger
     private lateinit var underlyingLogger: Logger
     private lateinit var remoteProvider: CoderRemoteProvider
@@ -65,6 +72,8 @@ class CoderRemoteProviderTest {
         mockClient = mockk(relaxed = true)
         mockCli = mockk(relaxed = true)
         mockContext = mockk(relaxed = true)
+        mockUi = mockk(relaxed = true)
+        every { mockContext.ui } returns mockUi
         underlyingLogger = mockk(relaxed = true)
         mockLogger = CoderLogger(
             underlyingLogger,
@@ -77,6 +86,7 @@ class CoderRemoteProviderTest {
         every { mockContext.settingsStore } returns settingsStore
         every { mockContext.logger } returns mockLogger
         every { mockClient.url } returns URI("https://coder.example.com").toURL()
+        every { mockCli.deploymentURL } returns URI("https://coder.example.com").toURL()
         remoteProvider = CoderRemoteProvider(mockContext)
     }
 
@@ -132,6 +142,69 @@ class CoderRemoteProviderTest {
         remoteProvider.logout()
 
         coVerify(exactly = 0) { mockCli.logout() }
+    }
+
+    @Test
+    fun `OAuth refresh updates the CLI session for the active origin`() = runTest {
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+        val url = URI("https://CODER.example.com:443/").toURL()
+        val stored = storedOAuthSession().toSessionContext()
+        val refreshed = stored.copy(tokenResponse = stored.tokenResponse!!.copy(accessToken = "refreshed-token"))
+        val secrets = mockContext.secrets
+
+        remoteProvider.onTokenRefreshed(url, refreshed)
+
+        coVerify(exactly = 1) { mockCli.login("refreshed-token") }
+        verify(exactly = 1) { secrets.storeOAuthFor(url.toString(), refreshed) }
+    }
+
+    @Test
+    fun `late OAuth refresh never sends the token to another active origin`() = runTest {
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+        val stored = storedOAuthSession().toSessionContext()
+        val refreshed = stored.copy(tokenResponse = stored.tokenResponse!!.copy(accessToken = "refreshed-token"))
+        val secrets = mockContext.secrets
+
+        for (deployment in listOf(
+            "http://coder.example.com",
+            "https://coder.example.com:8443",
+            "https://other.example.com",
+        )) {
+            remoteProvider.onTokenRefreshed(URI(deployment).toURL(), refreshed)
+            verify(exactly = 1) { secrets.storeOAuthFor(deployment, refreshed) }
+        }
+
+        coVerify(exactly = 0) { mockCli.login(any()) }
+    }
+
+    @Test
+    fun `OAuth refresh after disconnection only saves credentials for its deployment`() = runTest {
+        setPrivateField(remoteProvider, "cli", mockCli)
+        val url = URI("https://coder.example.com").toURL()
+        val stored = storedOAuthSession().toSessionContext()
+        val refreshed = stored.copy(tokenResponse = stored.tokenResponse!!.copy(accessToken = "refreshed-token"))
+        val secrets = mockContext.secrets
+
+        remoteProvider.onTokenRefreshed(url, refreshed)
+
+        coVerify(exactly = 0) { mockCli.login(any()) }
+        verify(exactly = 1) { secrets.storeOAuthFor(url.toString(), refreshed) }
+    }
+
+    @Test
+    fun `OAuth refresh checks the CLI origin while a connection is being replaced`() = runTest {
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+        val url = URI("https://other.example.com").toURL()
+        every { mockClient.url } returns url
+        val stored = storedOAuthSession().toSessionContext()
+        val refreshed = stored.copy(tokenResponse = stored.tokenResponse!!.copy(accessToken = "refreshed-token"))
+
+        remoteProvider.onTokenRefreshed(url, refreshed)
+
+        coVerify(exactly = 0) { mockCli.login(any()) }
     }
 
     @Test
@@ -512,6 +585,7 @@ class CoderRemoteProviderTest {
             every { mockClient.url } returns URI("https://old.example.com").toURL()
             every { mockContext.settingsStore.requiresMTlsAuth } returns false
             every { mockContext.settingsStore.requiresTokenAuth } returns true
+            coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } returns true
             setPrivateField(remoteProvider, "client", mockClient)
             setPrivateField(remoteProvider, "cli", mockCli)
 
@@ -526,8 +600,175 @@ class CoderRemoteProviderTest {
             val overridePage = remoteProvider.getOverrideUiPage()
             assertNotNull(overridePage)
             assertTrue(overridePage is CoderSetupWizardPage)
+            coVerify(exactly = 1) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
             verify { mockContext.popupPluginMainPage() }
         }
+
+    @Test
+    fun `links to the active origin continue without confirmation and preserve its URL`() = runTest {
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        val activeUrl = URI("https://coder.example.com").toURL()
+        val provider = spyk(remoteProvider, recordPrivateCalls = true)
+        val handler = mockk<CoderProtocolHandler>(relaxed = true)
+        setPrivateField(provider, "client", mockClient)
+        setPrivateField(provider, "cli", mockCli)
+        setPrivateField(provider, "linkHandler", handler)
+        coEvery { provider["refreshSession"](activeUrl, "link-token") } returns (mockClient to mockCli)
+
+        val targets = listOf(
+            "https://coder.example.com",
+            "https://CODER.example.com:443/",
+            "https://coder.example.com/different/path/",
+        )
+        for (target in targets) {
+            provider.handleUri(workspaceLink(target))
+        }
+
+        coVerify(exactly = 0) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
+        coVerify(exactly = targets.size) { handler.handle(any(), activeUrl, mockClient, mockCli) }
+        verify(exactly = 0) { mockContext.popupPluginMainPage() }
+        verify(exactly = 0) { underlyingLogger.info(match<String> { it.contains("link-token") }) }
+        assertNull(provider.getOverrideUiPage())
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `different origins wait for confirmation and cancellation preserves the active session`() = runTest {
+        val settings = mockContext.settingsStore
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+
+        for (target in listOf(
+            "https://other.example.com",
+            "http://coder.example.com",
+            "https://coder.example.com:8443",
+        )) {
+            val decision = CompletableDeferred<Boolean>()
+            coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } coAnswers { decision.await() }
+            val handling = async { remoteProvider.handleUri(workspaceLink(target)) }
+            runCurrent()
+
+            assertFalse(handling.isCompleted)
+            assertNull(remoteProvider.getOverrideUiPage())
+            verify(exactly = 0) { mockContext.popupPluginMainPage() }
+            coVerify(exactly = 0) { mockClient.initializeSession() }
+            coVerify(exactly = 0) { mockCli.login(any()) }
+
+            decision.complete(false)
+            handling.await()
+            assertNull(remoteProvider.getOverrideUiPage())
+        }
+        coVerify(exactly = 3) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
+        verify(exactly = 0) { mockContext.secrets.storeApiTokenFor(any(), any()) }
+        verify(exactly = 0) { settings.updateLastUsedUrl(any()) }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `fresh link requires confirmation even when matching credentials are saved`() = runTest {
+        val url = URI("https://coder.example.com").toURL()
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        every { mockContext.secrets.apiTokenFor(url) } returns "stored-token"
+        val decision = CompletableDeferred<Boolean>()
+        coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } coAnswers { decision.await() }
+
+        val handling = async { remoteProvider.handleUri(workspaceLink(url.toString())) }
+        runCurrent()
+        assertFalse(handling.isCompleted)
+        verify(exactly = 0) { mockContext.popupPluginMainPage() }
+        verify(exactly = 0) { mockContext.secrets.apiTokenFor(any()) }
+
+        decision.complete(true)
+        handling.await()
+
+        val page = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
+        assertEquals(WizardStep.CONNECT, page.model.currentStep())
+        assertEquals(url.toString(), page.model.url.toString())
+        assertEquals("link-token", page.model.token)
+        coVerify(exactly = 1) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
+        verify(exactly = 1) { mockContext.popupPluginMainPage() }
+    }
+
+    @Test
+    fun `declining a fresh link preserves the existing setup wizard`() = runTest {
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        every { mockContext.secrets.apiTokenFor(any()) } returns null
+        val page = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
+        coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } returns false
+
+        remoteProvider.handleUri(workspaceLink("https://other.example.com"))
+
+        assertSame(page, remoteProvider.getOverrideUiPage())
+        assertEquals(WizardStep.URL_REQUEST, page.model.currentStep())
+        verify(exactly = 0) { mockContext.popupPluginMainPage() }
+    }
+
+    @Test
+    fun `dismissing the trust popup cancels handling without showing an error`() = runTest {
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        setPrivateField(remoteProvider, "client", mockClient)
+        setPrivateField(remoteProvider, "cli", mockCli)
+        coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } throws CancellationException("Dismissed")
+
+        assertFailsWith<CancellationException> {
+            remoteProvider.handleUri(workspaceLink("https://other.example.com"))
+        }
+
+        assertNull(remoteProvider.getOverrideUiPage())
+        verify(exactly = 0) { underlyingLogger.error(any<String>()) }
+        verify(exactly = 0) { mockContext.popupPluginMainPage() }
+    }
+
+    @Test
+    fun `certificate authentication also requires trust for another deployment`() = runTest {
+        every { mockContext.settingsStore.requiresMTlsAuth } returns true
+        every { mockContext.settingsStore.requiresTokenAuth } returns false
+        coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } returns true
+
+        remoteProvider.handleUri(URI("jetbrains://gateway/com.coder.toolbox?url=https://other.example.com"))
+
+        coVerify(exactly = 1) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
+        val page = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
+        assertEquals(WizardStep.CONNECT, page.model.currentStep())
+        assertNull(page.model.token)
+    }
+
+    @Test
+    fun `trust prompt identifies the destination and token sign-in without exposing credentials`() = runTest {
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } returns false
+        val i18n = mockContext.i18n
+
+        remoteProvider.handleUri(workspaceLink("https://user:password@OTHER.example.com:8443/path"))
+
+        verify {
+            i18n.pnotr(match {
+                it.startsWith("https://other.example.com:8443\n\n") &&
+                        it.contains("contains a token") && it.contains("SSH configuration") &&
+                        !it.contains("password") && !it.contains("link-token")
+            })
+        }
+    }
+
+    @Test
+    fun `links without a valid origin cannot start a connection`() = runTest {
+        remoteProvider.handleUri(workspaceLink("https://coder.example.com:99999"))
+
+        coVerify(exactly = 0) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
+        verify(exactly = 0) { mockContext.popupPluginMainPage() }
+        verify { underlyingLogger.error(match<String> { it.contains("valid HTTP(S) host and port") }) }
+    }
+
+    private fun workspaceLink(url: String): URI = URI(
+        "jetbrains://gateway/com.coder.toolbox?url=${URLEncoder.encode(url, Charsets.UTF_8)}" +
+                "&token=link-token&workspace=dev"
+    )
 
     @Test
     fun `given Toolbox 3_5 provider page then header surface is available and account dropdown starts hidden`() {

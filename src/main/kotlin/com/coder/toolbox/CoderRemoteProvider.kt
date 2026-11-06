@@ -16,6 +16,8 @@ import com.coder.toolbox.util.DialogUi
 import com.coder.toolbox.util.TOKEN
 import com.coder.toolbox.util.URL
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
+import com.coder.toolbox.util.hasSameOrigin
+import com.coder.toolbox.util.origin
 import com.coder.toolbox.util.owner
 import com.coder.toolbox.util.toQueryParameters
 import com.coder.toolbox.util.toURL
@@ -507,24 +509,29 @@ class CoderRemoteProvider(
                 context.logger.logAndShowInfo("URI will not be handled", "No query parameters were provided")
                 return
             }
-            context.logger.info("Handling $uri...")
             val newUrl = resolveDeploymentUrl(params)?.toURL() ?: return
+            val newOrigin = requireNotNull(newUrl.origin()) {
+                "The deployment URL must have a valid HTTP(S) host and port."
+            }
             val newToken = if (context.settingsStore.requiresMTlsAuth) null else resolveToken(params) ?: return
-            if (sameUrl(newUrl, client?.url)) {
+            context.logger.info("Handling workspace link for $newOrigin")
+            val activeUrl = client?.url?.takeIf { newUrl.hasSameOrigin(it) }
+            if (activeUrl != null) {
                 coderHeaderPage.isBusy.update { true }
                 try {
                     val activeSession = if (context.settingsStore.requiresTokenAuth) {
                         newToken?.let {
-                            refreshSession(newUrl, it)
+                            refreshSession(activeUrl, it)
                         } ?: (this.client!! to this.cli!!)
                     } else {
                         this.client!! to this.cli!!
                     }
-                    handleLink(params, newUrl, activeSession.first, activeSession.second)
+                    handleLink(params, activeUrl, activeSession.first, activeSession.second)
                 } finally {
                     coderHeaderPage.isBusy.update { false }
                 }
             } else {
+                if (!confirmDeployment(newOrigin, newToken != null)) return
                 // Different URL - we need a new connection. Tear down any
                 // in-flight wizard, install a fresh one on the router, and let
                 // showPluginEnvironmentsPage() pull it through getOverrideUiPage.
@@ -539,6 +546,8 @@ class CoderRemoteProvider(
                 router.navigate(wizard)
                 context.popupPluginMainPage()
             }
+        } catch (ex: CancellationException) {
+            throw ex
         } catch (ex: Exception) {
             val textError = if (ex is APIResponseException) {
                 if (!ex.reason.isNullOrBlank()) {
@@ -648,7 +657,21 @@ class CoderRemoteProvider(
         return token
     }
 
-    private fun sameUrl(first: URL, second: URL?): Boolean = first.toURI().normalize() == second?.toURI()?.normalize()
+    private suspend fun confirmDeployment(origin: String, hasToken: Boolean): Boolean {
+        val disclosure = if (hasToken) {
+            " This link contains a token that will be sent to this deployment to sign you in."
+        } else ""
+        context.ui.showWindowSuspending()
+        return context.ui.showYesNoPopup(
+            context.i18n.ptrl("Connect to a Coder deployment?"),
+            context.i18n.pnotr(
+                "$origin\n\nToolbox is not currently connected to this deployment.$disclosure " +
+                        "Continue only if you trust it. Connecting can update your SSH configuration."
+            ),
+            context.i18n.ptrl("Trust and Continue"),
+            context.i18n.ptrl("Cancel"),
+        )
+    }
 
     private suspend fun refreshSession(url: URL, token: String): Pair<CoderRestClient, CoderCLIManager> {
         context.logger.info(
@@ -768,8 +791,12 @@ class CoderRemoteProvider(
         } ?: tokenCredentials
     }
 
-    private suspend fun onTokenRefreshed(url: URL, oauthSessionCtx: CoderOAuthSessionContext) {
-        oauthSessionCtx.tokenResponse?.accessToken?.let { cli?.login(it) }
+    internal suspend fun onTokenRefreshed(url: URL, oauthSessionCtx: CoderOAuthSessionContext) {
+        // A refresh may finish after the user has connected to another deployment.
+        val activeCli = cli?.takeIf {
+            client?.url?.hasSameOrigin(url) == true && it.deploymentURL.hasSameOrigin(url)
+        }
+        oauthSessionCtx.tokenResponse?.accessToken?.let { activeCli?.login(it) }
         context.secrets.storeOAuthFor(url.toString(), oauthSessionCtx)
     }
 

@@ -46,6 +46,7 @@ dependencies {
     implementation(libs.bundles.bouncycastle)
 
     testImplementation(kotlin("test"))
+    testImplementation(libs.junit.jupiter.params)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.mokk)
     testImplementation(libs.bundles.toolbox.plugin.api)
