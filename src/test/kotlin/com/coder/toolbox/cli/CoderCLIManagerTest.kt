@@ -67,6 +67,8 @@ import org.junit.jupiter.api.condition.EnabledOnOs
 import org.junit.jupiter.api.condition.OS.LINUX
 import org.junit.jupiter.api.condition.OS.MAC
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -701,74 +703,48 @@ internal class CoderCLIManagerTest {
         )
     }
 
-    @Test
-    fun `HTTP uses the keyring across supported CLI versions`() = runBlocking {
-        for (version in listOf("v2.29.0", "v2.38.0", "v2.39.0")) {
-            val settings = credentialSettings()
-            val cli = CoderCLIManager(
-                context.copy(settingsStore = settings),
-                "http://test.coder.com".toURL(),
-                OS.MAC,
-            )
-            val script = if (getOS() == OS.WINDOWS) {
-                "if \"%1\"==\"version\" (echo {\"version\":\"$version\"}) else (echo %*)"
-            } else {
-                "if [ \"${'$'}1\" = version ]; then printf '%s' '{\"version\":\"$version\"}'; " +
-                        "else printf '%s' \"${'$'}*\"; fi"
-            }
-            writeExecutable(cli.localBinaryPath, mkbin(script))
-            val session = cli.coderConfigPath.resolve("session").toFile()
-            session.parentFile.mkdirs()
-            session.writeText("old-token")
-
-            val loginArgs = cli.login("token")
-            assertContains(loginArgs, "--url http://test.coder.com --use-keyring=true", message = version)
-            assertFalse(loginArgs.contains("--global-config"), version)
-            assertFalse(session.exists(), "Successful keyring login removes the plaintext token")
-            val workspace = workspace("dev", agents = mapOf("main" to UUID.randomUUID().toString()))
-            val agent = workspace.latestBuild.resources.first { !it.agents.isNullOrEmpty() }.agents!!.first()
-            val address = WorkspaceAddress.from(workspace, agent)
-            val config = cli.coderConfigPath.parent.resolve("ssh-config")
-            cli.configSsh(setOf(address), sshConfigPath = config.toString())
-            assertContains(Files.readString(config), "--use-keyring=true", message = version)
-            assertContains(cli.startWorkspace(address), "--use-keyring=true", message = version)
-            assertContains(cli.logout(), "--url http://test.coder.com --use-keyring=true", message = version)
+    @CsvSource(
+        "http://test.coder.com, v2.29.0",
+        "http://test.coder.com, v2.38.0",
+        "http://test.coder.com, v2.39.0",
+        "https://test.coder.com, v2.29.0",
+        "https://test.coder.com, v2.38.0",
+        "https://test.coder.com, v2.39.0",
+    )
+    @ParameterizedTest(name = "{0} uses the keyring with CLI {1}")
+    fun `HTTP and HTTPS use the keyring across supported CLI versions`(
+        url: String,
+        version: String,
+    ) = runBlocking {
+        val settings = credentialSettings()
+        val cli = CoderCLIManager(
+            context.copy(settingsStore = settings),
+            url.toURL(),
+            OS.MAC,
+        )
+        val script = if (getOS() == OS.WINDOWS) {
+            "if \"%1\"==\"version\" (echo {\"version\":\"$version\"}) else (echo %*)"
+        } else {
+            "if [ \"${'$'}1\" = version ]; then printf '%s' '{\"version\":\"$version\"}'; " +
+                    "else printf '%s' \"${'$'}*\"; fi"
         }
-    }
+        writeExecutable(cli.localBinaryPath, mkbin(script))
+        val session = cli.coderConfigPath.resolve("session").toFile()
+        session.parentFile.mkdirs()
+        session.writeText("old-token")
 
-    @Test
-    fun `HTTPS uses the keyring across supported CLI versions`() = runBlocking {
-        for (version in listOf("v2.29.0", "v2.38.0", "v2.39.0")) {
-            val settings = credentialSettings()
-            val cli = CoderCLIManager(
-                context.copy(settingsStore = settings),
-                "https://test.coder.com".toURL(),
-                OS.MAC,
-            )
-            val script = if (getOS() == OS.WINDOWS) {
-                "if \"%1\"==\"version\" (echo {\"version\":\"$version\"}) else (echo %*)"
-            } else {
-                "if [ \"${'$'}1\" = version ]; then printf '%s' '{\"version\":\"$version\"}'; " +
-                        "else printf '%s' \"${'$'}*\"; fi"
-            }
-            writeExecutable(cli.localBinaryPath, mkbin(script))
-            val session = cli.coderConfigPath.resolve("session").toFile()
-            session.parentFile.mkdirs()
-            session.writeText("old-token")
-
-            val loginArgs = cli.login("token")
-            assertContains(loginArgs, "--url https://test.coder.com --use-keyring=true", message = version)
-            assertFalse(loginArgs.contains("--global-config"), version)
-            assertFalse(session.exists(), "Successful keyring login removes the plaintext token")
-            val workspace = workspace("dev", agents = mapOf("main" to UUID.randomUUID().toString()))
-            val agent = workspace.latestBuild.resources.first { !it.agents.isNullOrEmpty() }.agents!!.first()
-            val address = WorkspaceAddress.from(workspace, agent)
-            val config = cli.coderConfigPath.parent.resolve("ssh-config")
-            cli.configSsh(setOf(address), sshConfigPath = config.toString())
-            assertContains(Files.readString(config), "--use-keyring=true", message = version)
-            assertContains(cli.startWorkspace(address), "--use-keyring=true", message = version)
-            assertContains(cli.logout(), "--url https://test.coder.com --use-keyring=true", message = version)
-        }
+        val loginArgs = cli.login("token")
+        assertContains(loginArgs, "--url $url --use-keyring=true")
+        assertFalse(loginArgs.contains("--global-config"))
+        assertFalse(session.exists(), "Successful keyring login removes the plaintext token")
+        val workspace = workspace("dev", agents = mapOf("main" to UUID.randomUUID().toString()))
+        val agent = workspace.latestBuild.resources.first { !it.agents.isNullOrEmpty() }.agents!!.first()
+        val address = WorkspaceAddress.from(workspace, agent)
+        val config = cli.coderConfigPath.parent.resolve("ssh-config")
+        cli.configSsh(setOf(address), sshConfigPath = config.toString())
+        assertContains(Files.readString(config), "--use-keyring=true")
+        assertContains(cli.startWorkspace(address), "--use-keyring=true")
+        assertContains(cli.logout(), "--url $url --use-keyring=true")
     }
 
     @Test
