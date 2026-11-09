@@ -5,6 +5,7 @@ import com.coder.toolbox.util.origin
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.StoredOAuthSession
 import com.jetbrains.toolbox.api.core.PluginSecretStore
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URL
 
 private const val OAUTH_CLIENT_ID_PREFIX = "oauth-client-id"
@@ -33,8 +34,39 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
     private fun apiSessionKey(url: URL): String? =
         url.origin()?.let { "api-session:$it" }
 
+    fun isUrlTrusted(url: URL): Boolean {
+        val requested = url.toString().toHttpUrlOrNull() ?: return false
+        val origin = requested.origin()
+        val saved = store["deployment-url:$origin"]
+        return if (saved != null) {
+            saved.toHttpUrlOrNull() == requested
+        } else {
+            // Older origin-bound tokens have no record of a deployment path.
+            requested.toString() == "$origin/" && !apiTokenFor(url).isNullOrBlank()
+        }
+    }
+
+    fun trustDeployment(url: URL) {
+        val address = requireNotNull(url.toString().toHttpUrlOrNull()) { "Deployment trust requires an HTTP(S) URL" }
+        val key = "deployment-url:${address.origin()}"
+        if (store[key]?.toHttpUrlOrNull() != address) store[key] = url.toString()
+    }
+
     fun clearSessionFor(url: URL) {
         apiSessionKey(url)?.let { store.clear(it) }
+        url.origin()?.let { origin ->
+            val key = "deployment-url:$origin"
+            val signedInAt = store[key]
+            val savedOrigin = signedInAt?.toHttpUrlOrNull()?.origin()
+            if (signedInAt != null && signedInAt != url.toString() && savedOrigin == origin) {
+                clearOAuthSession(signedInAt)
+            }
+            store.clear(key)
+        }
+        clearOAuthSession(url.toString())
+    }
+
+    private fun clearOAuthSession(url: String) {
         listOf(
             OAUTH_CLIENT_ID_PREFIX, OAUTH_CLIENT_SECRET_PREFIX, OAUTH_REFRESH_TOKEN,
             OAUTH_TOKEN_AUTH_METHOD, OAUTH_TOKEN_ENDPOINT
@@ -44,6 +76,18 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
     }
 
     fun oauthSessionFor(url: String): StoredOAuthSession? {
+        val address = oauthStorageAddress(url)
+        return readOAuthSession(address) ?: if (address != url) readOAuthSession(url) else null
+    }
+
+    private fun oauthStorageAddress(url: String): String {
+        // Existing OAuth keys use the exact spelling of the URL used to sign in.
+        val requested = url.toHttpUrlOrNull() ?: return url
+        val saved = store["deployment-url:${requested.origin()}"]
+        return saved?.takeIf { it.toHttpUrlOrNull() == requested } ?: url
+    }
+
+    private fun readOAuthSession(url: String): StoredOAuthSession? {
         val clientId = store["$OAUTH_CLIENT_ID_PREFIX-$url"]
         val clientSecret = store["$OAUTH_CLIENT_SECRET_PREFIX-$url"]
         val refreshToken = store["$OAUTH_REFRESH_TOKEN-$url"]
@@ -64,11 +108,12 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
 
     fun storeOAuthFor(url: String, oAuthSessionCtx: CoderOAuthSessionContext) {
         oAuthSessionCtx.tokenResponse?.refreshToken?.let { refreshToken ->
-            store["$OAUTH_CLIENT_ID_PREFIX-$url"] = oAuthSessionCtx.clientId
-            store["$OAUTH_CLIENT_SECRET_PREFIX-$url"] = oAuthSessionCtx.clientSecret
-            store["$OAUTH_REFRESH_TOKEN-$url"] = refreshToken
-            store["$OAUTH_TOKEN_AUTH_METHOD-$url"] = oAuthSessionCtx.tokenAuthMethod.name
-            store["$OAUTH_TOKEN_ENDPOINT-$url"] = oAuthSessionCtx.tokenEndpoint
+            val address = oauthStorageAddress(url)
+            store["$OAUTH_CLIENT_ID_PREFIX-$address"] = oAuthSessionCtx.clientId
+            store["$OAUTH_CLIENT_SECRET_PREFIX-$address"] = oAuthSessionCtx.clientSecret
+            store["$OAUTH_REFRESH_TOKEN-$address"] = refreshToken
+            store["$OAUTH_TOKEN_AUTH_METHOD-$address"] = oAuthSessionCtx.tokenAuthMethod.name
+            store["$OAUTH_TOKEN_ENDPOINT-$address"] = oAuthSessionCtx.tokenEndpoint
         }
     }
 }

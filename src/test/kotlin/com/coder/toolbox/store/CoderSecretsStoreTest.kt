@@ -1,11 +1,16 @@
 package com.coder.toolbox.store
 
+import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.util.toURL
+import com.coder.toolbox.views.state.StoredOAuthSession
+import com.coder.toolbox.views.state.toSessionContext
 import com.jetbrains.toolbox.api.core.PluginSecretStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CoderSecretsStoreTest {
     private val values = mutableMapOf<String, String>()
@@ -53,6 +58,7 @@ class CoderSecretsStoreTest {
 
         assertNull(secrets.apiTokenFor("https://coder.example.com".toURL()))
         assertNull(secrets.apiTokenFor("http://coder.example.com".toURL()))
+        assertFalse(secrets.isUrlTrusted("https://coder.example.com".toURL()))
 
         secrets.storeApiTokenFor("https://coder.example.com".toURL(), "new-token")
         assertEquals("new-token", secrets.apiTokenFor("https://coder.example.com".toURL()))
@@ -108,5 +114,98 @@ class CoderSecretsStoreTest {
         }
 
         assertEquals("existing-token", secrets.apiTokenFor("https://coder.example.com".toURL()))
+    }
+
+    @Test
+    fun `signing in trusts only that deployment origin across restarts`() {
+        secrets.trustDeployment("https://coder1.example.com/".toURL())
+        val reopened = CoderSecretsStore(backing)
+
+        assertTrue(reopened.isUrlTrusted("https://CODER1.example.com:443".toURL()))
+        assertFalse(reopened.isUrlTrusted("https://coder2.example.com/".toURL()))
+        assertFalse(reopened.isUrlTrusted("http://coder1.example.com/".toURL()))
+        assertFalse(reopened.isUrlTrusted("https://coder1.example.com:8443/".toURL()))
+    }
+
+    @Test
+    fun `an origin-bound token establishes trust only for its origin`() {
+        secrets.storeApiTokenFor("https://coder.example.com".toURL(), "saved-token")
+
+        assertTrue(secrets.isUrlTrusted("https://coder.example.com/".toURL()))
+        assertFalse(secrets.isUrlTrusted("https://coder.example.com/other/".toURL()))
+        assertFalse(secrets.isUrlTrusted("http://coder.example.com/".toURL()))
+    }
+
+    @Test
+    fun `a sign-in at a configured base path does not silently trust the root`() {
+        secrets.storeApiTokenFor("https://coder.example.com/team/".toURL(), "token")
+        secrets.trustDeployment("https://coder.example.com/team/".toURL())
+
+        assertTrue(secrets.isUrlTrusted("https://coder.example.com/team/".toURL()))
+        assertFalse(secrets.isUrlTrusted("https://coder.example.com/".toURL()))
+    }
+
+    @Test
+    fun `equivalent root URLs find and clear the OAuth session saved at sign-in`() {
+        val signedInAt = "https://CODER.example.com:443/"
+        secrets.trustDeployment(signedInAt.toURL())
+        val session = StoredOAuthSession(
+            clientId = "client-id",
+            clientSecret = "client-secret",
+            refreshToken = "refresh-token",
+            tokenAuthMethod = TokenEndpointAuthMethod.CLIENT_SECRET_BASIC,
+            tokenEndpoint = "https://coder.example.com/oauth/token",
+        )
+        secrets.storeOAuthFor(signedInAt, session.toSessionContext())
+
+        val reopened = CoderSecretsStore(backing)
+        assertEquals(session, reopened.oauthSessionFor("https://coder.example.com"))
+        assertNull(reopened.oauthSessionFor("https://other.example.com"))
+        assertNull(reopened.oauthSessionFor("https://coder.example.com/other/"))
+
+        reopened.trustDeployment("https://coder.example.com".toURL())
+        val refreshed = session.copy(refreshToken = "refreshed-token")
+        reopened.storeOAuthFor("https://coder.example.com", refreshed.toSessionContext())
+        assertEquals(refreshed, reopened.oauthSessionFor(signedInAt))
+
+        reopened.clearSessionFor("https://coder.example.com".toURL())
+        assertNull(reopened.oauthSessionFor(signedInAt))
+    }
+
+    @Test
+    fun `certificate and OAuth deployments can be remembered without an API token`() {
+        secrets.trustDeployment("https://coder.example.com".toURL())
+
+        val reopened = CoderSecretsStore(backing)
+
+        assertTrue(reopened.isUrlTrusted("https://coder.example.com".toURL()))
+        assertNull(reopened.apiTokenFor("https://coder.example.com".toURL()))
+    }
+
+    @Test
+    fun `logout forgets only the matching origin's trusted URL`() {
+        secrets.trustDeployment("http://coder.example.com".toURL())
+        secrets.trustDeployment("https://coder.example.com".toURL())
+        secrets.storeApiTokenFor("https://coder.example.com".toURL(), "token")
+        secrets.trustDeployment("https://coder.example.com:8443".toURL())
+        values["coder.example.com"] = "legacy-token"
+
+        secrets.clearSessionFor("https://CODER.example.com:443/".toURL())
+
+        val reopened = CoderSecretsStore(backing)
+        assertFalse(reopened.isUrlTrusted("https://coder.example.com".toURL()))
+        assertNull(reopened.apiTokenFor("https://coder.example.com".toURL()))
+        for (url in listOf("http://coder.example.com", "https://coder.example.com:8443")) {
+            assertTrue(reopened.isUrlTrusted(url.toURL()), url)
+        }
+        assertEquals("legacy-token", values["coder.example.com"])
+    }
+
+    @Test
+    fun `deployment trust requires a valid HTTP origin`() {
+        assertFalse(secrets.isUrlTrusted("file:///tmp/coder".toURL()))
+        assertFailsWith<IllegalArgumentException> {
+            secrets.trustDeployment("file:///tmp/coder".toURL())
+        }
     }
 }

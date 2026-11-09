@@ -19,8 +19,9 @@
 
 ### Security
 
-- Require confirmation before a workspace link connects to a different Coder deployment or starts a fresh connection.
-  Links to the currently connected deployment continue without a prompt.
+- Ask for confirmation before a workspace link opens an unknown Coder deployment. Links select the deployment by
+  scheme, host, and port. For a known deployment, Toolbox asks before using a link token if the accounts differ or
+  it cannot verify the saved account.
 - Store Toolbox API tokens separately for each deployment scheme, host, and port to prevent cross-deployment reuse.
   Tokens saved by older plugin versions require one new sign-in because they were stored without an origin.
 - Prevent delayed OAuth refreshes from updating CLI credentials for a different deployment.

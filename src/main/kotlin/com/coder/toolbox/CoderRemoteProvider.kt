@@ -9,6 +9,7 @@ import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.ex.APIResponseException
 import com.coder.toolbox.sdk.ex.OAuthTokenResponseException
 import com.coder.toolbox.sdk.v2.models.InvalidCoderIdentifierException
+import com.coder.toolbox.sdk.v2.models.User
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.util.CoderProtocolHandler
@@ -50,6 +51,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -57,6 +59,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URI
 import java.net.URL
 import java.nio.file.Path
@@ -498,74 +501,26 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         try {
-            if (uri.toString().startsWith("jetbrains://gateway/com.coder.toolbox/auth")) {
-                handleOAuthUri(uri)
-                return
-            }
-
             val params = uri.toQueryParameters()
-            if (params.isEmpty()) {
-                // probably a plugin installation scenario
-                context.logger.logAndShowInfo("URI will not be handled", "No query parameters were provided")
-                return
-            }
-            val newUrl = resolveDeploymentUrl(params)?.toURL() ?: return
-            val newOrigin = requireNotNull(newUrl.origin()) {
-                "The deployment URL must have a valid HTTP(S) host and port."
-            }
-            val newToken = if (context.settingsStore.requiresMTlsAuth) null else resolveToken(params) ?: return
-            context.logger.info("Handling workspace link for $newOrigin")
-            val activeUrl = client?.url?.takeIf { newUrl.hasSameOrigin(it) }
-            if (activeUrl != null) {
-                coderHeaderPage.isBusy.update { true }
-                try {
-                    val activeSession = if (context.settingsStore.requiresTokenAuth) {
-                        newToken?.let {
-                            refreshSession(activeUrl, it)
-                        } ?: (this.client!! to this.cli!!)
-                    } else {
-                        this.client!! to this.cli!!
-                    }
-                    handleLink(params, activeUrl, activeSession.first, activeSession.second)
-                } finally {
-                    coderHeaderPage.isBusy.update { false }
-                }
-            } else {
-                if (!confirmDeployment(newOrigin, newToken != null)) return
-                // Different URL - we need a new connection. Tear down any
-                // in-flight wizard, install a fresh one on the router, and let
-                // showPluginEnvironmentsPage() pull it through getOverrideUiPage.
-                val credentials = newToken?.let { Credentials.Token(it) } ?: Credentials.MTls
-                val wizard = CoderSetupWizardPage.connectStep(
-                    context, settingsPage,
-                    url = newUrl,
-                    credentials = credentials,
-                    onConnect = onConnect.andThen(deferredLinkHandler(params, newUrl)),
-                    onTokenRefreshed = ::onTokenRefreshed,
-                )
-                router.navigate(wizard)
-                context.popupPluginMainPage()
+            when {
+                uri.toString().startsWith("jetbrains://gateway/com.coder.toolbox/auth") -> handleOAuthUri(params)
+                // An empty query can indicate plugin installation.
+                params.isEmpty() ->
+                    context.logger.logAndShowInfo("URI will not be handled", "No query parameters were provided")
+
+                else -> handleWorkspaceUri(params)
             }
         } catch (ex: CancellationException) {
             throw ex
         } catch (ex: Exception) {
-            val textError = if (ex is APIResponseException) {
-                if (!ex.reason.isNullOrBlank()) {
-                    ex.reason
-                } else ex.message
-            } else ex.message
-            context.logger.logAndShowError(
-                "Error encountered while handling Coder URI",
-                textError ?: ""
-            )
+            val reason = (ex as? APIResponseException)?.reason?.takeIf { it.isNotBlank() }
+            context.logger.logAndShowError("Error encountered while handling Coder URI", reason ?: ex.message.orEmpty())
         } finally {
             firstRun = false
         }
     }
 
-    private suspend fun handleOAuthUri(uri: URI) {
-        val params = uri.toQueryParameters()
-
+    private suspend fun handleOAuthUri(params: Map<String, String>) {
         // RFC 6749 §4.1.2.1 (also covers RFC 7636 §4.4.1 PKCE errors): the authorization
         // server redirects back with `error` when authorization fails (e.g. access_denied,
         // invalid_request, unsupported_response_type, server_error, ...).
@@ -634,7 +589,35 @@ class CoderRemoteProvider(
         }
     }
 
-    private suspend fun resolveDeploymentUrl(params: Map<String, String>): String? {
+    internal suspend fun onTokenRefreshed(url: URL, oauthSessionCtx: CoderOAuthSessionContext) {
+        // A refresh may finish after the user has connected to another deployment.
+        val activeCli = cli?.takeIf {
+            client?.url?.hasSameOrigin(url) == true && it.deploymentURL.hasSameOrigin(url)
+        }
+        oauthSessionCtx.tokenResponse?.accessToken?.let { activeCli?.login(it) }
+        context.secrets.storeOAuthFor(url.toString(), oauthSessionCtx)
+    }
+
+    private suspend fun handleWorkspaceUri(params: Map<String, String>) {
+        val deployment = resolveDeploymentParameters(params) ?: return
+        context.logger.info("Handling workspace link for ${deployment.url}")
+        val activeClient = client?.takeIf { it.url.hasSameOrigin(deployment.url) }
+        if (!confirmDeploymentSignIn(deployment, activeClient)) return
+
+        if (activeClient != null) {
+            openLinkInActiveSession(params, activeClient, deployment.token)
+        } else {
+            connectFromLink(params, deployment.url, deployment.token)
+        }
+    }
+
+    private suspend fun resolveDeploymentParameters(params: Map<String, String>): ResolvedDeploymentParameters? {
+        val url = resolveDeploymentUrl(params) ?: return null
+        val token = if (context.settingsStore.requiresMTlsAuth) null else resolveToken(params) ?: return null
+        return ResolvedDeploymentParameters(url, token)
+    }
+
+    private suspend fun resolveDeploymentUrl(params: Map<String, String>): URL? {
         val deploymentURL = params.url() ?: askUrl()
         if (deploymentURL.isNullOrBlank()) {
             context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"${URL}\" is missing from URI")
@@ -645,7 +628,19 @@ class CoderRemoteProvider(
             context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
             return null
         }
-        return deploymentURL
+        // Workspace links select a deployment by scheme, host, and port.
+        val origin = requireNotNull(deploymentURL.toHttpUrlOrNull()?.origin()) {
+            "The deployment URL must have a valid HTTP(S) host and port."
+        }
+        return origin.toURL()
+    }
+
+    private suspend fun askUrl(): String? {
+        context.popupPluginMainPage()
+        return dialogUi.ask(
+            context.i18n.ptrl("Deployment URL"),
+            context.i18n.ptrl("Enter the full URL of your Coder deployment")
+        )
     }
 
     private fun resolveToken(params: Map<String, String>): String? {
@@ -657,6 +652,17 @@ class CoderRemoteProvider(
         return token
     }
 
+    private suspend fun confirmDeploymentSignIn(
+        deployment: ResolvedDeploymentParameters,
+        activeClient: CoderRestClient?,
+    ): Boolean {
+        if (activeClient == null && !context.secrets.isUrlTrusted(deployment.url)) {
+            return confirmDeployment(deployment.url.toString(), deployment.token != null)
+        }
+        val token = deployment.token ?: return true
+        return confirmTokenSignIn(activeClient?.url ?: deployment.url, token, activeClient?.me)
+    }
+
     private suspend fun confirmDeployment(origin: String, hasToken: Boolean): Boolean {
         val disclosure = if (hasToken) {
             " This link contains a token that will be sent to this deployment to sign you in."
@@ -665,7 +671,7 @@ class CoderRemoteProvider(
         return context.ui.showYesNoPopup(
             context.i18n.ptrl("Connect to a Coder deployment?"),
             context.i18n.pnotr(
-                "$origin\n\nToolbox is not currently connected to this deployment.$disclosure " +
+                "$origin\n\nYou have not signed in to this deployment in Toolbox before.$disclosure " +
                         "Continue only if you trust it. Connecting can update your SSH configuration."
             ),
             context.i18n.ptrl("Trust and Continue"),
@@ -673,22 +679,92 @@ class CoderRemoteProvider(
         )
     }
 
+    private suspend fun confirmTokenSignIn(url: URL, token: String, activeUser: User?): Boolean {
+        val linkUser = requireNotNull(userForToken(url, token)) { "The token in the link is invalid or expired." }
+        val previousUser = activeUser ?: (autoSetupCredentials(url) as? Credentials.Token)?.let { saved ->
+            if (saved.value == token) linkUser else userForToken(url, saved.value)
+        }
+        if (linkUser.id == previousUser?.id) return true
+        val previousSession = previousUser?.let { "your saved session for \"${it.username}\"" } ?: "your saved session"
+        context.ui.showWindowSuspending()
+        return context.ui.showYesNoPopup(
+            context.i18n.ptrl("Sign in with the token from the link?"),
+            context.i18n.pnotr(
+                "${url.origin()}\n\nThis link signs you in as \"${linkUser.username}\", " +
+                        "replacing $previousSession. Continue only if you intended to use this account."
+            ),
+            context.i18n.ptrl("Sign In"),
+            context.i18n.ptrl("Cancel"),
+        )
+    }
+
+    private suspend fun userForToken(url: URL, token: String): User? {
+        val candidate = CoderRestClient(context, url, token, pluginVersion = PluginManager.pluginInfo.version)
+        return try {
+            candidate.me()
+        } catch (ex: APIResponseException) {
+            if (!ex.isUnauthorized) throw ex
+            null
+        } finally {
+            candidate.close()
+        }
+    }
+
+    private fun autoSetupCredentials(url: URL): Credentials? {
+        if (context.settingsStore.requiresMTlsAuth) return Credentials.MTls
+
+        val tokenCredentials = context.secrets.apiTokenFor(url)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { Credentials.Token(it) }
+
+        if (!context.settingsStore.preferOAuth2IfAvailable) return tokenCredentials
+
+        return context.secrets.oauthSessionFor(url.toString())?.let {
+            Credentials.OAuth(it.toSessionContext())
+        } ?: tokenCredentials
+    }
+
+    private suspend fun openLinkInActiveSession(
+        params: Map<String, String>,
+        activeClient: CoderRestClient,
+        token: String?,
+    ) {
+        coderHeaderPage.isBusy.update { true }
+        try {
+            val (sessionClient, sessionCli) = if (context.settingsStore.requiresTokenAuth && token != null) {
+                refreshSession(activeClient.url, token)
+            } else {
+                activeClient to checkNotNull(cli) { "The active Coder connection has no CLI." }
+            }
+            handleLink(params, activeClient.url, sessionClient, sessionCli)
+        } finally {
+            coderHeaderPage.isBusy.update { false }
+        }
+    }
+
     private suspend fun refreshSession(url: URL, token: String): Pair<CoderRestClient, CoderCLIManager> {
         context.logger.info(
             lastEnvironments.currentSessionIds(),
-            "Stopping workspace polling and re-initializing the http client and cli with a new token",
+            "Preparing the HTTP client and CLI with the token from the workspace link",
         )
-        softClose()
         val newRestClient = CoderRestClient(
             context,
             url,
             token,
             null,
             PluginManager.pluginInfo.version,
-        ).apply { initializeSession() }
-        val newCli = CoderCLIManager(context, url).apply {
-            login(token)
+        )
+        val newCli = try {
+            newRestClient.initializeSession()
+            CoderCLIManager(context, url).apply {
+                login(token)
+                storeSession(newRestClient)
+            }
+        } catch (ex: Exception) {
+            newRestClient.close()
+            throw ex
         }
+        softClose()
         this.client = newRestClient
         this.cli = newCli
         lastEnvironments.forEach { it.updateClientAndCli(newRestClient, newCli) }
@@ -704,12 +780,73 @@ class CoderRemoteProvider(
         return newRestClient to newCli
     }
 
-    private suspend fun askUrl(): String? {
-        context.popupPluginMainPage()
-        return dialogUi.ask(
-            context.i18n.ptrl("Deployment URL"),
-            context.i18n.ptrl("Enter the full URL of your Coder deployment")
+    private fun storeSession(client: CoderRestClient) {
+        context.settingsStore.updateLastUsedUrl(client.url)
+        if (context.settingsStore.requiresTokenAuth) {
+            client.token?.let { context.secrets.storeApiTokenFor(client.url, it) }
+        }
+        context.secrets.trustDeployment(client.url)
+        context.logger.info("Deployment session was stored and will be available for automatic connection")
+    }
+
+    /**
+     * Applies the appropriate workspace filter for the URI then delegates to [linkHandler].
+     * Scopes the filter to the target workspace when it is owned by a different user so the poll
+     * fetches and registers it before the IDE launch runs. For own workspaces, resets to the
+     * default filter, clearing any leftover non-owned filter from a previous URI.
+     */
+    private suspend fun handleLink(
+        params: Map<String, String>,
+        url: URL,
+        client: CoderRestClient,
+        cli: CoderCLIManager,
+    ) {
+        val uriOwner = params.owner()
+        val uriWorkspace = params.workspace()
+        if (!uriOwner.isNullOrBlank() && !uriWorkspace.isNullOrBlank() && uriOwner != client.me.username) {
+            coderHeaderPage.setFilter("owner:$uriOwner name:$uriWorkspace")
+        } else {
+            coderHeaderPage.resetFilter()
+        }
+        linkHandler.handle(params, url, client, cli)
+    }
+
+    private fun connectFromLink(params: Map<String, String>, url: URL, token: String?) {
+        val credentials = token?.let { Credentials.Token(it) } ?: Credentials.MTls
+        val wizard = CoderSetupWizardPage.connectStep(
+            context, settingsPage,
+            url = url,
+            credentials = credentials,
+            onConnect = onConnect.andThen(deferredLinkHandler(params, url)),
+            onTokenRefreshed = ::onTokenRefreshed,
         )
+        // The router tears down any in-flight wizard and installs the new one before
+        // showPluginEnvironmentsPage() asks getOverrideUiPage() for the page to display.
+        router.navigate(wizard)
+        context.popupPluginMainPage()
+    }
+
+    /** Returns a [SuspendBiConsumer] that handles the given link parameters in a background coroutine. */
+    private fun deferredLinkHandler(
+        params: Map<String, String>,
+        deploymentUrl: URL,
+    ): SuspendBiConsumer<CoderRestClient, CoderCLIManager> = SuspendBiConsumer { client, cli ->
+        context.cs.launch(CoroutineName("Deferred Link Handler")) {
+            coderHeaderPage.isBusy.update { true }
+            try {
+                handleLink(params, deploymentUrl, client, cli)
+            } catch (ex: Exception) {
+                if (ex is kotlinx.coroutines.CancellationException) {
+                    ensureActive()
+                }
+                context.logger.logAndShowError(
+                    "Error handling deferred link",
+                    ex.message ?: ""
+                )
+            } finally {
+                coderHeaderPage.isBusy.update { false }
+            }
+        }
     }
 
     /**
@@ -777,41 +914,10 @@ class CoderRemoteProvider(
 
     fun canAutoLogin(): Boolean = autoSetupCredentials(context.deploymentUrl) != null
 
-    private fun autoSetupCredentials(url: URL): Credentials? {
-        if (context.settingsStore.requiresMTlsAuth) return Credentials.MTls
-
-        val tokenCredentials = context.secrets.apiTokenFor(url)
-            ?.takeIf { it.isNotBlank() }
-            ?.let { Credentials.Token(it) }
-
-        if (!context.settingsStore.preferOAuth2IfAvailable) return tokenCredentials
-
-        return context.secrets.oauthSessionFor(url.toString())?.let {
-            Credentials.OAuth(it.toSessionContext())
-        } ?: tokenCredentials
-    }
-
-    internal suspend fun onTokenRefreshed(url: URL, oauthSessionCtx: CoderOAuthSessionContext) {
-        // A refresh may finish after the user has connected to another deployment.
-        val activeCli = cli?.takeIf {
-            client?.url?.hasSameOrigin(url) == true && it.deploymentURL.hasSameOrigin(url)
-        }
-        oauthSessionCtx.tokenResponse?.accessToken?.let { activeCli?.login(it) }
-        context.secrets.storeOAuthFor(url.toString(), oauthSessionCtx)
-    }
-
     private val onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager> = SuspendBiConsumer { client, cli ->
         // Store the URL and token for use next time.
+        storeSession(client)
         close()
-        context.settingsStore.updateLastUsedUrl(client.url)
-        if (context.settingsStore.requiresTokenAuth) {
-            if (client.token != null) {
-                context.secrets.storeApiTokenFor(client.url, client.token)
-            }
-            context.logger.info("Deployment URL and token were stored and will be available for automatic connection")
-        } else {
-            context.logger.info("Deployment URL was stored and will be available for automatic connection")
-        }
         this.client = client
         this.cli = cli
         lastEnvironments.forEach { it.updateClientAndCli(client, cli) }
@@ -833,48 +939,6 @@ class CoderRemoteProvider(
         context.logger.info("Workspace poll job with name ${pollJob.toString()} was created")
     }
 
-    /**
-     * Applies the appropriate workspace filter for the URI then delegates to [linkHandler].
-     * Scopes the filter to the target workspace when it is owned by a different user so the poll
-     * fetches and registers it before the IDE launch runs. For own workspaces, resets to the
-     * default filter, clearing any leftover non-owned filter from a previous URI.
-     */
-    private suspend fun handleLink(
-        params: Map<String, String>,
-        url: URL,
-        client: CoderRestClient,
-        cli: CoderCLIManager,
-    ) {
-        val uriOwner = params.owner()
-        val uriWorkspace = params.workspace()
-        if (!uriOwner.isNullOrBlank() && !uriWorkspace.isNullOrBlank() && uriOwner != client.me.username) {
-            coderHeaderPage.setFilter("owner:$uriOwner name:$uriWorkspace")
-        } else {
-            coderHeaderPage.resetFilter()
-        }
-        linkHandler.handle(params, url, client, cli)
-    }
-
-    /** Returns a [SuspendBiConsumer] that handles the given link parameters in a background coroutine. */
-    private fun deferredLinkHandler(
-        params: Map<String, String>,
-        deploymentUrl: URL,
-    ): SuspendBiConsumer<CoderRestClient, CoderCLIManager> = SuspendBiConsumer { client, cli ->
-        context.cs.launch(CoroutineName("Deferred Link Handler")) {
-            coderHeaderPage.isBusy.update { true }
-            try {
-                handleLink(params, deploymentUrl, client, cli)
-            } catch (ex: Exception) {
-                context.logger.logAndShowError(
-                    "Error handling deferred link",
-                    ex.message ?: ""
-                )
-            } finally {
-                coderHeaderPage.isBusy.update { false }
-            }
-        }
-    }
-
     private fun MutableStateFlow<LoadableState<List<CoderRemoteEnvironment>>>.showLoadingMessage() {
         this.update {
             LoadableState.Loading
@@ -884,3 +948,10 @@ class CoderRemoteProvider(
 
 private fun Throwable.hasInvalidCoderIdentifierCause(): Boolean =
     this is InvalidCoderIdentifierException || cause is InvalidCoderIdentifierException
+
+private data class ResolvedDeploymentParameters(
+    val url: URL,
+    val token: String?,
+) {
+    override fun toString(): String = "ResolvedDeploymentParameters(url=$url)"
+}
