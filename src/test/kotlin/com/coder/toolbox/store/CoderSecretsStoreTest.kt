@@ -52,21 +52,54 @@ class CoderSecretsStoreTest {
     }
 
     @Test
-    fun `hostname-only credentials are ignored and preserved`() {
+    fun `hostname-only credentials are ignored until a new token is saved`() {
         values["coder.example.com"] = "old-token"
         values["last-deployment-url"] = "https://coder.example.com"
 
         assertNull(secrets.apiTokenFor("https://coder.example.com".toURL()))
         assertNull(secrets.apiTokenFor("http://coder.example.com".toURL()))
         assertFalse(secrets.isUrlTrusted("https://coder.example.com".toURL()))
+        assertEquals("old-token", values["coder.example.com"])
 
         secrets.storeApiTokenFor("https://coder.example.com".toURL(), "new-token")
         assertEquals("new-token", secrets.apiTokenFor("https://coder.example.com".toURL()))
-        assertEquals("old-token", values["coder.example.com"])
+        assertNull(values["coder.example.com"])
+        assertEquals("https://coder.example.com", values["last-deployment-url"])
+    }
 
-        secrets.clearSessionFor("https://coder.example.com".toURL())
-        assertNull(secrets.apiTokenFor("https://coder.example.com".toURL()))
+    @Test
+    fun `a failed replacement write preserves the hostname-only credential`() {
+        values["coder.example.com"] = "old-token"
+        val failingStore = object : PluginSecretStore by backing {
+            override fun set(key: String, value: String) = throw IllegalStateException("Keychain is locked")
+        }
+
+        assertFailsWith<IllegalStateException> {
+            CoderSecretsStore(failingStore).storeApiTokenFor("https://coder.example.com".toURL(), "new-token")
+        }
         assertEquals("old-token", values["coder.example.com"])
+    }
+
+    @Test
+    fun `logout clears a legacy token even without an origin-bound token`() {
+        values["CODER.example.com"] = "old-token"
+        values["other.example.com"] = "other-token"
+
+        secrets.clearSessionFor("https://CODER.example.com:8443".toURL())
+
+        assertNull(values["CODER.example.com"])
+        assertEquals("other-token", values["other.example.com"])
+    }
+
+    @Test
+    fun `a hostname matching the last deployment key preserves the stored URL`() {
+        values["last-deployment-url"] = "https://coder.example.com"
+        val url = "https://last-deployment-url".toURL()
+
+        secrets.storeApiTokenFor(url, "new-token")
+        secrets.clearSessionFor(url)
+
+        assertEquals("https://coder.example.com", values["last-deployment-url"])
     }
 
     @Test
@@ -198,7 +231,7 @@ class CoderSecretsStoreTest {
         for (url in listOf("http://coder.example.com", "https://coder.example.com:8443")) {
             assertTrue(reopened.isUrlTrusted(url.toURL()), url)
         }
-        assertEquals("legacy-token", values["coder.example.com"])
+        assertNull(values["coder.example.com"])
     }
 
     @Test

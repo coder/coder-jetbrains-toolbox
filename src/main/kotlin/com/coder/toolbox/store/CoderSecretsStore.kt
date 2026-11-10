@@ -13,6 +13,7 @@ private const val OAUTH_CLIENT_SECRET_PREFIX = "oauth-client-secret"
 private const val OAUTH_REFRESH_TOKEN = "oauth-refresh-token"
 private const val OAUTH_TOKEN_AUTH_METHOD = "oauth-token-auth-method"
 private const val OAUTH_TOKEN_ENDPOINT = "oauth-token-endpoint"
+private const val LAST_DEPLOYMENT_URL_KEY = "last-deployment-url"
 
 /**
  * Provides Coder secrets backed by the secrets store service.
@@ -22,17 +23,28 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
         message = "The URL is now stored the JSON backed settings store. Use CoderSettingsStore#lastDeploymentURL",
         replaceWith = ReplaceWith("context.settingsStore.lastDeploymentURL")
     )
-    val lastDeploymentURL: String = store["last-deployment-url"] ?: ""
+    val lastDeploymentURL: String = store[LAST_DEPLOYMENT_URL_KEY] ?: ""
 
     fun apiTokenFor(url: URL): String? = apiSessionKey(url)?.let { store[it] }
 
     fun storeApiTokenFor(url: URL, apiToken: String) {
         val key = requireNotNull(apiSessionKey(url)) { "Session credentials require an HTTP(S) deployment URL" }
         store[key] = apiToken
+        clearLegacyApiToken(url)
     }
 
     private fun apiSessionKey(url: URL): String? =
         url.origin()?.let { "api-session:$it" }
+
+    private fun clearLegacyApiToken(url: URL) {
+        if (url.host.isEmpty()) return
+        // Older versions used URL.host verbatim. A link can also supply the host in lowercase.
+        for (host in setOf(url.host, url.host.lowercase())) {
+            // A single-label hostname can share the key used for the last deployment URL.
+            if (host == LAST_DEPLOYMENT_URL_KEY && store[host]?.toHttpUrlOrNull() != null) continue
+            store.clear(host)
+        }
+    }
 
     fun isUrlTrusted(url: URL): Boolean {
         val requested = url.toString().toHttpUrlOrNull() ?: return false
@@ -53,7 +65,10 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
     }
 
     fun clearSessionFor(url: URL) {
-        apiSessionKey(url)?.let { store.clear(it) }
+        apiSessionKey(url)?.let {
+            store.clear(it)
+            clearLegacyApiToken(url)
+        }
         url.origin()?.let { origin ->
             val key = "deployment-url:$origin"
             val signedInAt = store[key]
