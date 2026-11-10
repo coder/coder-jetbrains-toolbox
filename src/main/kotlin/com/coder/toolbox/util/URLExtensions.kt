@@ -2,12 +2,29 @@ package com.coder.toolbox.util
 
 import com.coder.toolbox.util.WebUrlValidationResult.Invalid
 import com.coder.toolbox.util.WebUrlValidationResult.Valid
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.IDN
 import java.net.URI
 import java.net.URL
 import java.net.URLDecoder
 
 fun String.toURL(): URL = URI.create(this).toURL()
+
+/** Canonical HTTP(S) origin, without credentials or a path; default ports are omitted. */
+fun URL.origin(): String? = toString().toHttpUrlOrNull()?.origin()
+
+fun HttpUrl.origin(): String = newBuilder()
+    .username("")
+    .password("")
+    .encodedPath("/")
+    .query(null)
+    .fragment(null)
+    .build()
+    .toString()
+    .removeSuffix("/")
+
+fun URL.hasSameOrigin(other: URL?): Boolean = origin()?.let { it == other?.origin() } ?: false
 
 fun String.toBaseURL(): URL {
     val url = this.toURL()
