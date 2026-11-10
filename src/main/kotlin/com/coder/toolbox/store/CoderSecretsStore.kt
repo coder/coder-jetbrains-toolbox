@@ -64,21 +64,17 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
         if (store[key]?.toHttpUrlOrNull() != address) store[key] = url.toString()
     }
 
+    @Synchronized
     fun clearSessionFor(url: URL) {
         apiSessionKey(url)?.let {
             store.clear(it)
             clearLegacyApiToken(url)
         }
         url.origin()?.let { origin ->
-            val key = "deployment-url:$origin"
-            val signedInAt = store[key]
-            val savedOrigin = signedInAt?.toHttpUrlOrNull()?.origin()
-            if (signedInAt != null && signedInAt != url.toString() && savedOrigin == origin) {
-                clearOAuthSession(signedInAt)
-            }
-            store.clear(key)
+            clearOAuthSession(origin)
+            legacyOAuthAddresses(url.toString(), origin).forEach(::clearOAuthSession)
+            store.clear("deployment-url:$origin")
         }
-        clearOAuthSession(url.toString())
     }
 
     private fun clearOAuthSession(url: String) {
@@ -90,25 +86,31 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
         }
     }
 
-    fun oauthSessionFor(url: String): StoredOAuthSession? {
-        val address = oauthStorageAddress(url)
-        return readOAuthSession(address) ?: if (address != url) readOAuthSession(url) else null
-    }
+    // Older versions used the URL exactly as entered, including its path or trailing slash.
+    private fun legacyOAuthAddresses(url: String, origin: String): Set<String> =
+        setOf(url, "$origin/") - origin
 
-    private fun oauthStorageAddress(url: String): String {
-        // Existing OAuth keys use the exact spelling of the URL used to sign in.
-        val requested = url.toHttpUrlOrNull() ?: return url
-        val saved = store["deployment-url:${requested.origin()}"]
-        return saved?.takeIf { it.toHttpUrlOrNull() == requested } ?: url
+    @Synchronized
+    fun oauthSessionFor(url: String): StoredOAuthSession? {
+        val origin = url.toHttpUrlOrNull()?.origin() ?: return null
+        readOAuthSession(origin)?.let { return it }
+        val (legacyUrl, legacy) = legacyOAuthAddresses(url, origin)
+            .firstNotNullOfOrNull { address -> readOAuthSession(address)?.let { address to it } } ?: return null
+        // Move the session on first use so later lookups and logout need only the origin.
+        runCatching {
+            writeOAuthSession(origin, legacy)
+            clearOAuthSession(legacyUrl)
+        }
+        return legacy
     }
 
     private fun readOAuthSession(url: String): StoredOAuthSession? {
-        val clientId = store["$OAUTH_CLIENT_ID_PREFIX-$url"]
+        val clientId = store["$OAUTH_CLIENT_ID_PREFIX-$url"] ?: return null
         val clientSecret = store["$OAUTH_CLIENT_SECRET_PREFIX-$url"]
         val refreshToken = store["$OAUTH_REFRESH_TOKEN-$url"]
         val tokenAuthMethod = store["$OAUTH_TOKEN_AUTH_METHOD-$url"]
         val tokenEndpoint = store["$OAUTH_TOKEN_ENDPOINT-$url"]
-        if (clientId == null || clientSecret == null || refreshToken == null || tokenAuthMethod == null || tokenEndpoint == null) {
+        if (clientSecret == null || refreshToken == null || tokenAuthMethod == null || tokenEndpoint == null) {
             return null
         }
 
@@ -121,14 +123,34 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
         )
     }
 
-    fun storeOAuthFor(url: String, oAuthSessionCtx: CoderOAuthSessionContext) {
-        oAuthSessionCtx.tokenResponse?.refreshToken?.let { refreshToken ->
-            val address = oauthStorageAddress(url)
-            store["$OAUTH_CLIENT_ID_PREFIX-$address"] = oAuthSessionCtx.clientId
-            store["$OAUTH_CLIENT_SECRET_PREFIX-$address"] = oAuthSessionCtx.clientSecret
-            store["$OAUTH_REFRESH_TOKEN-$address"] = refreshToken
-            store["$OAUTH_TOKEN_AUTH_METHOD-$address"] = oAuthSessionCtx.tokenAuthMethod.name
-            store["$OAUTH_TOKEN_ENDPOINT-$address"] = oAuthSessionCtx.tokenEndpoint
+    private fun writeOAuthSession(origin: String, session: StoredOAuthSession) {
+        if (readOAuthSession(origin)?.copy(refreshToken = session.refreshToken) == session) {
+            store["$OAUTH_REFRESH_TOKEN-$origin"] = session.refreshToken
+            return
         }
+        // Publish a new registration's client ID last so partial writes cannot be read as a session.
+        store.clear("$OAUTH_CLIENT_ID_PREFIX-$origin")
+        store["$OAUTH_CLIENT_SECRET_PREFIX-$origin"] = session.clientSecret
+        store["$OAUTH_REFRESH_TOKEN-$origin"] = session.refreshToken
+        store["$OAUTH_TOKEN_AUTH_METHOD-$origin"] = session.tokenAuthMethod.name
+        store["$OAUTH_TOKEN_ENDPOINT-$origin"] = session.tokenEndpoint
+        store["$OAUTH_CLIENT_ID_PREFIX-$origin"] = session.clientId
+    }
+
+    @Synchronized
+    fun storeOAuthFor(url: String, oAuthSessionCtx: CoderOAuthSessionContext) {
+        val refreshToken = oAuthSessionCtx.tokenResponse?.refreshToken ?: return
+        val origin =
+            requireNotNull(url.toHttpUrlOrNull()?.origin()) { "OAuth credentials require an HTTP(S) deployment URL" }
+        writeOAuthSession(
+            origin, StoredOAuthSession(
+                clientId = oAuthSessionCtx.clientId,
+                clientSecret = oAuthSessionCtx.clientSecret,
+                refreshToken = refreshToken,
+                tokenAuthMethod = oAuthSessionCtx.tokenAuthMethod,
+                tokenEndpoint = oAuthSessionCtx.tokenEndpoint,
+            )
+        )
+        legacyOAuthAddresses(url, origin).forEach(::clearOAuthSession)
     }
 }

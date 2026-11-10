@@ -179,30 +179,150 @@ class CoderSecretsStoreTest {
     }
 
     @Test
-    fun `equivalent root URLs find and clear the OAuth session saved at sign-in`() {
-        val signedInAt = "https://CODER.example.com:443/"
-        secrets.trustDeployment(signedInAt.toURL())
-        val session = StoredOAuthSession(
-            clientId = "client-id",
-            clientSecret = "client-secret",
-            refreshToken = "refresh-token",
-            tokenAuthMethod = TokenEndpointAuthMethod.CLIENT_SECRET_BASIC,
-            tokenEndpoint = "https://coder.example.com/oauth/token",
-        )
+    fun `OAuth sessions use the normalized origin across restarts and refreshes`() {
+        val signedInAt = "https://CODER.example.com:443/team/"
+        val session = oauthSession()
         secrets.storeOAuthFor(signedInAt, session.toSessionContext())
+        assertEquals("refresh-token", values["oauth-refresh-token-https://coder.example.com"])
+        assertFalse(values.keys.any { it.endsWith(signedInAt) })
 
         val reopened = CoderSecretsStore(backing)
         assertEquals(session, reopened.oauthSessionFor("https://coder.example.com"))
-        assertNull(reopened.oauthSessionFor("https://other.example.com"))
-        assertNull(reopened.oauthSessionFor("https://coder.example.com/other/"))
+        assertEquals(session, reopened.oauthSessionFor("https://coder.example.com/"))
+        assertEquals(session, reopened.oauthSessionFor("https://coder.example.com/other/"))
+        for (url in listOf("http://coder.example.com", "https://coder.example.com:8443", "https://other.example.com")) {
+            assertNull(reopened.oauthSessionFor(url), url)
+        }
 
-        reopened.trustDeployment("https://coder.example.com".toURL())
         val refreshed = session.copy(refreshToken = "refreshed-token")
         reopened.storeOAuthFor("https://coder.example.com", refreshed.toSessionContext())
         assertEquals(refreshed, reopened.oauthSessionFor(signedInAt))
 
-        reopened.clearSessionFor("https://coder.example.com".toURL())
+        reopened.clearSessionFor("https://coder.example.com/path".toURL())
         assertNull(reopened.oauthSessionFor(signedInAt))
+    }
+
+    private fun oauthSession() = StoredOAuthSession(
+        clientId = "client-id",
+        clientSecret = "client-secret",
+        refreshToken = "refresh-token",
+        tokenAuthMethod = TokenEndpointAuthMethod.CLIENT_SECRET_BASIC,
+        tokenEndpoint = "https://coder.example.com/team/oauth/token",
+    )
+
+    @Test
+    fun `first lookup moves a legacy OAuth session from its exact URL to the origin`() {
+        val oldUrl = "https://CODER.example.com:443/team/"
+        val session = oauthSession()
+        seedLegacyOAuth(oldUrl, session)
+
+        assertEquals(session, secrets.oauthSessionFor(oldUrl))
+
+        assertFalse(values.keys.any { it.endsWith(oldUrl) })
+        assertEquals(session, CoderSecretsStore(backing).oauthSessionFor("https://coder.example.com/other"))
+        secrets.clearSessionFor("https://coder.example.com".toURL())
+        assertNull(secrets.oauthSessionFor(oldUrl))
+    }
+
+    private fun seedLegacyOAuth(url: String, session: StoredOAuthSession) {
+        values["oauth-client-id-$url"] = session.clientId
+        values["oauth-client-secret-$url"] = session.clientSecret
+        values["oauth-refresh-token-$url"] = session.refreshToken
+        values["oauth-token-auth-method-$url"] = session.tokenAuthMethod.name
+        values["oauth-token-endpoint-$url"] = session.tokenEndpoint
+    }
+
+    @Test
+    fun `remembering another base path leaves the OAuth session in place`() {
+        val session = oauthSession()
+        secrets.storeOAuthFor("https://coder.example.com/team/", session.toSessionContext())
+        secrets.trustDeployment("https://coder.example.com/team/".toURL())
+
+        secrets.trustDeployment("https://coder.example.com/other".toURL())
+
+        assertEquals(session, CoderSecretsStore(backing).oauthSessionFor("https://coder.example.com/other"))
+    }
+
+    @Test
+    fun `logout clears canonical and legacy OAuth keys without touching another origin`() {
+        val origin = "https://coder.example.com"
+        val other = "https://coder.example.com:8443"
+        val session = oauthSession()
+        seedLegacyOAuth("$origin/", session)
+        assertEquals(session, secrets.oauthSessionFor(origin))
+        seedLegacyOAuth(origin, session.copy(refreshToken = "canonical"))
+        assertEquals("canonical", secrets.oauthSessionFor("$origin/")?.refreshToken)
+        secrets.storeOAuthFor(other, session.toSessionContext())
+        values["deployment-url:$origin"] = other
+
+        secrets.clearSessionFor("$origin/team".toURL())
+
+        assertTrue(values.keys.all { it.endsWith(other) })
+        assertEquals(session, secrets.oauthSessionFor(other))
+        assertNull(secrets.oauthSessionFor(origin))
+    }
+
+    @Test
+    fun `failed migration leaves the legacy session available for retry`() {
+        val url = "https://coder.example.com/"
+        val session = oauthSession()
+        seedLegacyOAuth(url, session)
+        val failingStore = object : PluginSecretStore by backing {
+            override fun set(key: String, value: String) {
+                if (key == "oauth-token-endpoint-https://coder.example.com") error("Keychain is locked")
+                backing[key] = value
+            }
+        }
+        val refreshed = session.copy(refreshToken = "rotated")
+        assertFailsWith<IllegalStateException> {
+            CoderSecretsStore(failingStore).storeOAuthFor(url, refreshed.toSessionContext())
+        }
+
+        assertEquals(session, secrets.oauthSessionFor(url))
+        secrets.storeOAuthFor(url, refreshed.toSessionContext())
+        assertEquals(refreshed, secrets.oauthSessionFor(url))
+    }
+
+    @Test
+    fun `lookup returns the legacy OAuth session when moving it fails`() {
+        val url = "https://coder.example.com/"
+        val session = oauthSession()
+        seedLegacyOAuth(url, session)
+        val failingStore = object : PluginSecretStore by backing {
+            override fun set(key: String, value: String) = error("Keychain is locked")
+        }
+
+        assertEquals(session, CoderSecretsStore(failingStore).oauthSessionFor(url))
+        assertEquals(session.refreshToken, values["oauth-refresh-token-$url"])
+    }
+
+    @Test
+    fun `failed refresh token write preserves the current OAuth registration`() {
+        val url = "https://coder.example.com"
+        val session = oauthSession()
+        secrets.storeOAuthFor(url, session.toSessionContext())
+        val failingStore = object : PluginSecretStore by backing {
+            override fun set(key: String, value: String) = error("Keychain is locked")
+        }
+
+        assertFailsWith<IllegalStateException> {
+            CoderSecretsStore(failingStore).storeOAuthFor(
+                url,
+                session.copy(refreshToken = "rotated").toSessionContext()
+            )
+        }
+        assertEquals(session, secrets.oauthSessionFor(url))
+    }
+
+    @Test
+    fun `invalid origins cannot read or store OAuth credentials`() {
+        for (url in listOf("file:///tmp/coder", "https://coder.example.com:99999")) {
+            assertNull(secrets.oauthSessionFor(url))
+            assertFailsWith<IllegalArgumentException> {
+                secrets.storeOAuthFor(url, oauthSession().toSessionContext())
+            }
+        }
+        assertTrue(values.isEmpty())
     }
 
     @Test
