@@ -62,6 +62,7 @@ toolbox {
 
 changelog {
     version.set(project.version.toString())
+    repositoryUrl.set("https://github.com/coder/coder-jetbrains-toolbox-plugin")
     groups.set(emptyList())
     title.set("Coder Toolbox Plugin Changelog")
 }

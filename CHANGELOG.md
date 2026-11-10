@@ -1,16 +1,19 @@
 # Coder Toolbox Plugin Changelog
 
-## Unreleased
+This file lists notable changes to the Coder Toolbox Plugin.
+It follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-### Breaking changes
-
-- drop support for Coder server and CLI versions older than v2.29.0. Connecting to an older deployment, or with an
-  older CLI binary, now stops with a message asking to upgrade to v2.29.0 or newer
+## [Unreleased]
 
 ### Changed
 
 - stream build status and provisioner output while updating, restarting, or stopping workspaces, falling back to
   polling when the WebSocket connection is unavailable
+
+### Removed
+
+- **Breaking change.** The plugin now requires Coder server and CLI v2.29.0 or newer.
+  If either version is older, the plugin stops the connection and asks you to upgrade.
 
 ### Fixed
 
@@ -26,7 +29,7 @@
   Tokens saved by older plugin versions require one new sign-in because they were stored without an origin.
 - Prevent delayed OAuth refreshes from updating CLI credentials for a different deployment.
 
-## 0.9.5 - 2026-10-30
+## [0.9.5] - 2026-10-30
 
 ### Added
 
@@ -52,7 +55,7 @@
 - display live workspace start output from the Coder CLI and poll build status and provisioner output while updating,
   restarting, or stopping workspaces
 
-## 0.9.4 - 2026-08-26
+## [0.9.4] - 2026-08-26
 
 ### Added
 
@@ -65,14 +68,18 @@
 
 - pass the workspace agent's operating system to Toolbox before it deploys the remote agent
 
-## 0.9.3 - 2026-08-11
+## [0.9.3] - 2026-08-11
 
 ### Changed
 
 - deployment target OS is now derived from the workspace agent's reported OS, falling back to automatic detection when
   unknown
 
-## 0.9.2 - 2026-08-06
+## [0.9.2] - 2026-08-06
+
+### Changed
+
+- migrated plugin packaging to the new marketplace compatible structure
 
 ### Fixed
 
@@ -81,34 +88,24 @@
 - expand `~` and `$HOME` in the SSH log directory and network info directory settings, consistent with how the data and
   binary directories are already resolved
 
-### Changed
-
-- migrated plugin packaging to the new marketplace compatible structure
-
-## 0.9.2-alpha2 - 2026-07-24
+## [0.9.2-alpha2] - 2026-07-24
 
 ### Changed
 
 - migrated plugin packaging to the new marketplace compatible structure
 
-## 0.9.2-alpha1 - 2026-07-22
+## [0.9.2-alpha1] - 2026-07-22
 
 ### Changed
 
 - migrated plugin packaging to the new marketplace compatible structure
 
-## 0.9.1 - 2026-07-07
+## [0.9.1] - 2026-07-07
 
 ### Added
 
 - support Toolbox 3.5 provider header behavior
 - workspace list filtering that mirrors the Coder web dashboard
-
-### Fixed
-
-- snackbar dismissal no longer cancels the calling coroutine, so error popups during URI handling don't leave the page
-  stuck in a busy state
-- faster workspace list refresh: agents are no longer fetched for stopped workspaces
 
 ### Changed
 
@@ -118,7 +115,13 @@
 - workspace lists now default to `My workspaces`, so users initially see only workspaces they own. Users can switch to
   `All workspaces`, and that selection is persisted per Coder deployment hostname.
 
-## 0.9.0 - 2026-05-14
+### Fixed
+
+- snackbar dismissal no longer cancels the calling coroutine, so error popups during URI handling don't leave the page
+  stuck in a busy state
+- faster workspace list refresh: agents are no longer fetched for stopped workspaces
+
+## [0.9.0] - 2026-05-14
 
 ### Added
 
@@ -126,19 +129,22 @@
   as before
 - support for OAuth2
 
+### Changed
+
+- redesigned the Settings page, all the options are now grouped in a couple of sections for easy navigation
+
 ### Removed
 
 - support for enabling or disabling the fallback to data dir. CLI resolution will always fall back on data dir if binary
   destination is not configured.
-- redesigned the Settings page, all the options are now grouped in a couple of sections for easy navigation
 
-## 0.8.6 - 2026-03-05
+## [0.8.6] - 2026-03-05
 
 ### Changed
 
 - mTLS connections no longer disconnect when the certificate refresh command exits with a non-zero code
 
-## 0.8.5 - 2026-02-03
+## [0.8.5] - 2026-02-03
 
 ### Added
 
@@ -150,20 +156,20 @@
 
 - environment actions failing after URI execution by refreshing http client and CLI references
 
-## 0.8.4 - 2026-01-20
+## [0.8.4] - 2026-01-20
 
 ### Fixed
 
 - improved SSH connection reliability during transient network failures
 
-## 0.8.3 - 2026-01-14
+## [0.8.3] - 2026-01-14
 
 ### Fixed
 
 - mTLS certificate refresh and http request retrying logic
 - account name is now rendered immediately after login
 
-## 0.8.2 - 2026-01-06
+## [0.8.2] - 2026-01-06
 
 ### Changed
 
@@ -173,7 +179,7 @@
 
 - no longer spam Toolbox with requests to establish the SSH connections every 5 seconds
 
-## 0.8.1 - 2025-12-11
+## [0.8.1] - 2025-12-11
 
 ### Changed
 
@@ -183,7 +189,7 @@
 
 - URI handling on Linux can now launch IDEs on newly started workspaces
 
-## 0.8.0 - 2025-12-03
+## [0.8.0] - 2025-12-03
 
 ### Added
 
@@ -194,7 +200,7 @@
 
 - workspaces are now started with the help of the CLI
 
-## 0.7.2 - 2025-11-03
+## [0.7.2] - 2025-11-03
 
 ### Changed
 
@@ -204,20 +210,20 @@
 
 - IDE is now launched when URI is handled by an already running Toolbox instance.
 
-## 0.7.1 - 2025-10-13
+## [0.7.1] - 2025-10-13
 
 ### Fixed
 
 - potential race condition that could cause crashes when settings are modified concurrently
 - CLI download on some Windows versions
 
-## 0.7.0 - 2025-09-27
+## [0.7.0] - 2025-09-27
 
 ### Changed
 
 - simplified storage for last used url and token
 
-## 0.6.6 - 2025-09-24
+## [0.6.6] - 2025-09-24
 
 ### Changed
 
@@ -227,14 +233,14 @@
 
 - relaxed SNI hostname resolution
 
-## 0.6.5 - 2025-09-16
+## [0.6.5] - 2025-09-16
 
 ### Fixed
 
 - token is no longer required when authentication is done via certificates
 - errors while running actions are now reported
 
-## 0.6.4 - 2025-09-03
+## [0.6.4] - 2025-09-03
 
 ### Added
 
@@ -245,7 +251,7 @@
 - NPE during error reporting
 - relaxed `Content-Type` checks while downloading the CLI
 
-## 0.6.3 - 2025-08-25
+## [0.6.3] - 2025-08-25
 
 ### Added
 
@@ -259,13 +265,13 @@
 
 - support for downloading the CLI when proxy is configured
 
-## 0.6.2 - 2025-08-14
+## [0.6.2] - 2025-08-14
 
 ### Changed
 
 - content-type is now enforced when downloading the CLI to accept only binary responses
 
-## 0.6.1 - 2025-08-11
+## [0.6.1] - 2025-08-11
 
 ### Added
 
@@ -280,26 +286,26 @@
 
 - remote IDE reconnects automatically after plugin upgrade
 
-## 0.6.0 - 2025-07-25
+## [0.6.0] - 2025-07-25
 
 ### Changed
 
 - improved workflow when network connection is flaky
 
-## 0.5.2 - 2025-07-22
+## [0.5.2] - 2025-07-22
 
 ### Fixed
 
 - fix class cast exception during signature verification
 - the correct CLI signature for Windows is now downloaded
 
-## 0.5.1 - 2025-07-21
+## [0.5.1] - 2025-07-21
 
 ### Added
 
 - support for certificate based authentication
 
-## 0.5.0 - 2025-07-17
+## [0.5.0] - 2025-07-17
 
 ### Added
 
@@ -310,7 +316,7 @@
 
 - dropped support for `agent_id` as a URI parameter
 
-## 0.4.0 - 2025-07-08
+## [0.4.0] - 2025-07-08
 
 ### Added
 
@@ -325,13 +331,13 @@
 
 - URI protocol handler is now able to switch to the Coder provider even if the last opened provider was something else
 
-## 0.3.2 - 2025-06-25
+## [0.3.2] - 2025-06-25
 
 ### Changed
 
 - the logos and icons now match the new branding
 
-## 0.3.1 - 2025-06-19
+## [0.3.1] - 2025-06-19
 
 ### Added
 
@@ -349,13 +355,13 @@
 - show errors when the Toolbox is visible again after being minimized.
 - URI handling now installs the exact build number if it is available for the workspace.
 
-## 0.3.0 - 2025-06-10
+## [0.3.0] - 2025-06-10
 
 ### Added
 
 - support for Toolbox 2.6.3 with improved URI handling
 
-## 0.2.3 - 2025-05-26
+## [0.2.3] - 2025-05-26
 
 ### Changed
 
@@ -367,7 +373,9 @@
 - url on the main page is now refreshed when switching between multiple deployments (via logout/login or URI handling)
 - tokens are now remembered after switching between multiple deployments
 
-## 0.2.2 - 2025-05-21
+## [0.2.2] - 2025-05-21
+
+### Added
 
 - render network status in the Settings tab, under `Additional environment information` section.
 - quick action for creating new workspaces from the web dashboard.
@@ -377,7 +385,7 @@
 - `Open web terminal` action is no longer displayed when the workspace is stopped.
 - URL links can now be opened in Windows
 
-## 0.2.1 - 2025-05-05
+## [0.2.1] - 2025-05-05
 
 ### Changed
 
@@ -389,7 +397,7 @@
 - misleading message saying that there are no workspaces rendered during manual authentication
 - Coder Settings can now be accessed from the authentication wizard
 
-## 0.2.0 - 2025-04-24
+## [0.2.0] - 2025-04-24
 
 ### Added
 
@@ -403,17 +411,22 @@
 
 - SSH connection will no longer fail with newer Coder deployments due to misconfiguration of hostname and proxy command.
 
-## 0.1.5 - 2025-04-14
-
-### Fixed
-
-- login screen is shown instead of an empty list of workspaces when token expired
+## [0.1.5] - 2025-04-14
 
 ### Changed
 
 - improved error handling during workspace polling
 
-## 0.1.4 - 2025-04-11
+### Fixed
+
+- login screen is shown instead of an empty list of workspaces when token expired
+
+## [0.1.4] - 2025-04-11
+
+### Changed
+
+- action buttons on the token input step were swapped to achieve better keyboard navigation
+- URI `project_path` query parameter was renamed to `folder`
 
 ### Fixed
 
@@ -421,34 +434,73 @@
 - authorization wizard automatically goes to a previous screen when an error is encountered during connection to Coder
   deployment
 
-### Changed
-
-- action buttons on the token input step were swapped to achieve better keyboard navigation
-- URI `project_path` query parameter was renamed to `folder`
-
-## 0.1.3 - 2025-04-09
+## [0.1.3] - 2025-04-09
 
 ### Fixed
 
 - Toolbox remembers the authentication page that was last visible on the screen
 
-## 0.1.2 - 2025-04-04
+## [0.1.2] - 2025-04-04
 
 ### Fixed
 
 - after log out, user is redirected back to the initial log in screen
 
-## 0.1.1 - 2025-04-03
+## [0.1.1] - 2025-04-03
 
 ### Fixed
 
 - SSH config is regenerated correctly when Workspaces are added or removed
 - only one confirmation dialog is shown when removing a Workspace
 
-## 0.1.0 - 2025-04-01
+## [0.1.0] - 2025-04-01
 
 ### Added
 
 - initial support for JetBrains Toolbox 2.6.0.38311 with the possibility to manage the workspaces - i.e. start, stop,
   update and delete actions and also quick shortcuts to templates, web terminal and dashboard.
 - support for light & dark themes
+
+[Unreleased]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.5...HEAD
+[0.9.5]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.4...v0.9.5
+[0.9.4]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.3...v0.9.4
+[0.9.3]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.2...v0.9.3
+[0.9.2]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.2-alpha2...v0.9.2
+[0.9.2-alpha2]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.2-alpha1...v0.9.2-alpha2
+[0.9.2-alpha1]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.1...v0.9.2-alpha1
+[0.9.1]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.8.6...v0.9.0
+[0.8.6]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.8.5...v0.8.6
+[0.8.5]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.8.4...v0.8.5
+[0.8.4]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.8.3...v0.8.4
+[0.8.3]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.8.2...v0.8.3
+[0.8.2]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.8.1...v0.8.2
+[0.8.1]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.7.2...v0.8.0
+[0.7.2]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.7.1...v0.7.2
+[0.7.1]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.6.6...v0.7.0
+[0.6.6]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.6.5...v0.6.6
+[0.6.5]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.6.4...v0.6.5
+[0.6.4]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.6.3...v0.6.4
+[0.6.3]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.6.2...v0.6.3
+[0.6.2]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.5.2...v0.6.0
+[0.5.2]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.2.3...v0.3.0
+[0.2.3]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.1.5...v0.2.0
+[0.1.5]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.1.4...v0.1.5
+[0.1.4]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/coder/coder-jetbrains-toolbox-plugin/commits/v0.1.0
