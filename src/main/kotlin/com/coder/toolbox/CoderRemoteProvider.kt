@@ -817,7 +817,7 @@ class CoderRemoteProvider(
         linkHandler.handle(params, url, client, cli)
     }
 
-    private fun connectFromLink(params: Map<String, String>, url: URL, token: String?) {
+    private suspend fun connectFromLink(params: Map<String, String>, url: URL, token: String?) {
         val credentials = token?.let { Credentials.Token(it) } ?: Credentials.MTls
         val wizard = CoderSetupWizardPage.connectStep(
             context, settingsPage,
@@ -826,10 +826,12 @@ class CoderRemoteProvider(
             onConnect = onConnect.andThen(deferredLinkHandler(params, url)),
             onTokenRefreshed = ::onTokenRefreshed,
         )
-        // The router tears down any in-flight wizard and installs the new one before
-        // showPluginEnvironmentsPage() asks getOverrideUiPage() for the page to display.
+        // Replace any in-flight wizard before showPluginEnvironmentsPage() requests a refresh.
+        // If Toolbox calls getOverrideUiPage(), it must get the wizard for this link.
         router.navigate(wizard)
         context.popupPluginMainPage()
+        // An already visible provider can keep showing the old wizard, so show the new one explicitly.
+        context.ui.showUiPageSuspending(wizard)
     }
 
     /** Returns a [SuspendBiConsumer] that handles the given link parameters in a background coroutine. */
