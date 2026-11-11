@@ -25,22 +25,8 @@ class WizardModel {
         _step.value = step
     }
 
-    fun goToNext() {
-        val entries = WizardStep.entries
-        _step.value = entries[(_step.value.ordinal + 1) % entries.size]
-    }
-
-    fun goToPrevious() {
-        val entries = WizardStep.entries
-        _step.value = entries[(_step.value.ordinal - 1 + entries.size) % entries.size]
-    }
-
     fun goToFirst() {
         _step.value = WizardStep.URL_REQUEST
-    }
-
-    fun goToLast() {
-        _step.value = WizardStep.CONNECT
     }
 
     fun hasUrl(): Boolean = url != null
@@ -57,7 +43,7 @@ class WizardModel {
 }
 
 enum class WizardStep {
-    URL_REQUEST, TOKEN_REQUEST, CONNECT;
+    URL_REQUEST, TOKEN_REQUEST, CONNECT, RESTORE_SESSION, SIGNED_IN;
 }
 
 sealed interface Credentials {

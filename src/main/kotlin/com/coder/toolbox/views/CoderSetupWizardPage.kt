@@ -10,6 +10,7 @@ import com.coder.toolbox.views.state.WizardModel
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -38,6 +39,8 @@ class CoderSetupWizardPage private constructor(
         onTokenRefreshed = onTokenRefreshed
     )
     private var stateCollectJob: Job? = null
+    @Volatile
+    private var disposed = false
 
     /**
      * Fields for this page, displayed in order.
@@ -45,29 +48,43 @@ class CoderSetupWizardPage private constructor(
     override val fields: MutableStateFlow<List<UiField>> = MutableStateFlow(emptyList())
     override val actionButtons: MutableStateFlow<List<RunnableActionDescription>> = MutableStateFlow(emptyList())
 
-    override fun beforeShow() {
-        stateCollectJob?.cancel()
-        stateCollectJob = context.cs.launch {
-            model.step.collect { step ->
-                context.logger.info("Wizard step changed to $step")
-                displaySteps()
-            }
+    fun pageForDisplay(): CoderSetupWizardPage? = when (model.currentStep()) {
+        // Restore saved credentials behind Toolbox's loading workspace list.
+        // A successful restore then needs no page navigation during window startup.
+        WizardStep.RESTORE_SESSION -> {
+            connectStep.onVisible()
+            null
         }
+        WizardStep.SIGNED_IN -> null
+        else -> this
     }
 
-    private fun displaySteps() {
-        when (model.currentStep()) {
+    override fun beforeShow() {
+        prepareStepObserver()?.start()
+    }
+
+    @Synchronized
+    private fun prepareStepObserver(): Job? {
+        if (disposed || stateCollectJob?.isCompleted == false) return null
+        val job = context.cs.launch(start = CoroutineStart.LAZY) {
+            model.step.collect { step ->
+                context.logger.info("Wizard step changed to $step")
+                displayStep(step)
+            }
+        }
+        stateCollectJob = job
+        return job
+    }
+
+    private fun displayStep(step: WizardStep) {
+        when (step) {
             WizardStep.URL_REQUEST -> {
                 fields.update {
                     listOf(deploymentUrlStep.panel)
                 }
                 actionButtons.update {
                     listOf(
-                        Action(context, "Next", closesPage = false, actionBlock = {
-                            if (deploymentUrlStep.onNext()) {
-                                displaySteps()
-                            }
-                        }),
+                        Action(context, "Next", closesPage = false) { deploymentUrlStep.onNext() },
                         settingsAction
                     )
                 }
@@ -80,36 +97,30 @@ class CoderSetupWizardPage private constructor(
                 }
                 actionButtons.update {
                     listOf(
-                        Action(context, "Connect", closesPage = false, actionBlock = {
-                            if (tokenStep.onNext()) {
-                                displaySteps()
-                            }
-                        }),
+                        Action(context, "Connect", closesPage = false) { tokenStep.onNext() },
                         settingsAction,
-                        Action(context, "Back", closesPage = false, actionBlock = {
-                            tokenStep.onBack()
-                            displaySteps()
-                        })
+                        Action(context, "Back", closesPage = false) { tokenStep.onBack() }
                     )
                 }
                 tokenStep.onVisible()
             }
 
-            WizardStep.CONNECT -> {
+            WizardStep.CONNECT, WizardStep.RESTORE_SESSION -> {
                 fields.update {
                     listOf(connectStep.panel)
                 }
                 actionButtons.update {
                     listOf(
                         settingsAction,
-                        Action(context, "Back", closesPage = false, actionBlock = {
-                            connectStep.onBack()
-                            displaySteps()
-                        })
+                        Action(context, "Back", closesPage = false) { connectStep.onBack() }
                     )
                 }
                 connectStep.onVisible()
             }
+
+            // Toolbox can bring this wizard back after Settings or during startup.
+            // Ask for the workspace list when the completed wizard is actually shown.
+            WizardStep.SIGNED_IN -> context.envPageManager.showPluginEnvironmentsPage(false)
         }
     }
 
@@ -120,14 +131,20 @@ class CoderSetupWizardPage private constructor(
     }
 
     private fun navigateBackFromConnect() {
+        val restoringSession = model.currentStep() == WizardStep.RESTORE_SESSION
         if (autoLogin) {
             autoLogin = false
             model.clearFormData()
             model.goToFirst()
+            if (restoringSession) {
+                context.cs.launch {
+                    if (!disposed) context.ui.showUiPageSuspending(this@CoderSetupWizardPage)
+                }
+            }
             return
         }
         if (context.settingsStore.requiresTokenAuth) {
-            model.goToPrevious()
+            model.goTo(WizardStep.TOKEN_REQUEST)
         } else {
             model.goToFirst()
         }
@@ -138,13 +155,17 @@ class CoderSetupWizardPage private constructor(
      * when the wizard is being replaced (e.g. by a deep link to a different
      * deployment) so its connect job doesn't keep running and clobber the new one.
      */
+    @Synchronized
     fun dispose() {
-        stateCollectJob?.cancel()
+        disposed = true
+        afterHide()
         connectStep.dispose()
     }
 
+    @Synchronized
     override fun afterHide() {
         stateCollectJob?.cancel()
+        stateCollectJob = null
     }
 
     companion object {
@@ -166,6 +187,7 @@ class CoderSetupWizardPage private constructor(
             credentials: Credentials,
             onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
             onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
+            restoreSavedSession: Boolean = false,
         ): CoderSetupWizardPage = CoderSetupWizardPage(
             context, settingsPage,
             autoLogin = true,
@@ -178,7 +200,7 @@ class CoderSetupWizardPage private constructor(
                 is Credentials.Token -> model.token = credentials.value
                 is Credentials.OAuth -> model.oauthSession = credentials.session
             }
-            model.goTo(WizardStep.CONNECT)
+            model.goTo(if (restoreSavedSession) WizardStep.RESTORE_SESSION else WizardStep.CONNECT)
         }
     }
 }

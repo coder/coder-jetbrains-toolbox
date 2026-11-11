@@ -1,7 +1,8 @@
 package com.coder.toolbox.views.state
 
-import com.coder.toolbox.views.CoderPage
 import com.coder.toolbox.views.CoderSetupWizardPage
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -20,24 +21,22 @@ sealed interface PageRoute {
 class PageRouter {
     private val route = MutableStateFlow<PageRoute>(PageRoute.None)
 
-    private val activeWizard: CoderSetupWizardPage?
+    val activePage: CoderSetupWizardPage?
         get() = (route.value as? PageRoute.Wizard)?.page
 
-    val activePage: CoderPage?
-        get() = activeWizard
-
     val hasActiveWizard: Boolean
-        get() = activeWizard != null
+        get() = activePage != null
 
     val pendingOAuthConnection: PendingOAuthConnection?
-        get() = activeWizard?.pendingOAuthConnection()
+        get() = activePage?.pendingOAuthConnection()
 
     /**
      * Returns the page already on this route, or builds a new one and
      * registers it.
      */
-    fun getOrCreate(build: () -> CoderSetupWizardPage): CoderPage {
-        (route.value as? PageRoute.Wizard)?.let { return it.page }
+    @Synchronized
+    fun getOrCreate(build: () -> CoderSetupWizardPage): CoderSetupWizardPage {
+        activePage?.let { return it }
 
         return build().also { route.value = PageRoute.Wizard(it) }
     }
@@ -47,13 +46,25 @@ class PageRouter {
      * (e.g. a deep link to a different deployment) needs to forcibly install
      * a new wizard.
      */
+    @Synchronized
     fun navigate(page: CoderSetupWizardPage) {
-        activeWizard?.dispose()
+        activePage?.dispose()
         route.value = PageRoute.Wizard(page)
     }
 
+    @Synchronized
     fun clear() {
-        activeWizard?.dispose()
+        activePage?.dispose()
         route.value = PageRoute.None
+    }
+
+    @Synchronized
+    fun finishSignIn(connection: Job, startSession: () -> Unit) {
+        // Replacing a wizard cancels its connection. Only the winner can publish a session.
+        connection.ensureActive()
+        startSession()
+        val wizard = activePage ?: return
+        route.value = PageRoute.None
+        wizard.model.goTo(WizardStep.SIGNED_IN)
     }
 }
