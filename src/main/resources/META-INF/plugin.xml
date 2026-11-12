@@ -11,4 +11,8 @@
     <dependencies>
         <module name="intellij.libraries.toolbox.remote.dev"/>
     </dependencies>
+
+    <extensions defaultExtensionNs="com.jetbrains">
+        <remoteDevExtension implementation="com.coder.toolbox.CoderToolboxExtension"/>
+    </extensions>
 </idea-plugin>
