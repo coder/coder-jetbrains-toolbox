@@ -4,6 +4,7 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.getArch
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
+import com.coder.toolbox.util.hasSameOrigin
 import com.coder.toolbox.util.origin
 import okhttp3.Interceptor
 import java.net.ProtocolException
@@ -52,9 +53,10 @@ object Interceptors {
      */
     fun tokenAuth(token: String, deploymentUrl: URL): Interceptor {
         return Interceptor { chain ->
-            if (chain.request().url.origin() != deploymentUrl.origin()) return@Interceptor chain.proceed(chain.request())
+            val request = chain.request()
+            if (!request.url.hasSameOrigin(deploymentUrl)) return@Interceptor chain.proceed(request)
             chain.proceed(
-                chain.request().newBuilder()
+                request.newBuilder()
                     .addHeader(CODER_SESSION_TOKEN_HEADER_NAME, token)
                     .build()
             )
@@ -81,7 +83,7 @@ object Interceptors {
         val settings = context.settingsStore.readOnly()
         return Interceptor { chain ->
             var request = chain.request()
-            if (request.url.origin() != url.origin()) return@Interceptor chain.proceed(request)
+            if (!request.url.hasSameOrigin(url)) return@Interceptor chain.proceed(request)
             val headers = getHeaders(url, settings.headerCommand)
             if (headers.isNotEmpty()) {
                 val reqBuilder = request.newBuilder()
