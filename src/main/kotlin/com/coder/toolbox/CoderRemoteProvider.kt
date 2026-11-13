@@ -34,6 +34,7 @@ import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.NewEnvironmentPage
 import com.coder.toolbox.views.SuspendBiConsumer
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.Credentials
 import com.coder.toolbox.views.state.PageRouter
 import com.coder.toolbox.views.state.PendingOAuthConnection
@@ -900,7 +901,7 @@ class CoderRemoteProvider(
                     credentials = credentials,
                     onConnect = onConnect,
                     onTokenRefreshed = ::onTokenRefreshed,
-                    restoreSavedSession = true,
+                    origin = ConnectionOrigin.SAVED_SESSION,
                 )
             } catch (ex: Exception) {
                 context.logger.logAndShowError(

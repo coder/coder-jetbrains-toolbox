@@ -3,26 +3,16 @@ package com.coder.toolbox.views.state
 import com.coder.toolbox.views.CoderSetupWizardPage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * The page that should currently be rendered in place of the environment list.
- */
-sealed interface PageRoute {
-    object None : PageRoute
-    data class Wizard(val page: CoderSetupWizardPage) : PageRoute
-}
-
-/**
- * Holds the active [PageRoute]. The same page instance is returned across
+ * Holds the active wizard. The same page instance is returned across
  * Toolbox visibility cycles so in-flight work (e.g. an ongoing connect) is
  * preserved instead of being thrown away every time the window reopens.
  */
 class PageRouter {
-    private val route = MutableStateFlow<PageRoute>(PageRoute.None)
-
-    val activePage: CoderSetupWizardPage?
-        get() = (route.value as? PageRoute.Wizard)?.page
+    @Volatile
+    var activePage: CoderSetupWizardPage? = null
+        private set
 
     val hasActiveWizard: Boolean
         get() = activePage != null
@@ -38,7 +28,7 @@ class PageRouter {
     fun getOrCreate(build: () -> CoderSetupWizardPage): CoderSetupWizardPage {
         activePage?.let { return it }
 
-        return build().also { route.value = PageRoute.Wizard(it) }
+        return build().also(::navigate)
     }
 
     /**
@@ -49,13 +39,15 @@ class PageRouter {
     @Synchronized
     fun navigate(page: CoderSetupWizardPage) {
         activePage?.dispose()
-        route.value = PageRoute.Wizard(page)
+        activePage = page
+        // A restore can finish immediately. Publish its wizard before starting the job.
+        page.startSavedSessionRestore()
     }
 
     @Synchronized
     fun clear() {
         activePage?.dispose()
-        route.value = PageRoute.None
+        activePage = null
     }
 
     @Synchronized
@@ -64,7 +56,7 @@ class PageRouter {
         connection.ensureActive()
         startSession()
         val wizard = activePage ?: return
-        route.value = PageRoute.None
+        activePage = null
         wizard.model.goTo(WizardStep.SIGNED_IN)
     }
 }

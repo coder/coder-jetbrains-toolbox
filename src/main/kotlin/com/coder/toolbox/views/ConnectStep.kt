@@ -8,9 +8,10 @@ import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.util.origin
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.WizardModel
 import com.coder.toolbox.views.state.WizardStep.CONNECT
-import com.coder.toolbox.views.state.WizardStep.RESTORE_SESSION
+import com.coder.toolbox.views.state.WizardStep.SIGNED_IN
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
@@ -53,13 +54,15 @@ class ConnectStep(
         RowGroup.RowField(errorField)
     )
 
-    override fun onVisible() {
+    override fun onVisible() = startConnection()
+
+    fun startConnection() {
         prepareConnection()?.start()
     }
 
     @Synchronized
     private fun prepareConnection(): Job? {
-        if (disposed || signInJob != null || model.currentStep() !in setOf(CONNECT, RESTORE_SESSION)) return null
+        if (disposed || signInJob != null || model.currentStep() != CONNECT) return null
 
         errorField.textState.update { context.i18n.pnotr("") }
         if (context.settingsStore.requiresTokenAuth && model.isNotReadyForAuth()) {
@@ -87,13 +90,11 @@ class ConnectStep(
     private suspend fun connect(url: URL) {
         var pendingClient: CoderRestClient? = null
         try {
-            var oauthSession: CoderOAuthSessionContext? = null
-            if (context.settingsStore.requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable && model.hasOAuthSession()) {
-                refreshOAuthToken()
-                oauthSession = model.oauthSession!!.copy()
-            }
-
-            val apiToken = if (context.settingsStore.requiresTokenAuth) model.token else null
+            val requiresTokenAuth = context.settingsStore.requiresTokenAuth
+            val oauthSession = if (requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable) {
+                oauthSessionForConnection()
+            } else null
+            val apiToken = if (requiresTokenAuth) model.token else null
 
             context.logger.info("Setting up the HTTP client...")
             val client = CoderRestClient(
@@ -115,16 +116,11 @@ class ConnectStep(
             ) { progress ->
                 statusField.textState.update { (context.i18n.pnotr(progress)) }
             }
-            // We only need to log in if we are using token-based auth.
             if (context.settingsStore.requiresTokenAuth) {
                 logAndReportProgress("Configuring Coder CLI...")
                 // allows interleaving with the back/cancel action
                 yield()
-                if (oauthSession != null) {
-                    cli.login(oauthSession.tokenResponse!!.accessToken)
-                } else {
-                    cli.login(apiToken!!)
-                }
+                cli.login(client.requireSessionToken())
             }
             logAndReportProgress("Successfully configured ${url.host}...")
             // allows interleaving with the back/cancel action
@@ -132,9 +128,9 @@ class ConnectStep(
             context.logger.info("Connection setup done, initializing the workspace poller...")
             onConnect.accept(client, cli)
             pendingClient = null // The provider now owns this client.
-            // Only invoke onTokenRefreshed when we actually have an OAuth session
+            // The CLI already uses this token. Save the OAuth session for the next sign-in.
             oauthSession?.let { session ->
-                onTokenRefreshed?.invoke(client.url, session)
+                context.secrets.storeOAuthFor(client.url.toString(), session)
             }
         } catch (ex: Exception) {
             reportConnectionFailure(currentCoroutineContext().job, url, ex)
@@ -143,14 +139,16 @@ class ConnectStep(
         }
     }
 
-    private suspend fun refreshOAuthToken() {
-        val session = model.oauthSession ?: return
-        if (!session.tokenResponse?.accessToken.isNullOrBlank()) return
+    private suspend fun oauthSessionForConnection(): CoderOAuthSessionContext? {
+        val session = model.oauthSession ?: return null
+        val response = session.tokenResponse ?: return null
+        if (response.accessToken.isNotBlank()) return session
 
         logAndReportProgress("Refreshing OAuth token...")
-        val tokenResponse = OAuth2Client(context).refreshToken(session)
+        val refreshed = session.copy(tokenResponse = OAuth2Client(context).refreshToken(session))
         context.logger.info("Successfully refreshed access token")
-        model.oauthSession = session.copy(tokenResponse = tokenResponse)
+        model.oauthSession = refreshed
+        return refreshed
     }
 
     private fun logAndReportProgress(msg: String) {
@@ -162,6 +160,10 @@ class ConnectStep(
     private fun reportConnectionFailure(job: Job, url: URL, ex: Exception) {
         job.ensureActive()
         if (signInJob !== job) return
+        if (model.currentStep() == SIGNED_IN) {
+            context.logger.warn(ex, "Failed to update session credentials after sign-in")
+            return
+        }
         signInJob = null
         context.logger.logAndShowError(
             "Error encountered while setting up Coder",
@@ -177,7 +179,7 @@ class ConnectStep(
 
     @Synchronized
     override fun onBack() {
-        if (disposed || model.currentStep() != CONNECT) return
+        if (disposed || model.currentStep() != CONNECT || model.connectionOrigin == ConnectionOrigin.SAVED_SESSION) return
         try {
             context.logger.info("Back button was pressed, cancelling in-progress connection setup...")
             signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))
