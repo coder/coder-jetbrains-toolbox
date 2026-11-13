@@ -88,13 +88,11 @@ class ConnectStep(
     private suspend fun connect(url: URL) {
         var pendingClient: CoderRestClient? = null
         try {
-            var oauthSession: CoderOAuthSessionContext? = null
-            if (context.settingsStore.requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable && model.hasOAuthSession()) {
-                refreshOAuthToken()
-                oauthSession = model.oauthSession!!.copy()
-            }
-
-            val apiToken = if (context.settingsStore.requiresTokenAuth) model.token else null
+            val requiresTokenAuth = context.settingsStore.requiresTokenAuth
+            val oauthSession = if (requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable) {
+                oauthSessionForConnection()
+            } else null
+            val apiToken = if (requiresTokenAuth) model.token else null
 
             context.logger.info("Setting up the HTTP client...")
             val client = CoderRestClient(
@@ -116,16 +114,11 @@ class ConnectStep(
             ) { progress ->
                 statusField.textState.update { (context.i18n.pnotr(progress)) }
             }
-            // We only need to log in if we are using token-based auth.
             if (context.settingsStore.requiresTokenAuth) {
                 logAndReportProgress("Configuring Coder CLI...")
                 // allows interleaving with the back/cancel action
                 yield()
-                if (oauthSession != null) {
-                    cli.login(oauthSession.tokenResponse!!.accessToken)
-                } else {
-                    cli.login(apiToken!!)
-                }
+                cli.login(client.requireSessionToken())
             }
             logAndReportProgress("Successfully configured ${url.host}...")
             // allows interleaving with the back/cancel action
@@ -144,14 +137,16 @@ class ConnectStep(
         }
     }
 
-    private suspend fun refreshOAuthToken() {
-        val session = model.oauthSession ?: return
-        if (!session.tokenResponse?.accessToken.isNullOrBlank()) return
+    private suspend fun oauthSessionForConnection(): CoderOAuthSessionContext? {
+        val session = model.oauthSession ?: return null
+        val response = session.tokenResponse ?: return null
+        if (response.accessToken.isNotBlank()) return session
 
         logAndReportProgress("Refreshing OAuth token...")
-        val tokenResponse = OAuth2Client(context).refreshToken(session)
+        val refreshed = session.copy(tokenResponse = OAuth2Client(context).refreshToken(session))
         context.logger.info("Successfully refreshed access token")
-        model.oauthSession = session.copy(tokenResponse = tokenResponse)
+        model.oauthSession = refreshed
+        return refreshed
     }
 
     private fun logAndReportProgress(msg: String) {

@@ -22,6 +22,7 @@ import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.mockkConstructor
 import io.mockk.mockkStatic
+import io.mockk.spyk
 import io.mockk.unmockkConstructor
 import io.mockk.unmockkStatic
 import io.mockk.verify
@@ -198,6 +199,49 @@ class CoderSetupWizardPageTest {
 
             coVerify(exactly = 1) { cli.login("test-token") }
             coVerify(exactly = 1) { onConnect.accept(any(), cli) }
+        }
+    }
+
+    @Test
+    fun `certificate sign-in connects without a CLI login`() = runTest {
+        every { context.cs } returns backgroundScope
+        model.token = null
+        val step = ConnectStep(context, model, { model.goTo(WizardStep.URL_REQUEST) }, onConnect)
+        withMockCli { cli ->
+            val settings = spyk(context.settingsStore)
+            every { settings.requiresTokenAuth } returns false
+            every { context.settingsStore } returns settings
+
+            step.onVisible()
+            runCurrent()
+
+            coVerify(exactly = 0) { cli.login(any()) }
+            coVerify(exactly = 1) { onConnect.accept(any(), cli) }
+        }
+    }
+
+    @Test
+    fun `switching from certificates to token authentication during setup reports the missing token`() = runTest {
+        every { context.cs } returns backgroundScope
+        model.token = null
+        val step = ConnectStep(context, model, { model.goTo(WizardStep.TOKEN_REQUEST) }, onConnect)
+        val logger = context.logger
+        withMockCli { cli ->
+            val settings = spyk(context.settingsStore)
+            var requiresToken = false
+            every { settings.requiresTokenAuth } answers { requiresToken }
+            every { context.settingsStore } returns settings
+            coEvery { anyConstructed<CoderRestClient>().initializeSession() } coAnswers {
+                requiresToken = true
+                DataGen.user()
+            }
+            step.onVisible()
+            runCurrent()
+
+            assertEquals(WizardStep.TOKEN_REQUEST, model.currentStep())
+            verify { logger.showInfoPopup(any(), match { it.contains("OAuth or API token is required") }) }
+            coVerify(exactly = 0) { cli.login(any()) }
+            coVerify(exactly = 0) { onConnect.accept(any(), any()) }
         }
     }
 
