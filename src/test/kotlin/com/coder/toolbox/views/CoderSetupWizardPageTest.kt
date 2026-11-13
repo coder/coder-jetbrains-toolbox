@@ -38,6 +38,8 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import java.net.Proxy
 import java.net.URI
 import kotlin.coroutines.CoroutineContext
@@ -171,8 +173,10 @@ class CoderSetupWizardPageTest {
         }
     }
 
-    @Test
-    fun `a second visibility callback during startup logs in to the CLI once`() = runTest {
+    @EnumSource(WizardStep::class, names = ["CONNECT", "RESTORE_SESSION"])
+    @ParameterizedTest(name = "Repeated visibility during {0}")
+    fun `a second visibility callback during startup logs in to the CLI once`(connectionStep: WizardStep) = runTest {
+        model.goTo(connectionStep)
         lateinit var step: ConnectStep
         val scheduler = StandardTestDispatcher(testScheduler)
         val dispatcher = object : CoroutineDispatcher() {
