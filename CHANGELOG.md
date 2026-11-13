@@ -24,6 +24,8 @@ It follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Reject ambiguous workspace links and OAuth callbacks. Workspace links must identify the deployment by its HTTP(S) origin.
+
 - Restrict HTTP redirects and deployment credentials to their original destination. Disable redirects in CLI v2.38.0 and newer.
 
 - Ask for confirmation before a workspace link opens an unknown Coder deployment. Links select the deployment by
