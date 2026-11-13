@@ -4,6 +4,7 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
+import com.coder.toolbox.util.hasSameOrigin
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.sha1
@@ -130,7 +131,7 @@ class CoderDownloadService(
     }
 
     private fun getRequestHeaders(): Map<String, String> {
-        return if (context.settingsStore.headerCommand.isNullOrBlank()) {
+        return if (!remoteBinaryURL.hasSameOrigin(deploymentUrl) || context.settingsStore.headerCommand.isNullOrBlank()) {
             emptyMap()
         } else {
             getHeaders(deploymentUrl, context.settingsStore.headerCommand)

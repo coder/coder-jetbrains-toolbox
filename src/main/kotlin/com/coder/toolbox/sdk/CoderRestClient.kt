@@ -99,7 +99,7 @@ open class CoderRestClient(
                 if (oauthOrApiToken.isNullOrBlank()) {
                     throw IllegalStateException("OAuth or API token is required for $url deployment")
                 }
-                add(Interceptors.tokenAuth(oauthOrApiToken))
+                add(Interceptors.tokenAuth(oauthOrApiToken, url))
             }
             add((Interceptors.userAgent(pluginVersion)))
             add(Interceptors.externalHeaders(context, url))

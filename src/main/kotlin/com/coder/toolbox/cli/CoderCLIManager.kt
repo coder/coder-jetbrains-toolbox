@@ -113,6 +113,7 @@ class CoderCLIManager(
 
     // Keep credential storage consistent with existing SSH commands until the next sign-in.
     private val useKeyring = context.settingsStore.useKeyring && usesTokenAuth
+    private val supportsRedirectFlag by lazy { tryVersion()?.let { it >= SemVer(2, 38, 0) } == true }
     private val downloader = createDownloadService()
     private val gpgVerifier = GPGVerifier(context)
 
@@ -661,6 +662,7 @@ class CoderCLIManager(
     private fun globalConfigArgs(): List<String> = listOf("--global-config", coderConfigPath.toString())
 
     private fun workspaceAuthArgs(): List<String> = buildList {
+        if (supportsRedirectFlag) add("--allow-redirects=false")
         val useKeyringAuth = shouldUseKeyringAuth()
         if (!useKeyringAuth) addAll(globalConfigArgs())
         // Override inherited CODER_URL and CODER_USE_KEYRING for every authenticated command.

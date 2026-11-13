@@ -4,7 +4,9 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.getArch
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
+import com.coder.toolbox.util.origin
 import okhttp3.Interceptor
+import java.net.ProtocolException
 import java.net.URL
 
 const val CODER_SESSION_TOKEN_HEADER_NAME = "Coder-Session-Token"
@@ -14,11 +16,34 @@ const val CODER_SESSION_TOKEN_HEADER_NAME = "Coder-Session-Token"
  */
 object Interceptors {
 
+    /** Follow redirects for reads only. Credential-bearing POST bodies must never be replayed. */
+    fun sameOriginRedirects(): Interceptor = Interceptor { chain ->
+        var request = chain.request()
+        val origin = request.url.origin()
+        var redirects = 0
+        var response = chain.proceed(request)
+        while (response.code in setOf(300, 301, 302, 303, 307, 308)) {
+            val location = response.header("Location") ?: break
+            val target = request.url.resolve(location)
+            if (target == null || target.origin() != origin || target.username.isNotEmpty() || target.password.isNotEmpty()) {
+                response.close()
+                throw ProtocolException("Refused a redirect outside the request origin or to an invalid URL.")
+            }
+            if (request.method != "GET" && request.method != "HEAD") break
+            response.close()
+            if (++redirects > 20) throw ProtocolException("Too many redirects.")
+            request = request.newBuilder().url(target).build()
+            response = chain.proceed(request)
+        }
+        response
+    }
+
     /**
      * Creates a token authentication interceptor
      */
-    fun tokenAuth(token: String): Interceptor {
+    fun tokenAuth(token: String, deploymentUrl: URL): Interceptor {
         return Interceptor { chain ->
+            if (chain.request().url.origin() != deploymentUrl.origin()) return@Interceptor chain.proceed(chain.request())
             chain.proceed(
                 chain.request().newBuilder()
                     .addHeader(CODER_SESSION_TOKEN_HEADER_NAME, token)
@@ -47,6 +72,7 @@ object Interceptors {
         val settings = context.settingsStore.readOnly()
         return Interceptor { chain ->
             var request = chain.request()
+            if (request.url.origin() != url.origin()) return@Interceptor chain.proceed(request)
             val headers = getHeaders(url, settings.headerCommand)
             if (headers.isNotEmpty()) {
                 val reqBuilder = request.newBuilder()

@@ -61,6 +61,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.api.condition.EnabledOnOs
@@ -486,12 +487,8 @@ internal class CoderCLIManagerTest {
     // download a working CLI and that it runs on each platform.
     @Test
     fun testDownloadRealCLI() {
-        var url = System.getenv("CODER_TOOLBOX_TEST_DEPLOYMENT")
-        if (url == "mock") {
-            return
-        } else if (url == null) {
-            url = "https://dev.coder.com"
-        }
+        val url = System.getenv("CODER_TOOLBOX_TEST_DEPLOYMENT")
+        assumeTrue(!url.isNullOrBlank() && url != "mock", "Set a deployment that serves its CLI without a cross-origin redirect.")
 
         val ccm = CoderCLIManager(
             context.copy(
@@ -504,7 +501,7 @@ internal class CoderCLIManagerTest {
                     context.logger
                 )
             ),
-            url.toURL(),
+            requireNotNull(url).toURL(),
         )
 
         assertTrue(runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
@@ -734,6 +731,7 @@ internal class CoderCLIManagerTest {
         session.writeText("old-token")
 
         val loginArgs = cli.login("token")
+        assertEquals(version != "v2.29.0", "--allow-redirects=false" in loginArgs)
         assertContains(loginArgs, "--url $url --use-keyring=true")
         assertFalse(loginArgs.contains("--global-config"))
         assertFalse(session.exists(), "Successful keyring login removes the plaintext token")
@@ -743,6 +741,7 @@ internal class CoderCLIManagerTest {
         val config = cli.coderConfigPath.parent.resolve("ssh-config")
         cli.configSsh(setOf(address), sshConfigPath = config.toString())
         assertContains(Files.readString(config), "--use-keyring=true")
+        assertEquals(version != "v2.29.0", "--allow-redirects=false" in Files.readString(config))
         assertContains(cli.startWorkspace(address), "--use-keyring=true")
         assertContains(cli.logout(), "--url $url --use-keyring=true")
     }
@@ -1231,8 +1230,8 @@ internal class CoderCLIManagerTest {
         verify(exactly = 1) {
             underlyingLogger.info("$sessionPrefix Finished configuring SSH config")
         }
-        // SSH setup no longer runs the CLI to detect features.
-        verify(exactly = 0) {
+        // SSH setup checks the binary once for redirect flag support.
+        verify(exactly = 1) {
             underlyingLogger.info(match<String> { it.contains("${ccm.localBinaryPath} version --output json") })
         }
     }
@@ -1329,7 +1328,12 @@ internal class CoderCLIManagerTest {
             testDirectory.resolve("coder")
         }
         binaryPath.parent.toFile().mkdirs()
-        binaryPath.toFile().writeText(mkbin(script))
+        val versionCommand = if (getOS() == OS.WINDOWS) {
+            """if "%1"=="version" (echo {"version":"2.38.0"} & exit /b 0)"""
+        } else {
+            """if [ "$1" = version ]; then echo '{"version":"2.38.0"}'; exit 0; fi"""
+        }
+        binaryPath.toFile().writeText(mkbin(versionCommand + System.lineSeparator() + script))
         if (getOS() != OS.WINDOWS) {
             binaryPath.toFile().setExecutable(true)
         }

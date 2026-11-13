@@ -24,6 +24,8 @@ It follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Restrict HTTP redirects and deployment credentials to their original destination. Disable redirects in CLI v2.38.0 and newer.
+
 - Ask for confirmation before a workspace link opens an unknown Coder deployment. Links select the deployment by
   scheme, host, and port. For a known deployment, Toolbox asks before using a link token if the accounts differ or
   it cannot verify the saved account.
