@@ -34,6 +34,7 @@ import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.NewEnvironmentPage
 import com.coder.toolbox.views.SuspendBiConsumer
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.Credentials
 import com.coder.toolbox.views.state.PageRouter
 import com.coder.toolbox.views.state.PendingOAuthConnection
@@ -51,11 +52,13 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
@@ -418,6 +421,11 @@ class CoderRemoteProvider(
      * Also called as part of our own logout.
      */
     override fun close() {
+        resetConnection()
+        router.clear()
+    }
+
+    private fun resetConnection() {
         val sessionIds = lastEnvironments.currentSessionIds()
         softClose()
         client = null
@@ -428,7 +436,6 @@ class CoderRemoteProvider(
         environments.value = LoadableState.Value(emptyList())
         isInitialized.update { false }
         accountDropdownField.visibility.update { false }
-        router.clear()
         context.logger.info(sessionIds, "Coder plugin is now closed")
         context.logger.flush("provider_closed")
     }
@@ -811,7 +818,7 @@ class CoderRemoteProvider(
         linkHandler.handle(params, url, client, cli)
     }
 
-    private fun connectFromLink(params: Map<String, String>, url: URL, token: String?) {
+    private suspend fun connectFromLink(params: Map<String, String>, url: URL, token: String?) {
         val credentials = token?.let { Credentials.Token(it) } ?: Credentials.MTls
         val wizard = CoderSetupWizardPage.connectStep(
             context, settingsPage,
@@ -820,10 +827,12 @@ class CoderRemoteProvider(
             onConnect = onConnect.andThen(deferredLinkHandler(params, url)),
             onTokenRefreshed = ::onTokenRefreshed,
         )
-        // The router tears down any in-flight wizard and installs the new one before
-        // showPluginEnvironmentsPage() asks getOverrideUiPage() for the page to display.
+        // Replace any in-flight wizard before showPluginEnvironmentsPage() requests a refresh.
+        // If Toolbox calls getOverrideUiPage(), it must get the wizard for this link.
         router.navigate(wizard)
         context.popupPluginMainPage()
+        // An already visible provider can keep showing the old wizard, so show the new one explicitly.
+        context.ui.showUiPageSuspending(wizard)
     }
 
     /** Returns a [SuspendBiConsumer] that handles the given link parameters in a background coroutine. */
@@ -849,21 +858,16 @@ class CoderRemoteProvider(
         }
     }
 
-    /**
-     * Return the sign-in page if we do not have a valid client.
-
-     * Otherwise, return null, which causes Toolbox to display the environment
-     * list.
-     */
+    /** Show interactive setup when needed. Saved sessions restore behind the workspace list. */
     override fun getOverrideUiPage(): UiPage? {
         // Show the setup wizard if one is already scheduled.
-        router.activePage?.let { return it }
+        router.activePage?.let { return it.pageForDisplay() }
 
         // Let the default workspace UI render if the HTTP client is initialized.
         if (client != null) return null
 
         // Otherwise, schedule our own setup wizard.
-        return router.getOrCreate { buildSetupWizard() }
+        return router.getOrCreate { buildSetupWizard() }.pageForDisplay()
     }
 
     /**
@@ -887,6 +891,7 @@ class CoderRemoteProvider(
                     credentials = credentials,
                     onConnect = onConnect,
                     onTokenRefreshed = ::onTokenRefreshed,
+                    origin = ConnectionOrigin.SAVED_SESSION,
                 )
             } catch (ex: Exception) {
                 context.logger.logAndShowError(
@@ -915,9 +920,13 @@ class CoderRemoteProvider(
     fun canAutoLogin(): Boolean = autoSetupCredentials(context.deploymentUrl) != null
 
     private val onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager> = SuspendBiConsumer { client, cli ->
+        router.finishSignIn(currentCoroutineContext().job) { startSession(client, cli) }
+    }
+
+    private fun startSession(client: CoderRestClient, cli: CoderCLIManager) {
         // Store the URL and token for use next time.
         storeSession(client)
-        close()
+        resetConnection()
         this.client = client
         this.cli = cli
         lastEnvironments.forEach { it.updateClientAndCli(client, cli) }

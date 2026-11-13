@@ -1,45 +1,34 @@
 package com.coder.toolbox.views.state
 
-import com.coder.toolbox.views.CoderPage
 import com.coder.toolbox.views.CoderSetupWizardPage
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 
 /**
- * The page that should currently be rendered in place of the environment list.
- */
-sealed interface PageRoute {
-    object None : PageRoute
-    data class Wizard(val page: CoderSetupWizardPage) : PageRoute
-}
-
-/**
- * Holds the active [PageRoute]. The same page instance is returned across
+ * Holds the active wizard. The same page instance is returned across
  * Toolbox visibility cycles so in-flight work (e.g. an ongoing connect) is
  * preserved instead of being thrown away every time the window reopens.
  */
 class PageRouter {
-    private val route = MutableStateFlow<PageRoute>(PageRoute.None)
-
-    private val activeWizard: CoderSetupWizardPage?
-        get() = (route.value as? PageRoute.Wizard)?.page
-
-    val activePage: CoderPage?
-        get() = activeWizard
+    @Volatile
+    var activePage: CoderSetupWizardPage? = null
+        private set
 
     val hasActiveWizard: Boolean
-        get() = activeWizard != null
+        get() = activePage != null
 
     val pendingOAuthConnection: PendingOAuthConnection?
-        get() = activeWizard?.pendingOAuthConnection()
+        get() = activePage?.pendingOAuthConnection()
 
     /**
      * Returns the page already on this route, or builds a new one and
      * registers it.
      */
-    fun getOrCreate(build: () -> CoderSetupWizardPage): CoderPage {
-        (route.value as? PageRoute.Wizard)?.let { return it.page }
+    @Synchronized
+    fun getOrCreate(build: () -> CoderSetupWizardPage): CoderSetupWizardPage {
+        activePage?.let { return it }
 
-        return build().also { route.value = PageRoute.Wizard(it) }
+        return build().also(::navigate)
     }
 
     /**
@@ -47,13 +36,27 @@ class PageRouter {
      * (e.g. a deep link to a different deployment) needs to forcibly install
      * a new wizard.
      */
+    @Synchronized
     fun navigate(page: CoderSetupWizardPage) {
-        activeWizard?.dispose()
-        route.value = PageRoute.Wizard(page)
+        activePage?.dispose()
+        activePage = page
+        // A restore can finish immediately. Publish its wizard before starting the job.
+        page.startSavedSessionRestore()
     }
 
+    @Synchronized
     fun clear() {
-        activeWizard?.dispose()
-        route.value = PageRoute.None
+        activePage?.dispose()
+        activePage = null
+    }
+
+    @Synchronized
+    fun finishSignIn(connection: Job, startSession: () -> Unit) {
+        // Replacing a wizard cancels its connection. Only the winner can publish a session.
+        connection.ensureActive()
+        startSession()
+        val wizard = activePage ?: return
+        activePage = null
+        wizard.model.goTo(WizardStep.SIGNED_IN)
     }
 }

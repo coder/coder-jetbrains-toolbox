@@ -19,6 +19,8 @@ It follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - SSH connections being blocked while non-blocking startup scripts run or after startup scripts fail or time out.
 - Automatic connection not starting when a workspace agent becomes connectable after the initial workspace load.
+- Duplicate CLI sign-ins that could send the setup wizard back to the token screen after a successful connection.
+- Opening a workspace link for another deployment could leave the previous setup page on screen until Toolbox regained focus.
 
 ### Security
 

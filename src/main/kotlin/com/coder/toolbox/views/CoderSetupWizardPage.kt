@@ -4,12 +4,14 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.Credentials
 import com.coder.toolbox.views.state.PendingOAuthConnection
 import com.coder.toolbox.views.state.WizardModel
 import com.coder.toolbox.views.state.WizardStep
 import com.jetbrains.toolbox.api.ui.actions.RunnableActionDescription
 import com.jetbrains.toolbox.api.ui.components.UiField
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -19,7 +21,6 @@ import java.net.URL
 class CoderSetupWizardPage private constructor(
     private val context: CoderToolboxContext,
     private val settingsPage: CoderSettingsPage,
-    private var autoLogin: Boolean = false,
     onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
     onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
@@ -38,6 +39,8 @@ class CoderSetupWizardPage private constructor(
         onTokenRefreshed = onTokenRefreshed
     )
     private var stateCollectJob: Job? = null
+    @Volatile
+    private var disposed = false
 
     /**
      * Fields for this page, displayed in order.
@@ -45,29 +48,42 @@ class CoderSetupWizardPage private constructor(
     override val fields: MutableStateFlow<List<UiField>> = MutableStateFlow(emptyList())
     override val actionButtons: MutableStateFlow<List<RunnableActionDescription>> = MutableStateFlow(emptyList())
 
-    override fun beforeShow() {
-        stateCollectJob?.cancel()
-        stateCollectJob = context.cs.launch {
-            model.step.collect { step ->
-                context.logger.info("Wizard step changed to $step")
-                displaySteps()
-            }
-        }
+    fun pageForDisplay(): CoderSetupWizardPage? = when (model.currentStep()) {
+        WizardStep.CONNECT -> if (model.connectionOrigin == ConnectionOrigin.SAVED_SESSION) null else this
+        WizardStep.SIGNED_IN -> null
+        else -> this
     }
 
-    private fun displaySteps() {
-        when (model.currentStep()) {
+    internal fun startSavedSessionRestore() {
+        if (model.connectionOrigin == ConnectionOrigin.SAVED_SESSION) connectStep.startConnection()
+    }
+
+    override fun beforeShow() {
+        prepareStepObserver()?.start()
+    }
+
+    @Synchronized
+    private fun prepareStepObserver(): Job? {
+        if (disposed || stateCollectJob?.isCompleted == false) return null
+        val job = context.cs.launch(start = CoroutineStart.LAZY) {
+            model.step.collect { step ->
+                context.logger.info("Wizard step changed to $step")
+                displayStep(step)
+            }
+        }
+        stateCollectJob = job
+        return job
+    }
+
+    private fun displayStep(step: WizardStep) {
+        when (step) {
             WizardStep.URL_REQUEST -> {
                 fields.update {
                     listOf(deploymentUrlStep.panel)
                 }
                 actionButtons.update {
                     listOf(
-                        Action(context, "Next", closesPage = false, actionBlock = {
-                            if (deploymentUrlStep.onNext()) {
-                                displaySteps()
-                            }
-                        }),
+                        Action(context, "Next", closesPage = false) { deploymentUrlStep.onNext() },
                         settingsAction
                     )
                 }
@@ -80,16 +96,9 @@ class CoderSetupWizardPage private constructor(
                 }
                 actionButtons.update {
                     listOf(
-                        Action(context, "Connect", closesPage = false, actionBlock = {
-                            if (tokenStep.onNext()) {
-                                displaySteps()
-                            }
-                        }),
+                        Action(context, "Connect", closesPage = false) { tokenStep.onNext() },
                         settingsAction,
-                        Action(context, "Back", closesPage = false, actionBlock = {
-                            tokenStep.onBack()
-                            displaySteps()
-                        })
+                        Action(context, "Back", closesPage = false) { tokenStep.onBack() }
                     )
                 }
                 tokenStep.onVisible()
@@ -102,14 +111,15 @@ class CoderSetupWizardPage private constructor(
                 actionButtons.update {
                     listOf(
                         settingsAction,
-                        Action(context, "Back", closesPage = false, actionBlock = {
-                            connectStep.onBack()
-                            displaySteps()
-                        })
+                        Action(context, "Back", closesPage = false) { connectStep.onBack() }
                     )
                 }
                 connectStep.onVisible()
             }
+
+            // Toolbox can bring this wizard back after Settings or during startup.
+            // Ask for the workspace list when the completed wizard is actually shown.
+            WizardStep.SIGNED_IN -> context.envPageManager.showPluginEnvironmentsPage(false)
         }
     }
 
@@ -120,16 +130,18 @@ class CoderSetupWizardPage private constructor(
     }
 
     private fun navigateBackFromConnect() {
-        if (autoLogin) {
-            autoLogin = false
-            model.clearFormData()
-            model.goToFirst()
+        if (model.connectionOrigin == ConnectionOrigin.FORM) {
+            model.goTo(if (context.settingsStore.requiresTokenAuth) WizardStep.TOKEN_REQUEST else WizardStep.URL_REQUEST)
             return
         }
-        if (context.settingsStore.requiresTokenAuth) {
-            model.goToPrevious()
-        } else {
-            model.goToFirst()
+        val revealForm = model.connectionOrigin == ConnectionOrigin.SAVED_SESSION
+        model.clearFormData()
+        model.goToFirst()
+        model.connectionOrigin = ConnectionOrigin.FORM
+        if (revealForm) {
+            context.cs.launch {
+                if (!disposed) context.ui.showUiPageSuspending(this@CoderSetupWizardPage)
+            }
         }
     }
 
@@ -138,13 +150,17 @@ class CoderSetupWizardPage private constructor(
      * when the wizard is being replaced (e.g. by a deep link to a different
      * deployment) so its connect job doesn't keep running and clobber the new one.
      */
+    @Synchronized
     fun dispose() {
-        stateCollectJob?.cancel()
+        disposed = true
+        afterHide()
         connectStep.dispose()
     }
 
+    @Synchronized
     override fun afterHide() {
         stateCollectJob?.cancel()
+        stateCollectJob = null
     }
 
     companion object {
@@ -166,12 +182,13 @@ class CoderSetupWizardPage private constructor(
             credentials: Credentials,
             onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
             onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
+            origin: ConnectionOrigin = ConnectionOrigin.SUPPLIED_CREDENTIALS,
         ): CoderSetupWizardPage = CoderSetupWizardPage(
             context, settingsPage,
-            autoLogin = true,
             onConnect = onConnect,
             onTokenRefreshed = onTokenRefreshed,
         ).apply {
+            model.connectionOrigin = origin
             model.url = url
             when (credentials) {
                 is Credentials.MTls -> Unit

@@ -1,7 +1,9 @@
 package com.coder.toolbox
 
 import com.coder.toolbox.cli.CoderCLIManager
+import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.diagnostics.CoderLogger
+import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
@@ -16,8 +18,10 @@ import com.coder.toolbox.sdk.v2.models.WorkspaceResource
 import com.coder.toolbox.sdk.v2.models.WorkspaceStatus
 import com.coder.toolbox.session.SessionId
 import com.coder.toolbox.settings.Environment
+import com.coder.toolbox.store.CoderSecretsStore
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.util.CoderProtocolHandler
+import com.coder.toolbox.util.InMemoryPluginSecretStore
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.SuspendBiConsumer
@@ -35,16 +39,20 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkConstructor
+import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.spyk
+import io.mockk.unmockkConstructor
+import io.mockk.unmockkStatic
 import io.mockk.verify
-import io.mockk.verifyOrder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -70,6 +78,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+
+private const val PRODUCTION_URL = "https://coder.example.com"
+private const val STAGING_URL = "https://staging.example.com"
 
 class CoderRemoteProviderTest {
 
@@ -100,9 +111,9 @@ class CoderRemoteProviderTest {
         every { mockContext.settingsStore } returns settingsStore
         every { mockContext.logger } returns mockLogger
         every { mockContext.secrets.isUrlTrusted(any()) } returns false
-        every { mockClient.url } returns URI("https://coder.example.com").toURL()
+        every { mockClient.url } returns URI(PRODUCTION_URL).toURL()
         every { mockClient.me } returns DataGen.user()
-        every { mockCli.deploymentURL } returns URI("https://coder.example.com").toURL()
+        every { mockCli.deploymentURL } returns URI(PRODUCTION_URL).toURL()
         remoteProvider = CoderRemoteProvider(mockContext)
     }
 
@@ -138,6 +149,57 @@ class CoderRemoteProviderTest {
         assertFalse(remoteProvider.getAccountDropDown().visibility.value)
     }
 
+    @CsvSource(
+        "logged out deployment, link target,      other remembered deployment, expect prompt",
+        "$PRODUCTION_URL,       $PRODUCTION_URL,  none,                        true",
+        "$STAGING_URL,          $STAGING_URL,     $PRODUCTION_URL,             true",
+        "$PRODUCTION_URL,       $STAGING_URL,     none,                        true",
+        "$STAGING_URL,          $PRODUCTION_URL,  $PRODUCTION_URL,             false",
+        nullValues = ["none"],
+        useHeadersInDisplayName = true,
+    )
+    @ParameterizedTest(name = "After logout, {arguments}")
+    fun `logout clears the active deployment and each link uses its target's trust history`(
+        loggedOutDeployment: URL,
+        linkTarget: URL,
+        otherRememberedDeployment: URL?,
+        expectPrompt: Boolean,
+    ) = runTest {
+        every { mockClient.url } returns loggedOutDeployment
+        every { mockCli.deploymentURL } returns loggedOutDeployment
+        val secrets = CoderSecretsStore(InMemoryPluginSecretStore())
+        every { mockContext.secrets } returns secrets
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns false
+        secrets.storeApiTokenFor(loggedOutDeployment, "logged-out-token")
+        secrets.trustDeployment(loggedOutDeployment)
+        val provider = spyk(remoteProvider, recordPrivateCalls = true)
+        setPrivateField(provider, "client", mockClient)
+        setPrivateField(provider, "cli", mockCli)
+        if (otherRememberedDeployment != null) {
+            secrets.storeApiTokenFor(otherRememberedDeployment, "remembered-token")
+            secrets.trustDeployment(otherRememberedDeployment)
+            val rememberedUser = DataGen.user()
+            coEvery { provider["userForToken"](otherRememberedDeployment, "remembered-token") } returns rememberedUser
+            coEvery { provider["userForToken"](otherRememberedDeployment, "link-token") } returns rememberedUser
+        }
+        coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } returns false
+
+        provider.logout()
+        provider.handleUri(workspaceLink(linkTarget.toString()))
+
+        assertNull(secrets.apiTokenFor(loggedOutDeployment))
+        assertFalse(secrets.isUrlTrusted(loggedOutDeployment))
+        assertEquals(!expectPrompt, secrets.isUrlTrusted(linkTarget))
+        if (otherRememberedDeployment != null) {
+            assertTrue(secrets.isUrlTrusted(otherRememberedDeployment))
+            assertEquals("remembered-token", secrets.apiTokenFor(otherRememberedDeployment))
+        }
+        coVerify(exactly = if (expectPrompt) 1 else 0) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
+        coVerify(exactly = if (expectPrompt) 0 else 1) { mockUi.showUiPageSuspending(any()) }
+    }
+
     @Test
     fun `provider shutdown preserves credentials`() {
         setPrivateField(remoteProvider, "client", mockClient)
@@ -158,6 +220,47 @@ class CoderRemoteProviderTest {
         remoteProvider.logout()
 
         coVerify(exactly = 0) { mockCli.logout() }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `restoring an OAuth session logs in to the CLI once and saves the rotated token`() = runTest {
+        val url = mockCli.deploymentURL
+        val stored = storedOAuthSession()
+        val session = stored.toSessionContext()
+        val refreshed = session.tokenResponse!!.copy(accessToken = "new-access-token", refreshToken = "new-refresh-token")
+        val secrets = mockContext.secrets
+        every { secrets.oauthSessionFor(url.toString()) } returns stored
+        every { mockContext.deploymentUrl } returns url
+        every { mockContext.cs } returns backgroundScope
+        every { mockContext.settingsStore } returns CoderSettingsStore(
+            pluginTestSettingsStore(), Environment(), underlyingLogger,
+        ).apply { updatePreferAuthViaOAuth2(true) }
+        every { mockContext.proxySettings.getProxy() } returns Proxy.NO_PROXY
+        every { mockContext.proxySettings.getProxyAuth() } returns null
+
+        mockkConstructor(OAuth2Client::class, CoderRestClient::class)
+        mockkStatic(::ensureCLI)
+        try {
+            coEvery { anyConstructed<OAuth2Client>().refreshToken(session) } returns refreshed
+            val user = DataGen.user()
+            coEvery { anyConstructed<CoderRestClient>().initializeSession() } returns user
+            every { anyConstructed<CoderRestClient>().me } returns user
+            every { anyConstructed<CoderRestClient>().buildVersion } returns "2.39.0"
+            coEvery { anyConstructed<CoderRestClient>().templates() } returns emptyList()
+            coEvery { anyConstructed<CoderRestClient>().workspaces(any()) } returns emptyList()
+            coEvery { ensureCLI(mockContext, url, "2.39.0", any()) } returns mockCli
+
+            assertNull(remoteProvider.getOverrideUiPage())
+            runCurrent()
+
+            coVerify(exactly = 1) { mockCli.login(refreshed.accessToken) }
+            verify(exactly = 1) { secrets.storeOAuthFor(url.toString(), session.copy(tokenResponse = refreshed)) }
+        } finally {
+            remoteProvider.close()
+            unmockkStatic(::ensureCLI)
+            unmockkConstructor(OAuth2Client::class, CoderRestClient::class)
+        }
     }
 
     @Test
@@ -604,41 +707,111 @@ class CoderRemoteProviderTest {
         verify(exactly = 0) { mockContext.popupPluginMainPage() }
     }
 
-    @ValueSource(
-        strings = [
-            "https://coder2.example.com/",
-            "https://coder2.example.com/dashboard?view=recent#workspaces",
-        ]
+    @CsvSource(
+        "restoring deployment, link target,                                          expected origin",
+        "$PRODUCTION_URL,      $STAGING_URL/,                                        $STAGING_URL",
+        "$STAGING_URL,         $PRODUCTION_URL/dashboard?view=recent#workspaces,      $PRODUCTION_URL",
+        "$PRODUCTION_URL,      $STAGING_URL:8443/dashboard,                           $STAGING_URL:8443",
+        useHeadersInDisplayName = true,
     )
-    @ParameterizedTest
-    fun `accepted deployment switch replaces the wizard before Toolbox requests its page`(target: String) = runTest {
+    @ParameterizedTest(name = "Cold-start link, {arguments}")
+    fun `accepted cold start link presents the new deployment while the old session restores`(
+        restoringDeployment: URL,
+        linkTarget: String,
+        expectedOrigin: String,
+    ) = runTest {
+        every { mockContext.cs } returns backgroundScope
+        every { mockContext.deploymentUrl } returns restoringDeployment
+        every { mockContext.secrets.apiTokenFor(restoringDeployment) } returns "saved-token"
         every { mockContext.settingsStore.requiresMTlsAuth } returns false
         every { mockContext.settingsStore.requiresTokenAuth } returns true
         coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } returns true
-        setPrivateField(remoteProvider, "client", mockClient)
-        setPrivateField(remoteProvider, "cli", mockCli)
         assertNull(remoteProvider.getOverrideUiPage())
+        val restoringWizard = setupWizard(remoteProvider)
+        assertEquals(restoringDeployment, restoringWizard.model.url)
+        assertEquals(WizardStep.CONNECT, restoringWizard.model.currentStep())
+        val displayedWizard = slot<CoderSetupWizardPage>()
+        coEvery { mockUi.showUiPageSuspending(capture(displayedWizard)) } returns Unit
 
-        val previousWizard = mockk<CoderSetupWizardPage>(relaxed = true)
-        val router = PageRouter()
-        router.navigate(previousWizard)
-        setPrivateField(remoteProvider, "router", router)
-        var displayedWizard: CoderSetupWizardPage? = null
-        every { mockContext.popupPluginMainPage() } answers {
-            displayedWizard = remoteProvider.getOverrideUiPage() as? CoderSetupWizardPage
-        }
+        remoteProvider.handleUri(workspaceLink(linkTarget))
 
-        remoteProvider.handleUri(workspaceLink(target))
-
-        val wizard = assertNotNull(displayedWizard)
-        assertEquals(WizardStep.CONNECT, wizard.model.currentStep())
-        assertEquals("https://coder2.example.com", wizard.model.url.toString())
-        assertEquals("link-token", wizard.model.token)
-        assertSame(wizard, remoteProvider.getOverrideUiPage())
+        // Toolbox has not requested the override page again since the link arrived.
+        coVerify(exactly = 1) { mockUi.showUiPageSuspending(any()) }
+        val replacementWizard = displayedWizard.captured
+        assertEquals(WizardStep.CONNECT, replacementWizard.model.currentStep())
+        assertEquals(expectedOrigin, replacementWizard.model.url.toString())
+        assertEquals("link-token", replacementWizard.model.token)
+        assertSame(replacementWizard, remoteProvider.getOverrideUiPage())
         coVerify(exactly = 1) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
-        verifyOrder {
-            previousWizard.dispose()
-            mockContext.popupPluginMainPage()
+    }
+
+    private fun setupWizard(provider: CoderRemoteProvider): CoderSetupWizardPage {
+        val router =
+            provider.javaClass.getDeclaredField("router").apply { isAccessible = true }.get(provider) as PageRouter
+        return requireNotNull(router.activePage)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `a cold link signs in to the linked deployment and hands off its workspace without a focus change`() = runTest {
+        val restoringDeployment = URI(PRODUCTION_URL).toURL()
+        val linkedDeployment = URI(STAGING_URL).toURL()
+        val secrets = mockContext.secrets
+        val environmentsPage = mockContext.envPageManager
+        every { mockContext.settingsStore } returns CoderSettingsStore(
+            pluginTestSettingsStore(), Environment(), underlyingLogger,
+        )
+        every { mockContext.cs } returns backgroundScope
+        every { mockContext.proxySettings.getProxy() } returns Proxy.NO_PROXY
+        every { mockContext.proxySettings.getProxyAuth() } returns null
+        every { mockContext.deploymentUrl } returns restoringDeployment
+        every { secrets.apiTokenFor(restoringDeployment) } returns "saved-token"
+        val linkHandler = mockk<CoderProtocolHandler>(relaxed = true)
+        setPrivateField(remoteProvider, "linkHandler", linkHandler)
+        val user = DataGen.user()
+        val restoreStarted = CompletableDeferred<Unit>()
+        val restoreCancelled = CompletableDeferred<Unit>()
+        val displayedWizard = slot<CoderSetupWizardPage>()
+        mockkConstructor(CoderRestClient::class)
+        mockkStatic(::ensureCLI)
+        try {
+            coEvery { anyConstructed<CoderRestClient>().initializeSession() } coAnswers {
+                restoreStarted.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    restoreCancelled.complete(Unit)
+                }
+            } andThen user
+            every { anyConstructed<CoderRestClient>().me } returns user
+            every { anyConstructed<CoderRestClient>().buildVersion } returns "2.39.0"
+            coEvery { anyConstructed<CoderRestClient>().workspaces(any()) } returns emptyList()
+            coEvery { ensureCLI(mockContext, linkedDeployment, "2.39.0", any()) } returns mockCli
+            coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } returns true
+            coEvery { mockUi.showUiPageSuspending(capture(displayedWizard)) } coAnswers {
+                displayedWizard.captured.beforeShow()
+            }
+            every { environmentsPage.showPluginEnvironmentsPage(false) } answers {
+                assertNull(remoteProvider.getOverrideUiPage(), "Finishing link sign-in should show the workspace list")
+                displayedWizard.captured.afterHide()
+            }
+            assertNull(remoteProvider.getOverrideUiPage(), "The first lookup should restore the saved session in the background")
+            runCurrent()
+            assertTrue(restoreStarted.isCompleted)
+            remoteProvider.handleUri(workspaceLink(linkedDeployment.toString()))
+            runCurrent()
+
+            assertTrue(restoreCancelled.isCompleted)
+            verify(exactly = 1) { anyConstructed<CoderRestClient>().close() }
+            coVerify(exactly = 1) { mockCli.login("link-token") }
+            verify(exactly = 1) { secrets.storeApiTokenFor(linkedDeployment, "link-token") }
+            coVerify(exactly = 1) { linkHandler.handle(match { it["workspace"] == "dev" }, linkedDeployment, any(), mockCli) }
+            verify(exactly = 1) { environmentsPage.showPluginEnvironmentsPage(false) }
+            assertNull(remoteProvider.getOverrideUiPage(), "The workspace list should still be visible after the handoff")
+        } finally {
+            remoteProvider.close()
+            unmockkStatic(::ensureCLI)
+            unmockkConstructor(CoderRestClient::class)
         }
     }
 
@@ -839,6 +1012,7 @@ class CoderRemoteProviderTest {
 
     @Test
     fun `declining an account change preserves an in-flight auto-connect wizard`() = runTest {
+        every { mockContext.cs } returns backgroundScope
         val url = URI("https://coder.example.com").toURL()
         every { mockContext.deploymentUrl } returns url
         every { mockContext.settingsStore.requiresMTlsAuth } returns false
@@ -850,11 +1024,13 @@ class CoderRemoteProviderTest {
         val provider = spyk(remoteProvider, recordPrivateCalls = true)
         coEvery { provider["userForToken"](url, "link-token") } returns DataGen.user().copy(username = "other-user")
         coEvery { provider["userForToken"](url, "saved-token") } returns DataGen.user().copy(username = "saved-user")
-        val existingWizard = provider.getOverrideUiPage() as CoderSetupWizardPage
+        assertNull(provider.getOverrideUiPage())
+        val existingWizard = setupWizard(provider)
 
         provider.handleUri(workspaceLink("https://coder.example.com"))
 
-        assertSame(existingWizard, provider.getOverrideUiPage())
+        assertNull(provider.getOverrideUiPage())
+        assertSame(existingWizard, setupWizard(provider))
         assertEquals(WizardStep.CONNECT, existingWizard.model.currentStep())
         assertEquals("saved-token", existingWizard.model.token)
         verify(exactly = 0) { mockContext.popupPluginMainPage() }
@@ -1029,14 +1205,43 @@ class CoderRemoteProviderTest {
         every { mockContext.settingsStore } returns settings
         every { mockContext.cs } returns backgroundScope
         every { mockClient.token } returns "saved-token"
-        val callback = remoteProvider.javaClass.getDeclaredField("onConnect").apply { isAccessible = true }
-            .get(remoteProvider) as SuspendBiConsumer<CoderRestClient, CoderCLIManager>
 
-        callback.accept(mockClient, mockCli)
+        completeSignIn()
 
         verify { secrets.storeApiTokenFor(url, "saved-token") }
         verify { secrets.trustDeployment(url) }
         assertEquals("https://coder.example.com", settings.lastDeploymentURL)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `returning from Settings after sign-in opens the workspace list once even if beforeShow runs twice`() = runTest {
+        every { mockContext.cs } returns backgroundScope
+        coEvery { mockClient.workspaces(any()) } returns emptyList()
+        val wizard = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
+        val pages = mockContext.envPageManager
+        wizard.beforeShow()
+        runCurrent()
+        wizard.afterHide()
+
+        completeSignIn()
+        runCurrent()
+        verify(exactly = 0) { pages.showPluginEnvironmentsPage(false) }
+        assertNull(remoteProvider.getOverrideUiPage())
+
+        // Both visibility callbacks arrive before the step observer runs.
+        repeat(2) { wizard.beforeShow() }
+        runCurrent()
+        verify(exactly = 1) { pages.showPluginEnvironmentsPage(false) }
+        wizard.afterHide()
+        remoteProvider.close()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun completeSignIn() {
+        val callback = remoteProvider.javaClass.getDeclaredField("onConnect").apply { isAccessible = true }
+            .get(remoteProvider) as SuspendBiConsumer<CoderRestClient, CoderCLIManager>
+        callback.accept(mockClient, mockCli)
     }
 
     @Test
@@ -1137,87 +1342,42 @@ class CoderRemoteProviderTest {
         assertFalse(accountDropdown.visibility.value)
     }
 
-    @Test
-    fun `given mTLS is required when auto setup has stored credentials then mTLS takes precedence`() {
-        // given
-        val url = URI("https://coder.example.com").toURL()
+    @CsvSource(
+        "require mTLS, prefer OAuth, saved API token, saved OAuth session, expected API token, expect OAuth",
+        "true,         true,         api-token,       true,                none,               false",
+        "false,        true,         api-token,       true,                none,               true",
+        "false,        false,        api-token,       true,                api-token,          false",
+        "false,        false,        api-token,       false,               api-token,          false",
+        "false,        true,         api-token,       false,               api-token,          false",
+        "false,        true,         none,            true,                none,               true",
+        nullValues = ["none"],
+        useHeadersInDisplayName = true,
+    )
+    @ParameterizedTest(name = "Restore credentials, {arguments}")
+    fun `session restore selects credentials using the deployment settings`(
+        requireMtls: Boolean,
+        preferOAuth: Boolean,
+        savedApiToken: String?,
+        hasSavedOAuthSession: Boolean,
+        expectedApiToken: String?,
+        expectOAuth: Boolean,
+    ) = runTest {
+        every { mockContext.cs } returns backgroundScope
+        val url = mockClient.url
+        val savedOAuthSession = if (hasSavedOAuthSession) storedOAuthSession() else null
         every { mockContext.deploymentUrl } returns url
-        every { mockContext.settingsStore.requiresMTlsAuth } returns true
-        every { mockContext.settingsStore.requiresTokenAuth } returns false
-        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns true
-        every { mockContext.secrets.apiTokenFor(url) } returns "token"
-        every { mockContext.secrets.oauthSessionFor(url.toString()) } returns storedOAuthSession()
-        val provider = CoderRemoteProvider(mockContext)
+        every { mockContext.settingsStore.requiresMTlsAuth } returns requireMtls
+        every { mockContext.settingsStore.requiresTokenAuth } returns !requireMtls
+        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns preferOAuth
+        every { mockContext.secrets.apiTokenFor(url) } returns savedApiToken
+        every { mockContext.secrets.oauthSessionFor(url.toString()) } returns savedOAuthSession
 
-        // when
-        val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
+        assertNull(remoteProvider.getOverrideUiPage())
+        val model = setupWizard(remoteProvider).model
 
-        // then
-        assertEquals(WizardStep.CONNECT, overridePage.model.currentStep())
-        assertNull(overridePage.model.token)
-        assertNull(overridePage.model.oauthSession)
-    }
-
-    @Test
-    fun `given OAuth is preferred when auto setup has token and OAuth session then OAuth is used`() {
-        // given
-        val url = URI("https://coder.example.com").toURL()
-        every { mockContext.deploymentUrl } returns url
-        every { mockContext.settingsStore.requiresMTlsAuth } returns false
-        every { mockContext.settingsStore.requiresTokenAuth } returns true
-        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns true
-        every { mockContext.secrets.apiTokenFor(url) } returns "token"
-        every { mockContext.secrets.oauthSessionFor(url.toString()) } returns storedOAuthSession()
-        val provider = CoderRemoteProvider(mockContext)
-
-        // when
-        val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
-
-        // then
-        assertEquals(WizardStep.CONNECT, overridePage.model.currentStep())
-        assertNull(overridePage.model.token)
-        assertNotNull(overridePage.model.oauthSession)
-    }
-
-    @Test
-    fun `given OAuth is not preferred when auto setup has token and OAuth session then token is used`() {
-        // given
-        val url = URI("https://coder.example.com").toURL()
-        every { mockContext.deploymentUrl } returns url
-        every { mockContext.settingsStore.requiresMTlsAuth } returns false
-        every { mockContext.settingsStore.requiresTokenAuth } returns true
-        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns false
-        every { mockContext.secrets.apiTokenFor(url) } returns "token"
-        every { mockContext.secrets.oauthSessionFor(url.toString()) } returns storedOAuthSession()
-        val provider = CoderRemoteProvider(mockContext)
-
-        // when
-        val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
-
-        // then
-        assertEquals(WizardStep.CONNECT, overridePage.model.currentStep())
-        assertEquals("token", overridePage.model.token)
-        assertNull(overridePage.model.oauthSession)
-    }
-
-    @Test
-    fun `given OAuth is not preferred when auto setup has API token then token is used`() {
-        // given
-        val url = URI("https://coder.example.com").toURL()
-        every { mockContext.deploymentUrl } returns url
-        every { mockContext.settingsStore.requiresMTlsAuth } returns false
-        every { mockContext.settingsStore.requiresTokenAuth } returns true
-        every { mockContext.settingsStore.preferOAuth2IfAvailable } returns false
-        every { mockContext.secrets.apiTokenFor(url) } returns "api-token"
-        val provider = CoderRemoteProvider(mockContext)
-
-        // when
-        val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
-
-        // then
-        assertEquals(WizardStep.CONNECT, overridePage.model.currentStep())
-        assertEquals("api-token", overridePage.model.token)
-        assertNull(overridePage.model.oauthSession)
+        assertEquals(WizardStep.CONNECT, model.currentStep())
+        assertEquals(expectedApiToken, model.token)
+        assertEquals(if (expectOAuth) requireNotNull(savedOAuthSession).toSessionContext() else null, model.oauthSession)
     }
 
     @Test

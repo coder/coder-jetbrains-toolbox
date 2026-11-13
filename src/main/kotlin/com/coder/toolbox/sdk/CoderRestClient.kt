@@ -95,11 +95,7 @@ open class CoderRestClient(
 
         val interceptors = buildList {
             if (context.settingsStore.requiresTokenAuth) {
-                val oauthOrApiToken = oauthContext?.tokenResponse?.accessToken ?: token
-                if (oauthOrApiToken.isNullOrBlank()) {
-                    throw IllegalStateException("OAuth or API token is required for $url deployment")
-                }
-                add(Interceptors.tokenAuth(oauthOrApiToken))
+                add(Interceptors.tokenAuth(requireSessionToken()))
             }
             add((Interceptors.userAgent(pluginVersion)))
             add(Interceptors.externalHeaders(context, url))
@@ -121,6 +117,12 @@ open class CoderRestClient(
                     )
                 )
                 .build().create(CoderV2RestFacade::class.java)
+    }
+
+    internal fun requireSessionToken(): String {
+        val sessionToken = oauthContext?.tokenResponse?.accessToken ?: token
+        check(!sessionToken.isNullOrBlank()) { "OAuth or API token is required for $url deployment" }
+        return sessionToken
     }
 
     /**

@@ -18,6 +18,8 @@ class WizardModel {
     var url: URL? = null
     var token: String? = null
     var oauthSession: CoderOAuthSessionContext? = null
+    @Volatile
+    var connectionOrigin = ConnectionOrigin.FORM
 
     fun currentStep(): WizardStep = _step.value
 
@@ -25,22 +27,8 @@ class WizardModel {
         _step.value = step
     }
 
-    fun goToNext() {
-        val entries = WizardStep.entries
-        _step.value = entries[(_step.value.ordinal + 1) % entries.size]
-    }
-
-    fun goToPrevious() {
-        val entries = WizardStep.entries
-        _step.value = entries[(_step.value.ordinal - 1 + entries.size) % entries.size]
-    }
-
     fun goToFirst() {
         _step.value = WizardStep.URL_REQUEST
-    }
-
-    fun goToLast() {
-        _step.value = WizardStep.CONNECT
     }
 
     fun hasUrl(): Boolean = url != null
@@ -57,7 +45,11 @@ class WizardModel {
 }
 
 enum class WizardStep {
-    URL_REQUEST, TOKEN_REQUEST, CONNECT;
+    URL_REQUEST, TOKEN_REQUEST, CONNECT, SIGNED_IN;
+}
+
+enum class ConnectionOrigin {
+    FORM, SUPPLIED_CREDENTIALS, SAVED_SESSION
 }
 
 sealed interface Credentials {
