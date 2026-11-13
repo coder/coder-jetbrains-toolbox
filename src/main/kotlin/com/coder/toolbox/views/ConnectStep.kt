@@ -11,6 +11,7 @@ import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.WizardModel
 import com.coder.toolbox.views.state.WizardStep.CONNECT
 import com.coder.toolbox.views.state.WizardStep.RESTORE_SESSION
+import com.coder.toolbox.views.state.WizardStep.SIGNED_IN
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
@@ -162,6 +163,10 @@ class ConnectStep(
     private fun reportConnectionFailure(job: Job, url: URL, ex: Exception) {
         job.ensureActive()
         if (signInJob !== job) return
+        if (model.currentStep() == SIGNED_IN) {
+            context.logger.warn(ex, "Failed to update session credentials after sign-in")
+            return
+        }
         signInJob = null
         context.logger.logAndShowError(
             "Error encountered while setting up Coder",

@@ -3,13 +3,17 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
+import com.coder.toolbox.oauth.OAuthTokenResponse
+import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
 import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.util.pluginTestSettingsStore
-import com.coder.toolbox.views.state.WizardModel
+import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.Credentials
+import com.coder.toolbox.views.state.PageRouter
+import com.coder.toolbox.views.state.WizardModel
 import com.coder.toolbox.views.state.WizardStep
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -28,6 +32,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -95,6 +101,45 @@ class CoderSetupWizardPageTest {
             runCurrent()
             coVerify(exactly = 2) { cli.login("test-token") }
             coVerify(exactly = 1) { onConnect.accept(any(), cli) }
+            page.dispose()
+        }
+    }
+
+    @Test
+    fun `an OAuth credential update failure keeps the signed-in wizard on the workspace list`() = runTest {
+        every { context.cs } returns backgroundScope
+        val session = CoderOAuthSessionContext(
+            clientId = "client-id",
+            clientSecret = "client-secret",
+            tokenCodeVerifier = "verifier",
+            state = "state",
+            tokenEndpoint = "$url/oauth/token",
+            tokenResponse = OAuthTokenResponse("access-token", "Bearer", null, "refresh-token", null),
+            tokenAuthMethod = TokenEndpointAuthMethod.CLIENT_SECRET_BASIC,
+        )
+        val router = PageRouter()
+        val failure = IllegalStateException("Keychain is locked")
+        val page = router.getOrCreate {
+            CoderSetupWizardPage.connectStep(
+                context, mockk(), url, Credentials.OAuth(session),
+                onConnect = SuspendBiConsumer { _, _ -> router.finishSignIn(currentCoroutineContext().job) {} },
+                onTokenRefreshed = { _, _ -> throw failure },
+            )
+        }
+        val pages = context.envPageManager
+        val logger = context.logger
+        val log = logger.delegate
+
+        withMockCli {
+            context.settingsStore.updatePreferAuthViaOAuth2(true)
+            page.beforeShow()
+            runCurrent()
+
+            assertEquals(WizardStep.SIGNED_IN, page.model.currentStep())
+            verify(exactly = 1) { pages.showPluginEnvironmentsPage(false) }
+            verify(exactly = 1) { log.warn(failure, any<String>()) }
+            verify(exactly = 0) { logger.showInfoPopup(any(), any()) }
+            verify(exactly = 0) { anyConstructed<CoderRestClient>().close() }
             page.dispose()
         }
     }
