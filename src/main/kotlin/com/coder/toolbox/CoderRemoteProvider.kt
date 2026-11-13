@@ -527,8 +527,6 @@ class CoderRemoteProvider(
         } catch (ex: Exception) {
             val reason = (ex as? APIResponseException)?.reason?.takeIf { it.isNotBlank() }
             context.logger.logAndShowError("Error encountered while handling Coder URI", reason ?: ex.message.orEmpty())
-        } finally {
-            firstRun = false
         }
     }
 
@@ -592,6 +590,7 @@ class CoderRemoteProvider(
                 onConnect = onConnect,
                 onTokenRefreshed = ::onTokenRefreshed,
             )
+            firstRun = false
             router.navigate(wizard)
 
             context.envPageManager.showPluginEnvironmentsPage(false)
@@ -616,6 +615,7 @@ class CoderRemoteProvider(
         val activeClient = client?.takeIf { it.url.hasSameOrigin(deployment.url) }
         if (!confirmDeploymentSignIn(deployment, activeClient)) return
 
+        firstRun = false
         if (activeClient != null) {
             openLinkInActiveSession(params, activeClient, deployment.token)
         } else {

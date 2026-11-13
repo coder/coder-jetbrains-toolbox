@@ -1348,6 +1348,24 @@ class CoderRemoteProviderTest {
         verify(exactly = 0) { mockContext.popupPluginMainPage() }
     }
 
+    @Test
+    fun `rejecting a cold-start link preserves the saved deployment for session restore`() = runTest {
+        val savedUrl = URI(PRODUCTION_URL).toURL()
+        every { mockContext.cs } returns backgroundScope
+        every { mockContext.deploymentUrl } returns savedUrl
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        every { mockContext.secrets.apiTokenFor(savedUrl) } returns "saved-token"
+
+        remoteProvider.handleUri(URI("jetbrains://gateway/com.coder.toolbox/unknown"))
+
+        assertNull(remoteProvider.getOverrideUiPage())
+        val wizard = setupWizard(remoteProvider)
+        assertEquals(savedUrl, wizard.model.url)
+        assertEquals("saved-token", wizard.model.token)
+        assertEquals(WizardStep.CONNECT, wizard.model.currentStep())
+    }
+
     private fun workspaceLink(url: String): URI = URI(
         "jetbrains://gateway/com.coder.toolbox?url=${URLEncoder.encode(url, Charsets.UTF_8)}" +
                 "&token=link-token&workspace=dev"
