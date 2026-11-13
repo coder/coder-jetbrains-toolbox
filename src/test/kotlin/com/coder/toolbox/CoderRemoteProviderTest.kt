@@ -27,6 +27,7 @@ import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.SuspendBiConsumer
 import com.coder.toolbox.views.state.PageRouter
 import com.coder.toolbox.views.state.StoredOAuthSession
+import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.WizardStep
 import com.coder.toolbox.views.state.toSessionContext
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
@@ -729,7 +730,7 @@ class CoderRemoteProviderTest {
         assertNull(remoteProvider.getOverrideUiPage())
         val restoringWizard = setupWizard(remoteProvider)
         assertEquals(restoringDeployment, restoringWizard.model.url)
-        assertEquals(WizardStep.CONNECT, restoringWizard.model.currentStep())
+        assertEquals(WizardStep.Connecting(ConnectionOrigin.SAVED_SESSION), restoringWizard.model.currentStep())
         val displayedWizard = slot<CoderSetupWizardPage>()
         coEvery { mockUi.showUiPageSuspending(capture(displayedWizard)) } returns Unit
 
@@ -738,7 +739,10 @@ class CoderRemoteProviderTest {
         // Toolbox has not requested the override page again since the link arrived.
         coVerify(exactly = 1) { mockUi.showUiPageSuspending(any()) }
         val replacementWizard = displayedWizard.captured
-        assertEquals(WizardStep.CONNECT, replacementWizard.model.currentStep())
+        assertEquals(
+            WizardStep.Connecting(ConnectionOrigin.SUPPLIED_CREDENTIALS),
+            replacementWizard.model.currentStep(),
+        )
         assertEquals(expectedOrigin, replacementWizard.model.url.toString())
         assertEquals("link-token", replacementWizard.model.token)
         assertSame(replacementWizard, remoteProvider.getOverrideUiPage())
@@ -900,7 +904,7 @@ class CoderRemoteProviderTest {
         provider.handleUri(workspaceLink("https://CODER.example.com:443/different/path"))
 
         val page = provider.getOverrideUiPage() as CoderSetupWizardPage
-        assertEquals(WizardStep.CONNECT, page.model.currentStep())
+        assertEquals(WizardStep.Connecting(ConnectionOrigin.SUPPLIED_CREDENTIALS), page.model.currentStep())
         assertEquals(url.toString(), page.model.url.toString())
         assertEquals("link-token", page.model.token)
         coVerify(exactly = 0) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
@@ -1031,7 +1035,7 @@ class CoderRemoteProviderTest {
 
         assertNull(provider.getOverrideUiPage())
         assertSame(existingWizard, setupWizard(provider))
-        assertEquals(WizardStep.CONNECT, existingWizard.model.currentStep())
+        assertEquals(WizardStep.Connecting(ConnectionOrigin.SAVED_SESSION), existingWizard.model.currentStep())
         assertEquals("saved-token", existingWizard.model.token)
         verify(exactly = 0) { mockContext.popupPluginMainPage() }
     }
@@ -1140,7 +1144,7 @@ class CoderRemoteProviderTest {
 
         val page = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
         assertEquals("https://coder.example.com", page.model.url.toString())
-        assertEquals(WizardStep.CONNECT, page.model.currentStep())
+        assertEquals(WizardStep.Connecting(ConnectionOrigin.SUPPLIED_CREDENTIALS), page.model.currentStep())
         assertNull(page.model.token)
         coVerify(exactly = 0) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
     }
@@ -1255,7 +1259,7 @@ class CoderRemoteProviderTest {
         remoteProvider.handleUri(workspaceLink("https://other.example.com"))
 
         assertSame(page, remoteProvider.getOverrideUiPage())
-        assertEquals(WizardStep.URL_REQUEST, page.model.currentStep())
+        assertEquals(WizardStep.UrlRequest, page.model.currentStep())
         verify(exactly = 0) { mockContext.popupPluginMainPage() }
     }
 
@@ -1286,7 +1290,7 @@ class CoderRemoteProviderTest {
 
         coVerify(exactly = 1) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
         val page = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
-        assertEquals(WizardStep.CONNECT, page.model.currentStep())
+        assertEquals(WizardStep.Connecting(ConnectionOrigin.SUPPLIED_CREDENTIALS), page.model.currentStep())
         assertNull(page.model.token)
     }
 
@@ -1375,7 +1379,7 @@ class CoderRemoteProviderTest {
         assertNull(remoteProvider.getOverrideUiPage())
         val model = setupWizard(remoteProvider).model
 
-        assertEquals(WizardStep.CONNECT, model.currentStep())
+        assertEquals(WizardStep.Connecting(ConnectionOrigin.SAVED_SESSION), model.currentStep())
         assertEquals(expectedApiToken, model.token)
         assertEquals(if (expectOAuth) requireNotNull(savedOAuthSession).toSessionContext() else null, model.oauthSession)
     }
@@ -1395,7 +1399,7 @@ class CoderRemoteProviderTest {
         val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
 
         // then
-        assertEquals(WizardStep.URL_REQUEST, overridePage.model.currentStep())
+        assertEquals(WizardStep.UrlRequest, overridePage.model.currentStep())
         assertNull(overridePage.model.token)
         assertNull(overridePage.model.oauthSession)
     }
@@ -1416,7 +1420,7 @@ class CoderRemoteProviderTest {
         val overridePage = provider.getOverrideUiPage() as CoderSetupWizardPage
 
         // then
-        assertEquals(WizardStep.URL_REQUEST, overridePage.model.currentStep())
+        assertEquals(WizardStep.UrlRequest, overridePage.model.currentStep())
         assertNull(overridePage.model.token)
         assertNull(overridePage.model.oauthSession)
     }

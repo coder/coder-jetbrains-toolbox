@@ -21,6 +21,8 @@ object CoderHttpClientBuilder {
             .sslSocketFactory(tlsContext.sslSocketFactory, tlsContext.trustManager)
             .hostnameVerifier(CoderHostnameVerifier(context.settingsStore.tls.altHostname))
             .retryOnConnectionFailure(true)
+            .followRedirects(false)
+            .addInterceptor(Interceptors.sameOriginRedirects())
             // Detect silent connection loss even when a workspace build produces no log messages.
             .pingInterval(30, TimeUnit.SECONDS)
 

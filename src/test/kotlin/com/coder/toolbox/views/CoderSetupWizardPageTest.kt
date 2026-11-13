@@ -57,7 +57,7 @@ class CoderSetupWizardPageTest {
     private val model = WizardModel().apply {
         url = this@CoderSetupWizardPageTest.url
         token = "test-token"
-        goTo(WizardStep.CONNECT)
+        goTo(WizardStep.Connecting())
     }
     private val onConnect = mockk<SuspendBiConsumer<CoderRestClient, CoderCLIManager>>(relaxed = true)
 
@@ -104,15 +104,14 @@ class CoderSetupWizardPageTest {
             assertNull(page.pageForDisplay())
             runCurrent()
 
-            assertEquals(WizardStep.URL_REQUEST, page.model.currentStep())
-            assertEquals(ConnectionOrigin.FORM, page.model.connectionOrigin)
+            assertEquals(WizardStep.UrlRequest, page.model.currentStep())
             assertSame(page, page.pageForDisplay())
             coVerify(exactly = 1) { ui.showUiPageSuspending(page) }
             coVerify(exactly = 0) { onConnect.accept(any(), any()) }
 
             page.model.url = url
             page.model.token = "test-token"
-            page.model.goTo(WizardStep.CONNECT)
+            page.model.goTo(WizardStep.Connecting())
             page.beforeShow()
             runCurrent()
             coVerify(exactly = 2) { cli.login("test-token") }
@@ -151,7 +150,7 @@ class CoderSetupWizardPageTest {
             page.beforeShow()
             runCurrent()
 
-            assertEquals(WizardStep.SIGNED_IN, page.model.currentStep())
+            assertEquals(WizardStep.SignedIn, page.model.currentStep())
             verify(exactly = 1) { pages.showPluginEnvironmentsPage(false) }
             verify(exactly = 1) { log.warn(failure, any<String>()) }
             verify(exactly = 0) { logger.showInfoPopup(any(), any()) }
@@ -169,14 +168,14 @@ class CoderSetupWizardPageTest {
             justRun { anyConstructed<ConnectStep>().onVisible() }
             val page = CoderSetupWizardPage.deploymentUrlStep(context, mockk(), mockk())
             page.model.url = url
-            page.model.goTo(WizardStep.TOKEN_REQUEST)
+            page.model.goTo(WizardStep.TokenRequest)
             page.beforeShow()
             runCurrent()
 
             page.actionButtons.value.first().run()
             runCurrent()
 
-            assertEquals(WizardStep.CONNECT, page.model.currentStep())
+            assertEquals(WizardStep.Connecting(), page.model.currentStep())
             verify(exactly = 1) { anyConstructed<ConnectStep>().onVisible() }
 
             page.dispose()
@@ -192,7 +191,7 @@ class CoderSetupWizardPageTest {
     @EnumSource(ConnectionOrigin::class)
     @ParameterizedTest(name = "Repeated visibility during sign-in from {0}")
     fun `a second visibility callback during startup logs in to the CLI once`(origin: ConnectionOrigin) = runTest {
-        model.connectionOrigin = origin
+        model.goTo(WizardStep.Connecting(origin))
         lateinit var step: ConnectStep
         val scheduler = StandardTestDispatcher(testScheduler)
         val dispatcher = object : CoroutineDispatcher() {
@@ -208,7 +207,7 @@ class CoderSetupWizardPageTest {
             }
         }
         every { context.cs } returns CoroutineScope(backgroundScope.coroutineContext + dispatcher)
-        step = ConnectStep(context, model, { model.goTo(WizardStep.TOKEN_REQUEST) }, onConnect)
+        step = ConnectStep(context, model, { model.goTo(WizardStep.TokenRequest) }, onConnect)
         withMockCli { cli ->
             step.onVisible()
             runCurrent()
@@ -222,7 +221,7 @@ class CoderSetupWizardPageTest {
     fun `certificate sign-in connects without a CLI login`() = runTest {
         every { context.cs } returns backgroundScope
         model.token = null
-        val step = ConnectStep(context, model, { model.goTo(WizardStep.URL_REQUEST) }, onConnect)
+        val step = ConnectStep(context, model, { model.goTo(WizardStep.UrlRequest) }, onConnect)
         withMockCli { cli ->
             val settings = spyk(context.settingsStore)
             every { settings.requiresTokenAuth } returns false
@@ -240,7 +239,7 @@ class CoderSetupWizardPageTest {
     fun `switching from certificates to token authentication during setup reports the missing token`() = runTest {
         every { context.cs } returns backgroundScope
         model.token = null
-        val step = ConnectStep(context, model, { model.goTo(WizardStep.TOKEN_REQUEST) }, onConnect)
+        val step = ConnectStep(context, model, { model.goTo(WizardStep.TokenRequest) }, onConnect)
         val logger = context.logger
         withMockCli { cli ->
             val settings = spyk(context.settingsStore)
@@ -254,7 +253,7 @@ class CoderSetupWizardPageTest {
             step.onVisible()
             runCurrent()
 
-            assertEquals(WizardStep.TOKEN_REQUEST, model.currentStep())
+            assertEquals(WizardStep.TokenRequest, model.currentStep())
             verify { logger.showInfoPopup(any(), match { it.contains("OAuth or API token is required") }) }
             coVerify(exactly = 0) { cli.login(any()) }
             coVerify(exactly = 0) { onConnect.accept(any(), any()) }
@@ -284,7 +283,7 @@ class CoderSetupWizardPageTest {
     @Test
     fun `a retry waits for a cancelled login and ignores its late error`() = runTest {
         every { context.cs } returns backgroundScope
-        val step = ConnectStep(context, model, { model.goTo(WizardStep.TOKEN_REQUEST) }, onConnect)
+        val step = ConnectStep(context, model, { model.goTo(WizardStep.TokenRequest) }, onConnect)
         val allowCleanup = CompletableDeferred<Unit>()
         withMockCli { cli ->
             coEvery { cli.login("test-token") } coAnswers {
@@ -299,10 +298,10 @@ class CoderSetupWizardPageTest {
                 step.onVisible()
                 runCurrent()
                 step.onBack()
-                assertEquals(WizardStep.TOKEN_REQUEST, model.currentStep())
+                assertEquals(WizardStep.TokenRequest, model.currentStep())
 
                 // Retry while the cancelled CLI login is still waiting for cleanup.
-                model.goTo(WizardStep.CONNECT)
+                model.goTo(WizardStep.Connecting())
                 step.onVisible()
                 runCurrent()
                 coVerify(exactly = 1) { cli.login("test-token") }
@@ -310,7 +309,7 @@ class CoderSetupWizardPageTest {
                 allowCleanup.complete(Unit)
                 runCurrent()
 
-                assertEquals(WizardStep.CONNECT, model.currentStep())
+                assertEquals(WizardStep.Connecting(), model.currentStep())
                 coVerify(exactly = 2) { cli.login("test-token") }
                 coVerify(exactly = 1) { onConnect.accept(any(), cli) }
             } finally {
@@ -323,15 +322,15 @@ class CoderSetupWizardPageTest {
     @Test
     fun `a genuine CLI failure returns to token entry and allows a new sign-in`() = runTest {
         every { context.cs } returns backgroundScope
-        val step = ConnectStep(context, model, { model.goTo(WizardStep.TOKEN_REQUEST) }, onConnect)
+        val step = ConnectStep(context, model, { model.goTo(WizardStep.TokenRequest) }, onConnect)
         withMockCli { cli ->
             coEvery { cli.login("test-token") } throws IllegalStateException("Keychain is locked") andThen "Signed in"
             step.onVisible()
             runCurrent()
-            assertEquals(WizardStep.TOKEN_REQUEST, model.currentStep())
+            assertEquals(WizardStep.TokenRequest, model.currentStep())
             coVerify(exactly = 0) { onConnect.accept(any(), any()) }
 
-            model.goTo(WizardStep.CONNECT)
+            model.goTo(WizardStep.Connecting())
             step.onVisible()
             runCurrent()
 

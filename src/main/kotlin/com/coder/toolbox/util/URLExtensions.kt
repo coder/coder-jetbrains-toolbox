@@ -24,7 +24,9 @@ fun HttpUrl.origin(): String = newBuilder()
     .toString()
     .removeSuffix("/")
 
-fun URL.hasSameOrigin(other: URL?): Boolean = origin()?.let { it == other?.origin() } ?: false
+fun URL.hasSameOrigin(other: URL?): Boolean = toString().toHttpUrlOrNull()?.hasSameOrigin(other) == true
+
+fun HttpUrl.hasSameOrigin(other: URL?): Boolean = origin() == other?.origin()
 
 fun String.toBaseURL(): URL {
     val url = this.toURL()

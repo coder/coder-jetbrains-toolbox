@@ -95,7 +95,7 @@ open class CoderRestClient(
 
         val interceptors = buildList {
             if (context.settingsStore.requiresTokenAuth) {
-                add(Interceptors.tokenAuth(requireSessionToken()))
+                add(Interceptors.tokenAuth(requireSessionToken(), url))
             }
             add((Interceptors.userAgent(pluginVersion)))
             add(Interceptors.externalHeaders(context, url))

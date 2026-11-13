@@ -4,7 +4,10 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.getArch
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
+import com.coder.toolbox.util.hasSameOrigin
+import com.coder.toolbox.util.origin
 import okhttp3.Interceptor
+import java.net.ProtocolException
 import java.net.URL
 
 const val CODER_SESSION_TOKEN_HEADER_NAME = "Coder-Session-Token"
@@ -14,13 +17,46 @@ const val CODER_SESSION_TOKEN_HEADER_NAME = "Coder-Session-Token"
  */
 object Interceptors {
 
+    private const val MAX_REDIRECTS = 20
+
+    /**
+     * Follows redirects only for GET and HEAD requests and only within the original scheme, host, and port.
+     * HTTP defines these methods as read-only, and OkHttp sends them without a request body. Checking each
+     * target prevents forwarding deployment credentials to another origin. Other methods are never replayed.
+     *
+     * The cap of [MAX_REDIRECTS] matches OkHttp 4.12.1's limit for follow-up requests and bounds redirect loops.
+     * The initial request does not count. A further redirect after the twentieth fails before the next request is sent.
+     */
+    fun sameOriginRedirects(): Interceptor = Interceptor { chain ->
+        var request = chain.request()
+        val origin = request.url.origin()
+        var redirects = 0
+        var response = chain.proceed(request)
+        while (response.isRedirect) {
+            val location = response.header("Location") ?: break
+            val target = request.url.resolve(location)
+            if (target == null || target.origin() != origin || target.username.isNotEmpty() || target.password.isNotEmpty()) {
+                response.close()
+                throw ProtocolException("Refused a redirect outside the request origin or to an invalid URL.")
+            }
+            if (request.method != "GET" && request.method != "HEAD") break
+            response.close()
+            if (++redirects > MAX_REDIRECTS) throw ProtocolException("Too many redirects.")
+            request = request.newBuilder().url(target).build()
+            response = chain.proceed(request)
+        }
+        response
+    }
+
     /**
      * Creates a token authentication interceptor
      */
-    fun tokenAuth(token: String): Interceptor {
+    fun tokenAuth(token: String, deploymentUrl: URL): Interceptor {
         return Interceptor { chain ->
+            val request = chain.request()
+            if (!request.url.hasSameOrigin(deploymentUrl)) return@Interceptor chain.proceed(request)
             chain.proceed(
-                chain.request().newBuilder()
+                request.newBuilder()
                     .addHeader(CODER_SESSION_TOKEN_HEADER_NAME, token)
                     .build()
             )
@@ -47,6 +83,7 @@ object Interceptors {
         val settings = context.settingsStore.readOnly()
         return Interceptor { chain ->
             var request = chain.request()
+            if (!request.url.hasSameOrigin(url)) return@Interceptor chain.proceed(request)
             val headers = getHeaders(url, settings.headerCommand)
             if (headers.isNotEmpty()) {
                 val reqBuilder = request.newBuilder()
