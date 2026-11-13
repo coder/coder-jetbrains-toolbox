@@ -32,39 +32,26 @@ fun String.toBaseURL(): URL {
     return URI.create("${url.protocol}://${url.host}$port").toURL()
 }
 
-fun String.validateStrictWebUrl(): WebUrlValidationResult = try {
+/** Validate the supplied text before URL normalization can discard unsafe components. */
+fun String.validateStrictWebUrl(originOnly: Boolean = false): WebUrlValidationResult = try {
     val uri = URI(this)
-
+    val address = toHttpUrlOrNull()
     when {
-        uri.isOpaque -> Invalid(
-            "The URL \"$this\" is invalid because it is not in the standard format. " +
-                    "Please enter a full web address like \"https://example.com\""
-        )
-
-        !uri.isAbsolute -> Invalid(
-            "The URL \"$this\" is missing a scheme (like https://). " +
-                    "Please enter a full web address like \"https://example.com\""
-        )
-
-        uri.scheme?.lowercase() !in setOf("http", "https") ->
-            Invalid(
-                "The URL \"$this\" must start with http:// or https://, not \"${uri.scheme}\""
-            )
-
-        uri.authority.isNullOrBlank() ->
-            Invalid(
-                "The URL \"$this\" does not include a valid website name. " +
-                        "Please enter a full web address like \"https://example.com\""
-            )
-
+        address == null || uri.rawAuthority.isNullOrEmpty() || uri.isOpaque || address.port == 0 ->
+            Invalid("The deployment URL must have a valid HTTP(S) host and port.")
+        uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null ->
+            Invalid("The deployment URL cannot include credentials, a query, or a fragment.")
+        !SAFE_DEPLOYMENT_URL.matches(this) || uri.rawPath.split('/').any { it == "." || it == ".." } ->
+            Invalid("The deployment URL contains unsupported characters or path segments.")
+        originOnly && uri.rawPath.isNotEmpty() && uri.rawPath != "/" ->
+            Invalid("A workspace link must specify a deployment origin without a path.")
         else -> Valid
     }
-} catch (_: Exception) {
-    Invalid(
-        "The input \"$this\" is not a valid web address. " +
-                "Please enter a full web address like \"https://example.com\""
-    )
+} catch (_: java.net.URISyntaxException) {
+    Invalid("The deployment URL must have a valid HTTP(S) host and port.")
 }
+
+private val SAFE_DEPLOYMENT_URL = Regex("""[\p{L}\p{N}._~:/\[\]+,=\-]+""")
 
 fun URL.withPath(path: String): URL = URL(
     this.protocol,
@@ -79,17 +66,20 @@ fun URL.withPath(path: String): URL = URL(
  */
 fun URL.safeHost(): String = IDN.toASCII(this.host, IDN.ALLOW_UNASSIGNED)
 
-fun URI.toQueryParameters(): Map<String, String> = (this.query ?: "")
-    .split("&").filter {
-        it.isNotEmpty()
-    }.associate {
-        val parts = it.split("=", limit = 2)
-        if (parts.size == 2) {
-            parts[0] to URLDecoder.decode(parts[1], Charsets.UTF_8)
-        } else {
-            parts[0] to ""
-        }
+fun URI.toQueryParameters(): Map<String, String> = buildMap {
+    for (field in rawQuery.orEmpty().split('&')) {
+        if (field.isEmpty()) continue
+        val name = decodeQueryComponent(field.substringBefore('='))
+        val value = decodeQueryComponent(field.substringAfter('=', ""))
+        require(put(name, value) == null) { "A query parameter was supplied more than once." }
     }
+}
+
+private fun decodeQueryComponent(raw: String): String {
+    val decoded = URLDecoder.decode(raw, Charsets.UTF_8)
+    require('�' !in decoded) { "Invalid query parameter encoding." }
+    return decoded
+}
 
 sealed class WebUrlValidationResult {
     object Valid : WebUrlValidationResult()

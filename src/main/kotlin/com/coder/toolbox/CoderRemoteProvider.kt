@@ -508,9 +508,14 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         try {
+            require(uri.scheme.equals("jetbrains", ignoreCase = true) &&
+                    uri.rawAuthority.equals("gateway", ignoreCase = true) && uri.rawFragment == null &&
+                    uri.rawPath in setOf("/com.coder.toolbox", "/coder", "/com.coder.toolbox/auth")) {
+                "Unrecognized Toolbox link."
+            }
             val params = uri.toQueryParameters()
             when {
-                uri.toString().startsWith("jetbrains://gateway/com.coder.toolbox/auth") -> handleOAuthUri(params)
+                uri.rawPath == "/com.coder.toolbox/auth" -> handleOAuthUri(params)
                 // An empty query can indicate plugin installation.
                 params.isEmpty() ->
                     context.logger.logAndShowInfo("URI will not be handled", "No query parameters were provided")
@@ -522,8 +527,6 @@ class CoderRemoteProvider(
         } catch (ex: Exception) {
             val reason = (ex as? APIResponseException)?.reason?.takeIf { it.isNotBlank() }
             context.logger.logAndShowError("Error encountered while handling Coder URI", reason ?: ex.message.orEmpty())
-        } finally {
-            firstRun = false
         }
     }
 
@@ -587,6 +590,7 @@ class CoderRemoteProvider(
                 onConnect = onConnect,
                 onTokenRefreshed = ::onTokenRefreshed,
             )
+            firstRun = false
             router.navigate(wizard)
 
             context.envPageManager.showPluginEnvironmentsPage(false)
@@ -611,6 +615,7 @@ class CoderRemoteProvider(
         val activeClient = client?.takeIf { it.url.hasSameOrigin(deployment.url) }
         if (!confirmDeploymentSignIn(deployment, activeClient)) return
 
+        firstRun = false
         if (activeClient != null) {
             openLinkInActiveSession(params, activeClient, deployment.token)
         } else {
@@ -630,7 +635,7 @@ class CoderRemoteProvider(
             context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "Query parameter \"${URL}\" is missing from URI")
             return null
         }
-        val validationResult = deploymentURL.validateStrictWebUrl()
+        val validationResult = deploymentURL.validateStrictWebUrl(originOnly = true)
         if (validationResult is Invalid) {
             context.logger.logAndShowError(CAN_T_HANDLE_URI_TITLE, "\"$URL\" is invalid: ${validationResult.reason}")
             return null
@@ -638,6 +643,10 @@ class CoderRemoteProvider(
         // Workspace links select a deployment by scheme, host, and port.
         val origin = requireNotNull(deploymentURL.toHttpUrlOrNull()?.origin()) {
             "The deployment URL must have a valid HTTP(S) host and port."
+        }
+        val saved = context.secrets.savedDeploymentUrl(origin.toURL())
+        if (!saved.isNullOrEmpty() && saved.validateStrictWebUrl() !is Invalid && saved.toHttpUrlOrNull()?.origin() == origin) {
+            return saved.toURL()
         }
         return origin.toURL()
     }
@@ -718,6 +727,7 @@ class CoderRemoteProvider(
     }
 
     private fun autoSetupCredentials(url: URL): Credentials? {
+        if (url.toString().validateStrictWebUrl() is Invalid) return null
         if (context.settingsStore.requiresMTlsAuth) return Credentials.MTls
 
         val tokenCredentials = context.secrets.apiTokenFor(url)

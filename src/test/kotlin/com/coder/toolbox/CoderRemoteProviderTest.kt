@@ -708,10 +708,10 @@ class CoderRemoteProviderTest {
     }
 
     @CsvSource(
-        "restoring deployment, link target,                                          expected origin",
-        "$PRODUCTION_URL,      $STAGING_URL/,                                        $STAGING_URL",
-        "$STAGING_URL,         $PRODUCTION_URL/dashboard?view=recent#workspaces,      $PRODUCTION_URL",
-        "$PRODUCTION_URL,      $STAGING_URL:8443/dashboard,                           $STAGING_URL:8443",
+        "restoring deployment, link target,                    expected origin",
+        "$PRODUCTION_URL,      $STAGING_URL/,                  $STAGING_URL",
+        "$STAGING_URL,         https://CODER.example.com:443,  $PRODUCTION_URL",
+        "$PRODUCTION_URL,      $STAGING_URL:8443,              $STAGING_URL:8443",
         useHeadersInDisplayName = true,
     )
     @ParameterizedTest(name = "Cold-start link, {arguments}")
@@ -832,7 +832,6 @@ class CoderRemoteProviderTest {
         val targets = listOf(
             "https://coder.example.com",
             "https://CODER.example.com:443/",
-            "https://coder.example.com/different/path/",
         )
         for (target in targets) {
             provider.handleUri(workspaceLink(target))
@@ -897,7 +896,7 @@ class CoderRemoteProviderTest {
         coEvery { provider["userForToken"](url, "link-token") } returns user
         coEvery { provider["userForToken"](url, "saved-token") } returns user
 
-        provider.handleUri(workspaceLink("https://CODER.example.com:443/different/path"))
+        provider.handleUri(workspaceLink("https://CODER.example.com:443/"))
 
         val page = provider.getOverrideUiPage() as CoderSetupWizardPage
         assertEquals(WizardStep.CONNECT, page.model.currentStep())
@@ -1131,12 +1130,27 @@ class CoderRemoteProviderTest {
     }
 
     @Test
+    fun `an origin-only link preserves the saved deployment base path`() = runTest {
+        val origin = URI("https://coder.example.com").toURL()
+        val saved = "https://coder.example.com/team/"
+        every { mockContext.settingsStore.requiresMTlsAuth } returns true
+        every { mockContext.secrets.savedDeploymentUrl(origin) } returns saved
+        every { mockContext.secrets.isUrlTrusted(URI(saved).toURL()) } returns true
+
+        remoteProvider.handleUri(URI("jetbrains://gateway/coder?url=https://coder.example.com/"))
+
+        val page = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
+        assertEquals(saved, page.model.url.toString())
+        coVerify(exactly = 0) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `known certificate deployment reopens without a trust prompt`() = runTest {
         every { mockContext.settingsStore.requiresMTlsAuth } returns true
         every { mockContext.settingsStore.requiresTokenAuth } returns false
         every { mockContext.secrets.isUrlTrusted(URI("https://coder.example.com").toURL()) } returns true
 
-        remoteProvider.handleUri(URI("jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com/path"))
+        remoteProvider.handleUri(URI("jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com/"))
 
         val page = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
         assertEquals("https://coder.example.com", page.model.url.toString())
@@ -1296,7 +1310,7 @@ class CoderRemoteProviderTest {
         coEvery { mockUi.showYesNoPopup(any(), any(), any(), any()) } returns false
         val i18n = mockContext.i18n
 
-        remoteProvider.handleUri(workspaceLink("https://user:password@OTHER.example.com:8443/path"))
+        remoteProvider.handleUri(workspaceLink("https://OTHER.example.com:8443/"))
 
         verify {
             i18n.pnotr(match {
@@ -1314,6 +1328,42 @@ class CoderRemoteProviderTest {
         coVerify(exactly = 0) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
         verify(exactly = 0) { mockContext.popupPluginMainPage() }
         verify { underlyingLogger.error(match<String> { it.contains("valid HTTP(S) host and port") }) }
+    }
+
+    @ValueSource(strings = [
+        "jetbrains://gateway/coder?url=https://coder.example.com/team&token=private-value",
+        "jetbrains://gateway/com.coder.toolbox?token=private-value&%74oken=private-value",
+        "jetbrains://gateway/com.coder.toolbox/auth?state=a&state=b",
+        "jetbrains://gateway/com.coder.toolbox/auth-extra?code=private-value",
+        "jetbrains://gateway/com.coder.toolbox?url=https://user@host&token=private-value",
+    ])
+    @ParameterizedTest
+    fun `invalid workspace links and OAuth callbacks stop before sign-in`(link: String) = runTest {
+        remoteProvider.handleUri(URI(link))
+
+        verify { underlyingLogger.error(any<String>()) }
+        verify(exactly = 0) { underlyingLogger.error(match<String> { it.contains("private-value") }) }
+        coVerify(exactly = 0) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
+        verify(exactly = 0) { mockContext.secrets.apiTokenFor(any()) }
+        verify(exactly = 0) { mockContext.popupPluginMainPage() }
+    }
+
+    @Test
+    fun `rejecting a cold-start link preserves the saved deployment for session restore`() = runTest {
+        val savedUrl = URI(PRODUCTION_URL).toURL()
+        every { mockContext.cs } returns backgroundScope
+        every { mockContext.deploymentUrl } returns savedUrl
+        every { mockContext.settingsStore.requiresMTlsAuth } returns false
+        every { mockContext.settingsStore.requiresTokenAuth } returns true
+        every { mockContext.secrets.apiTokenFor(savedUrl) } returns "saved-token"
+
+        remoteProvider.handleUri(URI("jetbrains://gateway/com.coder.toolbox/unknown"))
+
+        assertNull(remoteProvider.getOverrideUiPage())
+        val wizard = setupWizard(remoteProvider)
+        assertEquals(savedUrl, wizard.model.url)
+        assertEquals("saved-token", wizard.model.token)
+        assertEquals(WizardStep.CONNECT, wizard.model.currentStep())
     }
 
     private fun workspaceLink(url: String): URI = URI(
