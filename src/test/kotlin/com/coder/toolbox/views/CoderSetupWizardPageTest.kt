@@ -119,11 +119,11 @@ class CoderSetupWizardPageTest {
         )
         val router = PageRouter()
         val failure = IllegalStateException("Keychain is locked")
+        every { context.secrets.storeOAuthFor(url.toString(), session) } throws failure
         val page = router.getOrCreate {
             CoderSetupWizardPage.connectStep(
                 context, mockk(), url, Credentials.OAuth(session),
                 onConnect = SuspendBiConsumer { _, _ -> router.finishSignIn(currentCoroutineContext().job) {} },
-                onTokenRefreshed = { _, _ -> throw failure },
             )
         }
         val pages = context.envPageManager

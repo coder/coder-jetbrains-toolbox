@@ -3,6 +3,7 @@ package com.coder.toolbox
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.cli.ensureCLI
 import com.coder.toolbox.diagnostics.CoderLogger
+import com.coder.toolbox.oauth.OAuth2Client
 import com.coder.toolbox.oauth.TokenEndpointAuthMethod
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.sdk.DataGen
@@ -207,6 +208,47 @@ class CoderRemoteProviderTest {
         remoteProvider.logout()
 
         coVerify(exactly = 0) { mockCli.logout() }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `restoring an OAuth session logs in to the CLI once and saves the rotated token`() = runTest {
+        val url = mockCli.deploymentURL
+        val stored = storedOAuthSession()
+        val session = stored.toSessionContext()
+        val refreshed = session.tokenResponse!!.copy(accessToken = "new-access-token", refreshToken = "new-refresh-token")
+        val secrets = mockContext.secrets
+        every { secrets.oauthSessionFor(url.toString()) } returns stored
+        every { mockContext.deploymentUrl } returns url
+        every { mockContext.cs } returns backgroundScope
+        every { mockContext.settingsStore } returns CoderSettingsStore(
+            pluginTestSettingsStore(), Environment(), underlyingLogger,
+        ).apply { updatePreferAuthViaOAuth2(true) }
+        every { mockContext.proxySettings.getProxy() } returns Proxy.NO_PROXY
+        every { mockContext.proxySettings.getProxyAuth() } returns null
+
+        mockkConstructor(OAuth2Client::class, CoderRestClient::class)
+        mockkStatic(::ensureCLI)
+        try {
+            coEvery { anyConstructed<OAuth2Client>().refreshToken(session) } returns refreshed
+            val user = DataGen.user()
+            coEvery { anyConstructed<CoderRestClient>().initializeSession() } returns user
+            every { anyConstructed<CoderRestClient>().me } returns user
+            every { anyConstructed<CoderRestClient>().buildVersion } returns "2.39.0"
+            coEvery { anyConstructed<CoderRestClient>().templates() } returns emptyList()
+            coEvery { anyConstructed<CoderRestClient>().workspaces(any()) } returns emptyList()
+            coEvery { ensureCLI(mockContext, url, "2.39.0", any()) } returns mockCli
+
+            assertNull(remoteProvider.getOverrideUiPage())
+            runCurrent()
+
+            coVerify(exactly = 1) { mockCli.login(refreshed.accessToken) }
+            verify(exactly = 1) { secrets.storeOAuthFor(url.toString(), session.copy(tokenResponse = refreshed)) }
+        } finally {
+            remoteProvider.close()
+            unmockkStatic(::ensureCLI)
+            unmockkConstructor(OAuth2Client::class, CoderRestClient::class)
+        }
     }
 
     @Test

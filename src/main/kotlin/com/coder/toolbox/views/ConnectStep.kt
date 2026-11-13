@@ -133,9 +133,9 @@ class ConnectStep(
             context.logger.info("Connection setup done, initializing the workspace poller...")
             onConnect.accept(client, cli)
             pendingClient = null // The provider now owns this client.
-            // Only invoke onTokenRefreshed when we actually have an OAuth session
+            // The CLI already uses this token. Save the OAuth session for the next sign-in.
             oauthSession?.let { session ->
-                onTokenRefreshed?.invoke(client.url, session)
+                context.secrets.storeOAuthFor(client.url.toString(), session)
             }
         } catch (ex: Exception) {
             reportConnectionFailure(currentCoroutineContext().job, url, ex)
