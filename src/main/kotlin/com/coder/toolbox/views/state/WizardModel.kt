@@ -18,6 +18,8 @@ class WizardModel {
     var url: URL? = null
     var token: String? = null
     var oauthSession: CoderOAuthSessionContext? = null
+    @Volatile
+    var connectionOrigin = ConnectionOrigin.FORM
 
     fun currentStep(): WizardStep = _step.value
 
@@ -43,7 +45,11 @@ class WizardModel {
 }
 
 enum class WizardStep {
-    URL_REQUEST, TOKEN_REQUEST, CONNECT, RESTORE_SESSION, SIGNED_IN;
+    URL_REQUEST, TOKEN_REQUEST, CONNECT, SIGNED_IN;
+}
+
+enum class ConnectionOrigin {
+    FORM, SUPPLIED_CREDENTIALS, SAVED_SESSION
 }
 
 sealed interface Credentials {
