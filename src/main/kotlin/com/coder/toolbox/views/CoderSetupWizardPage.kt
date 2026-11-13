@@ -48,14 +48,14 @@ class CoderSetupWizardPage private constructor(
     override val fields: MutableStateFlow<List<UiField>> = MutableStateFlow(emptyList())
     override val actionButtons: MutableStateFlow<List<RunnableActionDescription>> = MutableStateFlow(emptyList())
 
-    fun pageForDisplay(): CoderSetupWizardPage? = when (model.currentStep()) {
-        WizardStep.CONNECT -> if (model.connectionOrigin == ConnectionOrigin.SAVED_SESSION) null else this
-        WizardStep.SIGNED_IN -> null
+    fun pageForDisplay(): CoderSetupWizardPage? = when (val step = model.currentStep()) {
+        is WizardStep.Connecting -> if (step.origin == ConnectionOrigin.SAVED_SESSION) null else this
+        WizardStep.SignedIn -> null
         else -> this
     }
 
     internal fun startSavedSessionRestore() {
-        if (model.connectionOrigin == ConnectionOrigin.SAVED_SESSION) connectStep.startConnection()
+        if (model.currentStep() == WizardStep.Connecting(ConnectionOrigin.SAVED_SESSION)) connectStep.startConnection()
     }
 
     override fun beforeShow() {
@@ -77,7 +77,7 @@ class CoderSetupWizardPage private constructor(
 
     private fun displayStep(step: WizardStep) {
         when (step) {
-            WizardStep.URL_REQUEST -> {
+            WizardStep.UrlRequest -> {
                 fields.update {
                     listOf(deploymentUrlStep.panel)
                 }
@@ -90,7 +90,7 @@ class CoderSetupWizardPage private constructor(
                 deploymentUrlStep.onVisible()
             }
 
-            WizardStep.TOKEN_REQUEST -> {
+            WizardStep.TokenRequest -> {
                 fields.update {
                     listOf(tokenStep.panel)
                 }
@@ -104,7 +104,7 @@ class CoderSetupWizardPage private constructor(
                 tokenStep.onVisible()
             }
 
-            WizardStep.CONNECT -> {
+            is WizardStep.Connecting -> {
                 fields.update {
                     listOf(connectStep.panel)
                 }
@@ -119,7 +119,7 @@ class CoderSetupWizardPage private constructor(
 
             // Toolbox can bring this wizard back after Settings or during startup.
             // Ask for the workspace list when the completed wizard is actually shown.
-            WizardStep.SIGNED_IN -> context.envPageManager.showPluginEnvironmentsPage(false)
+            WizardStep.SignedIn -> context.envPageManager.showPluginEnvironmentsPage(false)
         }
     }
 
@@ -130,14 +130,14 @@ class CoderSetupWizardPage private constructor(
     }
 
     private fun navigateBackFromConnect() {
-        if (model.connectionOrigin == ConnectionOrigin.FORM) {
-            model.goTo(if (context.settingsStore.requiresTokenAuth) WizardStep.TOKEN_REQUEST else WizardStep.URL_REQUEST)
+        val phase = model.currentStep() as? WizardStep.Connecting ?: return
+        if (phase.origin == ConnectionOrigin.FORM) {
+            model.goTo(if (context.settingsStore.requiresTokenAuth) WizardStep.TokenRequest else WizardStep.UrlRequest)
             return
         }
-        val revealForm = model.connectionOrigin == ConnectionOrigin.SAVED_SESSION
+        val revealForm = phase.origin == ConnectionOrigin.SAVED_SESSION
         model.clearFormData()
         model.goToFirst()
-        model.connectionOrigin = ConnectionOrigin.FORM
         if (revealForm) {
             context.cs.launch {
                 if (!disposed) context.ui.showUiPageSuspending(this@CoderSetupWizardPage)
@@ -188,14 +188,13 @@ class CoderSetupWizardPage private constructor(
             onConnect = onConnect,
             onTokenRefreshed = onTokenRefreshed,
         ).apply {
-            model.connectionOrigin = origin
             model.url = url
             when (credentials) {
                 is Credentials.MTls -> Unit
                 is Credentials.Token -> model.token = credentials.value
                 is Credentials.OAuth -> model.oauthSession = credentials.session
             }
-            model.goTo(WizardStep.CONNECT)
+            model.goTo(WizardStep.Connecting(origin))
         }
     }
 }

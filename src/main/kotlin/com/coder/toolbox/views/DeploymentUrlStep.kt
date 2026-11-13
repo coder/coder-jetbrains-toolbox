@@ -12,8 +12,8 @@ import com.coder.toolbox.util.toURL
 import com.coder.toolbox.util.validateStrictWebUrl
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.WizardModel
-import com.coder.toolbox.views.state.WizardStep.CONNECT
-import com.coder.toolbox.views.state.WizardStep.TOKEN_REQUEST
+import com.coder.toolbox.views.state.WizardStep.Connecting
+import com.coder.toolbox.views.state.WizardStep.TokenRequest
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.CheckboxField
 import com.jetbrains.toolbox.api.ui.components.FieldModifier
@@ -90,7 +90,7 @@ class DeploymentUrlStep(
         }
 
         if (context.settingsStore.requiresMTlsAuth) {
-            model.goTo(CONNECT)
+            model.goTo(Connecting())
             return true
         }
         if (context.settingsStore.requiresTokenAuth && context.settingsStore.preferOAuth2IfAvailable) {
@@ -104,7 +104,7 @@ class DeploymentUrlStep(
             }
         }
         // if all else fails try the good old API token auth
-        model.goTo(TOKEN_REQUEST)
+        model.goTo(TokenRequest)
         return true
     }
 

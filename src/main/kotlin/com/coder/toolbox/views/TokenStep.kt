@@ -3,8 +3,8 @@ package com.coder.toolbox.views
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.withPath
 import com.coder.toolbox.views.state.WizardModel
-import com.coder.toolbox.views.state.WizardStep.CONNECT
-import com.coder.toolbox.views.state.WizardStep.URL_REQUEST
+import com.coder.toolbox.views.state.WizardStep.Connecting
+import com.coder.toolbox.views.state.WizardStep.UrlRequest
 import com.jetbrains.toolbox.api.localization.LocalizableString
 import com.jetbrains.toolbox.api.ui.components.FieldModifier
 import com.jetbrains.toolbox.api.ui.components.LinkField
@@ -58,12 +58,12 @@ class TokenStep(
         }
 
         model.token = token
-        model.goTo(CONNECT)
+        model.goTo(Connecting())
         return true
     }
 
     override fun onBack() {
-        model.goTo(URL_REQUEST)
+        model.goTo(UrlRequest)
     }
 
     private fun reportError(message: LocalizableString?) {
