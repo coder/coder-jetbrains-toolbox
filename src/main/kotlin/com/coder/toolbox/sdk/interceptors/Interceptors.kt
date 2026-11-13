@@ -16,7 +16,16 @@ const val CODER_SESSION_TOKEN_HEADER_NAME = "Coder-Session-Token"
  */
 object Interceptors {
 
-    /** Follow redirects for reads only. Credential-bearing POST bodies must never be replayed. */
+    private const val MAX_REDIRECTS = 20
+
+    /**
+     * Follows redirects only for GET and HEAD requests and only within the original scheme, host, and port.
+     * HTTP defines these methods as read-only, and OkHttp sends them without a request body. Checking each
+     * target prevents forwarding deployment credentials to another origin. Other methods are never replayed.
+     *
+     * The cap of [MAX_REDIRECTS] matches OkHttp 4.12.1's limit for follow-up requests and bounds redirect loops.
+     * The initial request does not count. A further redirect after the twentieth fails before the next request is sent.
+     */
     fun sameOriginRedirects(): Interceptor = Interceptor { chain ->
         var request = chain.request()
         val origin = request.url.origin()
@@ -31,7 +40,7 @@ object Interceptors {
             }
             if (request.method != "GET" && request.method != "HEAD") break
             response.close()
-            if (++redirects > 20) throw ProtocolException("Too many redirects.")
+            if (++redirects > MAX_REDIRECTS) throw ProtocolException("Too many redirects.")
             request = request.newBuilder().url(target).build()
             response = chain.proceed(request)
         }

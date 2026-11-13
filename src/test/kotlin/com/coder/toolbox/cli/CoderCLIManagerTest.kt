@@ -736,7 +736,7 @@ internal class CoderCLIManagerTest {
         assertFalse(loginArgs.contains("--global-config"))
         assertFalse(session.exists(), "Successful keyring login removes the plaintext token")
         val workspace = workspace("dev", agents = mapOf("main" to UUID.randomUUID().toString()))
-        val agent = workspace.latestBuild.resources.first { !it.agents.isNullOrEmpty() }.agents!!.first()
+        val agent = workspace.latestBuild.resources.firstNotNullOf { it.agents?.firstOrNull() }
         val address = WorkspaceAddress.from(workspace, agent)
         val config = cli.coderConfigPath.parent.resolve("ssh-config")
         cli.configSsh(setOf(address), sshConfigPath = config.toString())
@@ -1206,7 +1206,7 @@ internal class CoderCLIManagerTest {
         val sessionId = SessionId.generate()
         val sessionPrefix = "client_session_id=$sessionId"
         val workspace = workspace("foo", agents = mapOf("agent" to UUID.randomUUID().toString()))
-        val agent = workspace.latestBuild.resources.single().agents!!.single()
+        val agent = workspace.latestBuild.resources.single().agents.orEmpty().single()
 
         ccm.configSsh(
             setOf(WorkspaceAddress.from(workspace, agent)),
