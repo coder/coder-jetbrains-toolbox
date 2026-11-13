@@ -55,7 +55,7 @@ class PageRouterTest {
     fun `a workspace link replaces a wizard being built for auto-connect`() {
         val router = PageRouter()
         val automatic = mockk<CoderSetupWizardPage>(relaxed = true)
-        val fromLink = mockk<CoderSetupWizardPage>()
+        val fromLink = mockk<CoderSetupWizardPage>(relaxUnitFun = true)
         val building = CountDownLatch(1)
         val switching = CountDownLatch(1)
         val workers = Executors.newFixedThreadPool(2)
@@ -85,7 +85,7 @@ class PageRouterTest {
     @Test
     fun `a cancelled sign-in cannot publish a session or dismiss its replacement`() {
         val router = PageRouter()
-        val replacement = mockk<CoderSetupWizardPage>()
+        val replacement = mockk<CoderSetupWizardPage>(relaxUnitFun = true)
         router.navigate(replacement)
         val cancelledConnection = Job().apply { cancel() }
 

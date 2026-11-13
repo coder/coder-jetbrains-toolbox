@@ -11,6 +11,7 @@ import com.coder.toolbox.settings.Environment
 import com.coder.toolbox.store.CoderSettingsStore
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.Credentials
 import com.coder.toolbox.views.state.PageRouter
 import com.coder.toolbox.views.state.WizardModel
@@ -47,6 +48,7 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CoderSetupWizardPageTest {
@@ -60,17 +62,25 @@ class CoderSetupWizardPageTest {
     private val onConnect = mockk<SuspendBiConsumer<CoderRestClient, CoderCLIManager>>(relaxed = true)
 
     @Test
-    fun `saved credentials restore once behind the workspace list without page navigation`() = runTest {
+    fun `routing starts saved session restore and repeated page lookups do not log in again`() = runTest {
         every { context.cs } returns backgroundScope
         val page = CoderSetupWizardPage.connectStep(
-            context, mockk(relaxed = true), url, Credentials.Token("test-token"), onConnect, restoreSavedSession = true,
+            context, mockk(relaxed = true), url, Credentials.Token("test-token"), onConnect, origin = ConnectionOrigin.SAVED_SESSION,
         )
         val pages = context.envPageManager
         val ui = context.ui
 
         withMockCli { cli ->
-            assertNull(page.pageForDisplay())
-            assertNull(page.pageForDisplay())
+            // Toolbox can ask for the page repeatedly. A lookup alone must not start a job.
+            repeat(2) { assertNull(page.pageForDisplay()) }
+            runCurrent()
+            coVerify(exactly = 0) { cli.login(any()) }
+
+            val router = PageRouter()
+            router.getOrCreate { page }
+            runCurrent()
+            coVerify(exactly = 1) { cli.login("test-token") }
+            repeat(2) { assertNull(router.getOrCreate { error("The routed page should be reused") }.pageForDisplay()) }
             runCurrent()
 
             coVerify(exactly = 1) { cli.login("test-token") }
@@ -84,16 +94,19 @@ class CoderSetupWizardPageTest {
     fun `a failed restore presents the sign-in form and permits a new connection`() = runTest {
         every { context.cs } returns backgroundScope
         val page = CoderSetupWizardPage.connectStep(
-            context, mockk(relaxed = true), url, Credentials.Token("test-token"), onConnect, restoreSavedSession = true,
+            context, mockk(relaxed = true), url, Credentials.Token("test-token"), onConnect, origin = ConnectionOrigin.SAVED_SESSION,
         )
         val ui = context.ui
 
         withMockCli { cli ->
             coEvery { cli.login("test-token") } throws IllegalStateException("Keychain is locked") andThen "Signed in"
+            PageRouter().navigate(page)
             assertNull(page.pageForDisplay())
             runCurrent()
 
             assertEquals(WizardStep.URL_REQUEST, page.model.currentStep())
+            assertEquals(ConnectionOrigin.FORM, page.model.connectionOrigin)
+            assertSame(page, page.pageForDisplay())
             coVerify(exactly = 1) { ui.showUiPageSuspending(page) }
             coVerify(exactly = 0) { onConnect.accept(any(), any()) }
 
@@ -165,7 +178,9 @@ class CoderSetupWizardPageTest {
 
             assertEquals(WizardStep.CONNECT, page.model.currentStep())
             verify(exactly = 1) { anyConstructed<ConnectStep>().onVisible() }
+
             page.dispose()
+            // Toolbox delivers a late callback after the page observer has been disposed.
             page.beforeShow()
             runCurrent()
             verify(exactly = 1) { anyConstructed<ConnectStep>().onVisible() }
@@ -174,10 +189,10 @@ class CoderSetupWizardPageTest {
         }
     }
 
-    @EnumSource(WizardStep::class, names = ["CONNECT", "RESTORE_SESSION"])
-    @ParameterizedTest(name = "Repeated visibility during {0}")
-    fun `a second visibility callback during startup logs in to the CLI once`(connectionStep: WizardStep) = runTest {
-        model.goTo(connectionStep)
+    @EnumSource(ConnectionOrigin::class)
+    @ParameterizedTest(name = "Repeated visibility during sign-in from {0}")
+    fun `a second visibility callback during startup logs in to the CLI once`(origin: ConnectionOrigin) = runTest {
+        model.connectionOrigin = origin
         lateinit var step: ConnectStep
         val scheduler = StandardTestDispatcher(testScheduler)
         val dispatcher = object : CoroutineDispatcher() {
@@ -186,6 +201,7 @@ class CoderSetupWizardPageTest {
             override fun dispatch(context: CoroutineContext, block: Runnable) {
                 if (firstDispatch) {
                     firstDispatch = false
+                    // Deliver the second callback while the first is still dispatching its sign-in job.
                     step.onVisible()
                 }
                 scheduler.dispatch(context, block)
@@ -284,6 +300,8 @@ class CoderSetupWizardPageTest {
                 runCurrent()
                 step.onBack()
                 assertEquals(WizardStep.TOKEN_REQUEST, model.currentStep())
+
+                // Retry while the cancelled CLI login is still waiting for cleanup.
                 model.goTo(WizardStep.CONNECT)
                 step.onVisible()
                 runCurrent()
@@ -316,7 +334,9 @@ class CoderSetupWizardPageTest {
             model.goTo(WizardStep.CONNECT)
             step.onVisible()
             runCurrent()
+
             step.dispose()
+            // A late visibility callback after disposal must leave the login count at two.
             step.onVisible()
             runCurrent()
 

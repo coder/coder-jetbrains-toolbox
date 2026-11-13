@@ -729,7 +729,7 @@ class CoderRemoteProviderTest {
         assertNull(remoteProvider.getOverrideUiPage())
         val restoringWizard = setupWizard(remoteProvider)
         assertEquals(restoringDeployment, restoringWizard.model.url)
-        assertEquals(WizardStep.RESTORE_SESSION, restoringWizard.model.currentStep())
+        assertEquals(WizardStep.CONNECT, restoringWizard.model.currentStep())
         val displayedWizard = slot<CoderSetupWizardPage>()
         coEvery { mockUi.showUiPageSuspending(capture(displayedWizard)) } returns Unit
 
@@ -792,10 +792,10 @@ class CoderRemoteProviderTest {
                 displayedWizard.captured.beforeShow()
             }
             every { environmentsPage.showPluginEnvironmentsPage(false) } answers {
-                assertNull(remoteProvider.getOverrideUiPage())
+                assertNull(remoteProvider.getOverrideUiPage(), "Finishing link sign-in should show the workspace list")
                 displayedWizard.captured.afterHide()
             }
-            assertNull(remoteProvider.getOverrideUiPage())
+            assertNull(remoteProvider.getOverrideUiPage(), "The first lookup should restore the saved session in the background")
             runCurrent()
             assertTrue(restoreStarted.isCompleted)
             remoteProvider.handleUri(workspaceLink(linkedDeployment.toString()))
@@ -807,7 +807,7 @@ class CoderRemoteProviderTest {
             verify(exactly = 1) { secrets.storeApiTokenFor(linkedDeployment, "link-token") }
             coVerify(exactly = 1) { linkHandler.handle(match { it["workspace"] == "dev" }, linkedDeployment, any(), mockCli) }
             verify(exactly = 1) { environmentsPage.showPluginEnvironmentsPage(false) }
-            assertNull(remoteProvider.getOverrideUiPage())
+            assertNull(remoteProvider.getOverrideUiPage(), "The workspace list should still be visible after the handoff")
         } finally {
             remoteProvider.close()
             unmockkStatic(::ensureCLI)
@@ -1031,7 +1031,7 @@ class CoderRemoteProviderTest {
 
         assertNull(provider.getOverrideUiPage())
         assertSame(existingWizard, setupWizard(provider))
-        assertEquals(WizardStep.RESTORE_SESSION, existingWizard.model.currentStep())
+        assertEquals(WizardStep.CONNECT, existingWizard.model.currentStep())
         assertEquals("saved-token", existingWizard.model.token)
         verify(exactly = 0) { mockContext.popupPluginMainPage() }
     }
@@ -1375,7 +1375,7 @@ class CoderRemoteProviderTest {
         assertNull(remoteProvider.getOverrideUiPage())
         val model = setupWizard(remoteProvider).model
 
-        assertEquals(WizardStep.RESTORE_SESSION, model.currentStep())
+        assertEquals(WizardStep.CONNECT, model.currentStep())
         assertEquals(expectedApiToken, model.token)
         assertEquals(if (expectOAuth) requireNotNull(savedOAuthSession).toSessionContext() else null, model.oauthSession)
     }

@@ -8,9 +8,9 @@ import com.coder.toolbox.plugin.PluginManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.util.origin
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.WizardModel
 import com.coder.toolbox.views.state.WizardStep.CONNECT
-import com.coder.toolbox.views.state.WizardStep.RESTORE_SESSION
 import com.coder.toolbox.views.state.WizardStep.SIGNED_IN
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
@@ -54,13 +54,15 @@ class ConnectStep(
         RowGroup.RowField(errorField)
     )
 
-    override fun onVisible() {
+    override fun onVisible() = startConnection()
+
+    fun startConnection() {
         prepareConnection()?.start()
     }
 
     @Synchronized
     private fun prepareConnection(): Job? {
-        if (disposed || signInJob != null || model.currentStep() !in setOf(CONNECT, RESTORE_SESSION)) return null
+        if (disposed || signInJob != null || model.currentStep() != CONNECT) return null
 
         errorField.textState.update { context.i18n.pnotr("") }
         if (context.settingsStore.requiresTokenAuth && model.isNotReadyForAuth()) {
@@ -177,7 +179,7 @@ class ConnectStep(
 
     @Synchronized
     override fun onBack() {
-        if (disposed || model.currentStep() != CONNECT) return
+        if (disposed || model.currentStep() != CONNECT || model.connectionOrigin == ConnectionOrigin.SAVED_SESSION) return
         try {
             context.logger.info("Back button was pressed, cancelling in-progress connection setup...")
             signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))

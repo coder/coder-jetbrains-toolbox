@@ -4,6 +4,7 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.CoderCLIManager
 import com.coder.toolbox.sdk.CoderRestClient
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
+import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.Credentials
 import com.coder.toolbox.views.state.PendingOAuthConnection
 import com.coder.toolbox.views.state.WizardModel
@@ -20,7 +21,6 @@ import java.net.URL
 class CoderSetupWizardPage private constructor(
     private val context: CoderToolboxContext,
     private val settingsPage: CoderSettingsPage,
-    private var autoLogin: Boolean = false,
     onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
     onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null
 ) : CoderPage(MutableStateFlow(context.i18n.ptrl("Setting up Coder")), false) {
@@ -49,14 +49,13 @@ class CoderSetupWizardPage private constructor(
     override val actionButtons: MutableStateFlow<List<RunnableActionDescription>> = MutableStateFlow(emptyList())
 
     fun pageForDisplay(): CoderSetupWizardPage? = when (model.currentStep()) {
-        // Restore saved credentials behind Toolbox's loading workspace list.
-        // A successful restore then needs no page navigation during window startup.
-        WizardStep.RESTORE_SESSION -> {
-            connectStep.onVisible()
-            null
-        }
+        WizardStep.CONNECT -> if (model.connectionOrigin == ConnectionOrigin.SAVED_SESSION) null else this
         WizardStep.SIGNED_IN -> null
         else -> this
+    }
+
+    internal fun startSavedSessionRestore() {
+        if (model.connectionOrigin == ConnectionOrigin.SAVED_SESSION) connectStep.startConnection()
     }
 
     override fun beforeShow() {
@@ -105,7 +104,7 @@ class CoderSetupWizardPage private constructor(
                 tokenStep.onVisible()
             }
 
-            WizardStep.CONNECT, WizardStep.RESTORE_SESSION -> {
+            WizardStep.CONNECT -> {
                 fields.update {
                     listOf(connectStep.panel)
                 }
@@ -131,22 +130,18 @@ class CoderSetupWizardPage private constructor(
     }
 
     private fun navigateBackFromConnect() {
-        val restoringSession = model.currentStep() == WizardStep.RESTORE_SESSION
-        if (autoLogin) {
-            autoLogin = false
-            model.clearFormData()
-            model.goToFirst()
-            if (restoringSession) {
-                context.cs.launch {
-                    if (!disposed) context.ui.showUiPageSuspending(this@CoderSetupWizardPage)
-                }
-            }
+        if (model.connectionOrigin == ConnectionOrigin.FORM) {
+            model.goTo(if (context.settingsStore.requiresTokenAuth) WizardStep.TOKEN_REQUEST else WizardStep.URL_REQUEST)
             return
         }
-        if (context.settingsStore.requiresTokenAuth) {
-            model.goTo(WizardStep.TOKEN_REQUEST)
-        } else {
-            model.goToFirst()
+        val revealForm = model.connectionOrigin == ConnectionOrigin.SAVED_SESSION
+        model.clearFormData()
+        model.goToFirst()
+        model.connectionOrigin = ConnectionOrigin.FORM
+        if (revealForm) {
+            context.cs.launch {
+                if (!disposed) context.ui.showUiPageSuspending(this@CoderSetupWizardPage)
+            }
         }
     }
 
@@ -187,20 +182,20 @@ class CoderSetupWizardPage private constructor(
             credentials: Credentials,
             onConnect: SuspendBiConsumer<CoderRestClient, CoderCLIManager>,
             onTokenRefreshed: (suspend (url: URL, oauthSessionCtx: CoderOAuthSessionContext) -> Unit)? = null,
-            restoreSavedSession: Boolean = false,
+            origin: ConnectionOrigin = ConnectionOrigin.SUPPLIED_CREDENTIALS,
         ): CoderSetupWizardPage = CoderSetupWizardPage(
             context, settingsPage,
-            autoLogin = true,
             onConnect = onConnect,
             onTokenRefreshed = onTokenRefreshed,
         ).apply {
+            model.connectionOrigin = origin
             model.url = url
             when (credentials) {
                 is Credentials.MTls -> Unit
                 is Credentials.Token -> model.token = credentials.value
                 is Credentials.OAuth -> model.oauthSession = credentials.session
             }
-            model.goTo(if (restoreSavedSession) WizardStep.RESTORE_SESSION else WizardStep.CONNECT)
+            model.goTo(WizardStep.CONNECT)
         }
     }
 }
