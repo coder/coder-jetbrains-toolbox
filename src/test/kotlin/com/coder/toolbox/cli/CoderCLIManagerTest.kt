@@ -35,6 +35,7 @@ import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.util.sha1
+import com.coder.toolbox.util.sha256
 import com.coder.toolbox.util.toURL
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
@@ -50,6 +51,7 @@ import com.jetbrains.toolbox.api.ui.components.UiComponents
 import com.squareup.moshi.JsonEncodingException
 import com.sun.net.httpserver.HttpServer
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -562,6 +564,32 @@ internal class CoderCLIManagerTest {
 
         assertEquals(true, runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
         assertContains(ccm.localBinaryPath.toFile().readText(), "0.0.0")
+
+        srv.stop(0)
+    }
+
+    @Test
+    fun `download asks the user only when an unsigned CLI does not match a release digest`() {
+        val (srv, url) = mockServer()
+        val servedDigest = sha256(mkbinVersion("${url.port}.0.0").byteInputStream())
+
+        listOf(servedDigest to 0, sha256("another binary".byteInputStream()) to 1).forEach { (releaseDigest, prompts) ->
+            val settings = CoderSettingsStore(
+                pluginTestSettingsStore(DATA_DIRECTORY to tmpdir.resolve("release-digest-$prompts").toString()),
+                Environment(),
+                context.logger,
+            )
+            val ccm = CoderCLIManager(
+                context.copy(settingsStore = settings),
+                url,
+                releaseDigests = ReleaseDigests {
+                    mapOf("2.13.1" to mapOf(settings.defaultCliBinaryNameByOsAndArch to releaseDigest))
+                },
+            )
+
+            assertTrue(runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
+            coVerify(exactly = prompts) { ui.showYesNoPopup(any(), any(), any(), any()) }
+        }
 
         srv.stop(0)
     }

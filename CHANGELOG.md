@@ -24,6 +24,10 @@ It follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Verify the Coder CLI with Coder's new release signing key, using the `.v2.asc` signature next to the binary. The
+  previous key is no longer trusted. CLIs from deployments released before the new key are checked against the
+  SHA-256 digests of Coder's published releases, which ship with the plugin. Any other CLI asks for confirmation
+  before it runs, as a missing signature did.
 - Restrict HTTP redirects and deployment credentials to their original destination. Disable redirects in CLI v2.38.0 and newer.
 
 - Ask for confirmation before a workspace link opens an unknown Coder deployment. Links select the deployment by
