@@ -8,6 +8,10 @@ on:
 
 jobs:
   compliance-check:
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     runs-on: ubuntu-latest
     name: JetBrains Compliance Linting
     
