@@ -2,12 +2,15 @@ package com.coder.toolbox.cli.downloader
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.ResponseException
+import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.hasSameOrigin
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.sha1
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.ResponseBody
@@ -25,6 +28,7 @@ import java.nio.file.StandardOpenOption
 import java.util.zip.GZIPInputStream
 import kotlin.io.path.name
 import kotlin.io.path.notExists
+import kotlin.io.path.writeText
 
 private val SUPPORTED_BIN_MIME_TYPES = listOf(
     "application/octet-stream",
@@ -39,6 +43,8 @@ private val SUPPORTED_BIN_MIME_TYPES = listOf(
     "application/x-ms-dos-executable",
     "application/vnd.microsoft.portable-executable"
 )
+
+private const val BUNDLED_SIGNATURES = "/META-INF/release-signatures.json"
 
 /**
  * Handles the download steps of Coder CLI
@@ -251,4 +257,29 @@ class CoderDownloadService(
             showTextProgress
         )
     }
+
+    fun bundledSignature(buildVersion: String): DownloadResult {
+        val semVer = try {
+            SemVer.parse(buildVersion)
+        } catch (_: InvalidVersionException) {
+            return DownloadResult.NotFound
+        }
+        val source = javaClass.getResource(BUNDLED_SIGNATURES) ?: return DownloadResult.NotFound
+        val signature = bundledSignatures(source)["${semVer.major}.${semVer.minor}.${semVer.patch}"]
+            ?.get(context.settingsStore.defaultCliBinaryNameByOsAndArch)
+            ?: return DownloadResult.NotFound
+        val localSignaturePath = cliFinalDst.parent.resolve(context.settingsStore.defaultSignatureNameByOsAndArch)
+        context.logger.info("Using the signature bundled with the plugin for the $buildVersion release")
+        localSignaturePath.writeText(signature)
+        return DownloadResult.Downloaded(source, localSignaturePath)
+    }
+}
+
+internal fun bundledSignatures(source: URL): Map<String, Map<String, String>> {
+    val type = Types.newParameterizedType(
+        Map::class.java,
+        String::class.java,
+        Types.newParameterizedType(Map::class.java, String::class.java, String::class.java),
+    )
+    return Moshi.Builder().build().adapter<Map<String, Map<String, String>>>(type).fromJson(source.readText()).orEmpty()
 }

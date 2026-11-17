@@ -108,7 +108,6 @@ class CoderCLIManager(
     // The URL of the deployment this CLI is for.
     internal val deploymentURL: URL,
     private val currentOs: OS? = getOS(),
-    private val releaseDigests: ReleaseDigests = ReleaseDigests(),
 ) {
     internal val usesTokenAuth = context.settingsStore.requiresTokenAuth
 
@@ -179,19 +178,12 @@ class CoderCLIManager(
             }
 
             if (signatureResult.isNotDownloaded()) {
-                val isReleasedBinary = withContext(Dispatchers.IO) {
-                    releaseDigests.matches(
-                        cliResult.dst,
-                        buildVersion,
-                        context.settingsStore.defaultCliBinaryNameByOsAndArch,
-                    )
+                signatureResult = withContext(Dispatchers.IO) {
+                    downloader.bundledSignature(buildVersion)
                 }
-                if (isReleasedBinary) {
-                    downloader.commit()
-                    context.logger.info("${cliResult.source} matches the digest of the $buildVersion release")
-                    return true
-                }
+            }
 
+            if (signatureResult.isNotDownloaded()) {
                 if (context.settingsStore.fallbackOnCoderForSignatures == ALLOW) {
                     context.logger.info("Trying to download signature file from releases.coder.com")
                     signatureResult = withContext(Dispatchers.IO) {

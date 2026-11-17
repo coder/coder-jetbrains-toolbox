@@ -35,7 +35,6 @@ import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.getOS
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.util.sha1
-import com.coder.toolbox.util.sha256
 import com.coder.toolbox.util.toURL
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
 import com.jetbrains.toolbox.api.core.os.LocalDesktopManager
@@ -51,7 +50,6 @@ import com.jetbrains.toolbox.api.ui.components.UiComponents
 import com.squareup.moshi.JsonEncodingException
 import com.sun.net.httpserver.HttpServer
 import io.mockk.coEvery
-import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -569,26 +567,26 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
-    fun `download asks the user only when an unsigned CLI does not match a release digest`() {
+    fun `download checks an unsigned CLI against the signature bundled for its release`() {
         val (srv, url) = mockServer()
-        val servedDigest = sha256(mkbinVersion("${url.port}.0.0").byteInputStream())
 
-        listOf(servedDigest to 0, sha256("another binary".byteInputStream()) to 1).forEach { (releaseDigest, prompts) ->
-            val settings = CoderSettingsStore(
-                pluginTestSettingsStore(DATA_DIRECTORY to tmpdir.resolve("release-digest-$prompts").toString()),
-                Environment(),
-                context.logger,
-            )
+        listOf(
+            "2.29.0" to "Could not verify the authenticity",
+            VERSION_FOR_PROGRESS_REPORTING to "No signatures were found",
+        ).forEach { (buildVersion, warning) ->
             val ccm = CoderCLIManager(
-                context.copy(settingsStore = settings),
+                context.copy(
+                    settingsStore = CoderSettingsStore(
+                        pluginTestSettingsStore(DATA_DIRECTORY to tmpdir.resolve("bundled-signature-$buildVersion").toString()),
+                        Environment(),
+                        context.logger,
+                    )
+                ),
                 url,
-                releaseDigests = ReleaseDigests {
-                    mapOf("2.13.1" to mapOf(settings.defaultCliBinaryNameByOsAndArch to releaseDigest))
-                },
             )
 
-            assertTrue(runBlocking { ccm.download(VERSION_FOR_PROGRESS_REPORTING, noOpTextProgress) })
-            coVerify(exactly = prompts) { ui.showYesNoPopup(any(), any(), any(), any()) }
+            assertTrue(runBlocking { ccm.download(buildVersion, noOpTextProgress) })
+            verify(exactly = 1) { context.i18n.pnotr(match { it.startsWith(warning) }) }
         }
 
         srv.stop(0)
