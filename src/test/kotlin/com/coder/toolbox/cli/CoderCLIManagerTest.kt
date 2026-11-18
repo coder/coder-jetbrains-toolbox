@@ -569,25 +569,42 @@ internal class CoderCLIManagerTest {
     @Test
     fun `download checks an unsigned CLI against the signature bundled for its release`() {
         val (srv, url) = mockServer()
+        val ccm = CoderCLIManager(
+            context.copy(
+                settingsStore = CoderSettingsStore(
+                    pluginTestSettingsStore(DATA_DIRECTORY to tmpdir.resolve("bundled-signature").toString()),
+                    Environment(),
+                    context.logger,
+                )
+            ),
+            url,
+        )
 
-        listOf(
-            "v2.29.0+de07351b8" to "Could not verify the authenticity",
-            "v2.29.0-devel+de07351b8" to "No signatures were found",
-        ).forEach { (buildVersion, warning) ->
-            val ccm = CoderCLIManager(
-                context.copy(
-                    settingsStore = CoderSettingsStore(
-                        pluginTestSettingsStore(DATA_DIRECTORY to tmpdir.resolve("bundled-signature-$buildVersion").toString()),
-                        Environment(),
-                        context.logger,
-                    )
-                ),
-                url,
-            )
+        assertTrue(runBlocking { ccm.download("v2.29.0+de07351b8", noOpTextProgress) })
+        verify(exactly = 1) { context.i18n.pnotr(match { it.startsWith("Could not verify the authenticity") }) }
 
-            assertTrue(runBlocking { ccm.download(buildVersion, noOpTextProgress) })
-            verify(exactly = 1) { context.i18n.pnotr(match { it.startsWith(warning) }) }
-        }
+        srv.stop(0)
+    }
+
+    @Test
+    fun `download finds no signature for a prerelease CLI`() {
+        val (srv, url) = mockServer()
+        val ccm = CoderCLIManager(
+            context.copy(
+                settingsStore = CoderSettingsStore(
+                    pluginTestSettingsStore(
+                        DATA_DIRECTORY to tmpdir.resolve("prerelease-signature").toString(),
+                        FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
+                    ),
+                    Environment(),
+                    context.logger,
+                )
+            ),
+            url,
+        )
+
+        assertTrue(runBlocking { ccm.download("v2.29.0-devel+de07351b8", noOpTextProgress) })
+        verify(exactly = 1) { context.i18n.pnotr(match { it.startsWith("Could not fetch any signatures") }) }
 
         srv.stop(0)
     }

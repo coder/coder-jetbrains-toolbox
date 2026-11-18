@@ -3,7 +3,6 @@ package com.coder.toolbox.cli.downloader
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.util.OS
-import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.hasSameOrigin
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
@@ -44,6 +43,7 @@ private val SUPPORTED_BIN_MIME_TYPES = listOf(
 )
 
 private const val BUNDLED_SIGNATURES = "/META-INF/release-signatures.json"
+private val RELEASE_BUILD = Regex("""v?(\d+\.\d+\.\d+)(\+.*)?""")
 
 /**
  * Handles the download steps of Coder CLI
@@ -250,17 +250,21 @@ class CoderDownloadService(
         buildVersion: String,
         showTextProgress: (String) -> Unit
     ): DownloadResult {
-        val semVer = SemVer.parse(buildVersion)
+        val release = releaseVersion(buildVersion)
+        if (release == null) {
+            context.logger.info("No signature is published on releases.coder.com for $buildVersion")
+            return DownloadResult.NotFound
+        }
         return downloadSignature(
-            URI.create("https://releases.coder.com/coder-cli/${semVer.major}.${semVer.minor}.${semVer.patch}/").toURL(),
+            URI.create("https://releases.coder.com/coder-cli/$release/").toURL(),
             showTextProgress
         )
     }
 
     fun bundledSignature(buildVersion: String): DownloadResult {
         val source = javaClass.getResource(BUNDLED_SIGNATURES) ?: return DownloadResult.NotFound
-        val version = buildVersion.trimStart('v').substringBefore('+')
-        val signature = bundledSignatures(source)[version]
+        val signature = releaseVersion(buildVersion)
+            ?.let { bundledSignatures(source)[it] }
             ?.get(context.settingsStore.defaultCliBinaryNameByOsAndArch)
         if (signature == null) {
             context.logger.info("No signature is bundled with the plugin for $buildVersion")
@@ -272,6 +276,9 @@ class CoderDownloadService(
         return DownloadResult.Downloaded(source, localSignaturePath)
     }
 }
+
+private fun releaseVersion(buildVersion: String): String? =
+    RELEASE_BUILD.matchEntire(buildVersion)?.groupValues?.get(1)
 
 internal fun bundledSignatures(source: URL): Map<String, Map<String, String>> {
     val type = Types.newParameterizedType(
