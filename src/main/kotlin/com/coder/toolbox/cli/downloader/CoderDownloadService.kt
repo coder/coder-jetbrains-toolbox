@@ -2,7 +2,6 @@ package com.coder.toolbox.cli.downloader
 
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.ResponseException
-import com.coder.toolbox.util.InvalidVersionException
 import com.coder.toolbox.util.OS
 import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.hasSameOrigin
@@ -259,15 +258,14 @@ class CoderDownloadService(
     }
 
     fun bundledSignature(buildVersion: String): DownloadResult {
-        val semVer = try {
-            SemVer.parse(buildVersion)
-        } catch (_: InvalidVersionException) {
+        val source = javaClass.getResource(BUNDLED_SIGNATURES) ?: return DownloadResult.NotFound
+        val version = buildVersion.trimStart('v').substringBefore('+')
+        val signature = bundledSignatures(source)[version]
+            ?.get(context.settingsStore.defaultCliBinaryNameByOsAndArch)
+        if (signature == null) {
+            context.logger.info("No signature is bundled with the plugin for $buildVersion")
             return DownloadResult.NotFound
         }
-        val source = javaClass.getResource(BUNDLED_SIGNATURES) ?: return DownloadResult.NotFound
-        val signature = bundledSignatures(source)["${semVer.major}.${semVer.minor}.${semVer.patch}"]
-            ?.get(context.settingsStore.defaultCliBinaryNameByOsAndArch)
-            ?: return DownloadResult.NotFound
         val localSignaturePath = cliFinalDst.parent.resolve(context.settingsStore.defaultSignatureNameByOsAndArch)
         context.logger.info("Using the signature bundled with the plugin for the $buildVersion release")
         localSignaturePath.writeText(signature)

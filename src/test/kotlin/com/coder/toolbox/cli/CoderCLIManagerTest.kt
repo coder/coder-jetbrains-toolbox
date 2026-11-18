@@ -571,8 +571,8 @@ internal class CoderCLIManagerTest {
         val (srv, url) = mockServer()
 
         listOf(
-            "2.29.0" to "Could not verify the authenticity",
-            VERSION_FOR_PROGRESS_REPORTING to "No signatures were found",
+            "v2.29.0+de07351b8" to "Could not verify the authenticity",
+            "v2.29.0-devel+de07351b8" to "No signatures were found",
         ).forEach { (buildVersion, warning) ->
             val ccm = CoderCLIManager(
                 context.copy(
