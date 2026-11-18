@@ -863,11 +863,19 @@ process listings, shell history, or command-line audit logs.
 
 ## Releasing
 
-1. Check that the changelog lists all the important changes.
-2. Update the `gradle.properties` version.
-3. Publish the resulting draft release after validating it.
-4. Merge the resulting changelog PR.
-5. **Compliance Reminder for auto-approval**  
+Releases are cut from `main` by the `Release` workflow (`.github/workflows/release.yml`). One person starts a
+release and a member of `clients` other than that person approves it.
+
+1. Check that the changelog lists all the important changes under `Unreleased`.
+2. Update `version` in `gradle.properties` and merge that to `main`.
+3. Start the release: Actions > Release > Run workflow on `main`, with the version (for example `v0.9.7`, matching
+   `gradle.properties`) and the full SHA of the commit on `main` to release. Or:
+   `gh workflow run release.yml -f version=v0.9.7 -f commit=<sha>`.
+4. A member of `clients` other than you approves the `release-approval` deployment. The workflow then creates the
+   tag, publishes the plugin to the JetBrains Marketplace, creates the GitHub release and opens the changelog pull
+   request. Nobody can push release tags by hand.
+5. Merge the changelog pull request.
+6. **Compliance Reminder for auto-approval**  
    JetBrains enabled auto-approval for the plugin, so we need to ensure we continue to meet the following requirements:
     - do **not** use Kotlin experimental APIs.
     - do **not** add any lambdas, handlers, or class handles to Java runtime hooks.
