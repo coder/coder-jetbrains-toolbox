@@ -12,14 +12,12 @@ import java.net.URL
  * cycles without leaking across wizard recreations.
  */
 class WizardModel {
-    private val _step: MutableStateFlow<WizardStep> = MutableStateFlow(WizardStep.URL_REQUEST)
+    private val _step: MutableStateFlow<WizardStep> = MutableStateFlow(WizardStep.UrlRequest)
     val step: StateFlow<WizardStep> = _step
 
     var url: URL? = null
     var token: String? = null
     var oauthSession: CoderOAuthSessionContext? = null
-    @Volatile
-    var connectionOrigin = ConnectionOrigin.FORM
 
     fun currentStep(): WizardStep = _step.value
 
@@ -28,7 +26,7 @@ class WizardModel {
     }
 
     fun goToFirst() {
-        _step.value = WizardStep.URL_REQUEST
+        _step.value = WizardStep.UrlRequest
     }
 
     fun hasUrl(): Boolean = url != null
@@ -44,8 +42,11 @@ class WizardModel {
     }
 }
 
-enum class WizardStep {
-    URL_REQUEST, TOKEN_REQUEST, CONNECT, SIGNED_IN;
+sealed interface WizardStep {
+    data object UrlRequest : WizardStep
+    data object TokenRequest : WizardStep
+    data class Connecting(val origin: ConnectionOrigin = ConnectionOrigin.FORM) : WizardStep
+    data object SignedIn : WizardStep
 }
 
 enum class ConnectionOrigin {

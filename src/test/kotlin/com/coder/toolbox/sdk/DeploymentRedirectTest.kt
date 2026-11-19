@@ -54,4 +54,39 @@ class DeploymentRedirectTest {
             http.connectionPool.evictAll()
         }
     }
+
+    @Test
+    fun `HEAD follows twenty redirects and stops before the twenty-first target`() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val visits = AtomicInteger()
+        server.createContext("/") { exchange ->
+            visits.incrementAndGet()
+            val remaining = exchange.requestURI.path.removePrefix("/").toInt()
+            when {
+                exchange.requestMethod != "HEAD" -> exchange.sendResponseHeaders(405, -1)
+                remaining == 0 -> exchange.sendResponseHeaders(204, -1)
+                else -> {
+                    exchange.responseHeaders.add("Location", "/${remaining - 1}")
+                    exchange.sendResponseHeaders(302, -1)
+                }
+            }
+            exchange.close()
+        }
+        val client = OkHttpClient.Builder().followRedirects(false).addInterceptor(Interceptors.sameOriginRedirects()).build()
+        try {
+            server.start()
+            val origin = "http://127.0.0.1:${server.address.port}"
+            val request = Request.Builder().url("$origin/20").head().build()
+            client.newCall(request).execute().use { assertEquals(204, it.code) }
+            assertEquals(21, visits.get())
+
+            visits.set(0)
+            val tooMany = request.newBuilder().url("$origin/21").build()
+            assertFailsWith<ProtocolException> { client.newCall(tooMany).execute().close() }
+            assertEquals(21, visits.get())
+        } finally {
+            server.stop(0)
+            client.connectionPool.evictAll()
+        }
+    }
 }

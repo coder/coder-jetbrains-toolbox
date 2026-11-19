@@ -567,6 +567,49 @@ internal class CoderCLIManagerTest {
     }
 
     @Test
+    fun `download checks an unsigned CLI against the signature bundled for its release`() {
+        val (srv, url) = mockServer()
+        val ccm = CoderCLIManager(
+            context.copy(
+                settingsStore = CoderSettingsStore(
+                    pluginTestSettingsStore(DATA_DIRECTORY to tmpdir.resolve("bundled-signature").toString()),
+                    Environment(),
+                    context.logger,
+                )
+            ),
+            url,
+        )
+
+        assertTrue(runBlocking { ccm.download("v2.29.0+de07351b8", noOpTextProgress) })
+        verify(exactly = 1) { context.i18n.pnotr(match { it.startsWith("Could not verify the authenticity") }) }
+
+        srv.stop(0)
+    }
+
+    @Test
+    fun `download finds no signature for a prerelease CLI`() {
+        val (srv, url) = mockServer()
+        val ccm = CoderCLIManager(
+            context.copy(
+                settingsStore = CoderSettingsStore(
+                    pluginTestSettingsStore(
+                        DATA_DIRECTORY to tmpdir.resolve("prerelease-signature").toString(),
+                        FALLBACK_ON_CODER_FOR_SIGNATURES to "allow",
+                    ),
+                    Environment(),
+                    context.logger,
+                )
+            ),
+            url,
+        )
+
+        assertTrue(runBlocking { ccm.download("v2.29.0-devel+de07351b8", noOpTextProgress) })
+        verify(exactly = 1) { context.i18n.pnotr(match { it.startsWith("Could not fetch any signatures") }) }
+
+        srv.stop(0)
+    }
+
+    @Test
     fun testRunNonExistentBinary() {
         val ccm = CoderCLIManager(
             context.copy(
@@ -736,7 +779,7 @@ internal class CoderCLIManagerTest {
         assertFalse(loginArgs.contains("--global-config"))
         assertFalse(session.exists(), "Successful keyring login removes the plaintext token")
         val workspace = workspace("dev", agents = mapOf("main" to UUID.randomUUID().toString()))
-        val agent = workspace.latestBuild.resources.first { !it.agents.isNullOrEmpty() }.agents!!.first()
+        val agent = workspace.latestBuild.resources.firstNotNullOf { it.agents?.firstOrNull() }
         val address = WorkspaceAddress.from(workspace, agent)
         val config = cli.coderConfigPath.parent.resolve("ssh-config")
         cli.configSsh(setOf(address), sshConfigPath = config.toString())
@@ -1206,7 +1249,7 @@ internal class CoderCLIManagerTest {
         val sessionId = SessionId.generate()
         val sessionPrefix = "client_session_id=$sessionId"
         val workspace = workspace("foo", agents = mapOf("agent" to UUID.randomUUID().toString()))
-        val agent = workspace.latestBuild.resources.single().agents!!.single()
+        val agent = workspace.latestBuild.resources.single().agents.orEmpty().single()
 
         ccm.configSsh(
             setOf(WorkspaceAddress.from(workspace, agent)),

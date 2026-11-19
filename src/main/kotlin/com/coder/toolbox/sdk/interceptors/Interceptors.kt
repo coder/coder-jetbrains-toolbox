@@ -4,6 +4,7 @@ import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.util.getArch
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
+import com.coder.toolbox.util.hasSameOrigin
 import com.coder.toolbox.util.origin
 import okhttp3.Interceptor
 import java.net.ProtocolException
@@ -16,13 +17,22 @@ const val CODER_SESSION_TOKEN_HEADER_NAME = "Coder-Session-Token"
  */
 object Interceptors {
 
-    /** Follow redirects for reads only. Credential-bearing POST bodies must never be replayed. */
+    private const val MAX_REDIRECTS = 20
+
+    /**
+     * Follows redirects only for GET and HEAD requests and only within the original scheme, host, and port.
+     * HTTP defines these methods as read-only, and OkHttp sends them without a request body. Checking each
+     * target prevents forwarding deployment credentials to another origin. Other methods are never replayed.
+     *
+     * The cap of [MAX_REDIRECTS] matches OkHttp 4.12.1's limit for follow-up requests and bounds redirect loops.
+     * The initial request does not count. A further redirect after the twentieth fails before the next request is sent.
+     */
     fun sameOriginRedirects(): Interceptor = Interceptor { chain ->
         var request = chain.request()
         val origin = request.url.origin()
         var redirects = 0
         var response = chain.proceed(request)
-        while (response.code in setOf(300, 301, 302, 303, 307, 308)) {
+        while (response.isRedirect) {
             val location = response.header("Location") ?: break
             val target = request.url.resolve(location)
             if (target == null || target.origin() != origin || target.username.isNotEmpty() || target.password.isNotEmpty()) {
@@ -31,7 +41,7 @@ object Interceptors {
             }
             if (request.method != "GET" && request.method != "HEAD") break
             response.close()
-            if (++redirects > 20) throw ProtocolException("Too many redirects.")
+            if (++redirects > MAX_REDIRECTS) throw ProtocolException("Too many redirects.")
             request = request.newBuilder().url(target).build()
             response = chain.proceed(request)
         }
@@ -43,9 +53,10 @@ object Interceptors {
      */
     fun tokenAuth(token: String, deploymentUrl: URL): Interceptor {
         return Interceptor { chain ->
-            if (chain.request().url.origin() != deploymentUrl.origin()) return@Interceptor chain.proceed(chain.request())
+            val request = chain.request()
+            if (!request.url.hasSameOrigin(deploymentUrl)) return@Interceptor chain.proceed(request)
             chain.proceed(
-                chain.request().newBuilder()
+                request.newBuilder()
                     .addHeader(CODER_SESSION_TOKEN_HEADER_NAME, token)
                     .build()
             )
@@ -72,7 +83,7 @@ object Interceptors {
         val settings = context.settingsStore.readOnly()
         return Interceptor { chain ->
             var request = chain.request()
-            if (request.url.origin() != url.origin()) return@Interceptor chain.proceed(request)
+            if (!request.url.hasSameOrigin(url)) return@Interceptor chain.proceed(request)
             val headers = getHeaders(url, settings.headerCommand)
             if (headers.isNotEmpty()) {
                 val reqBuilder = request.newBuilder()

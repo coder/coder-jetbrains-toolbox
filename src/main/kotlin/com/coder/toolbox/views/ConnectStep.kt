@@ -10,8 +10,8 @@ import com.coder.toolbox.util.origin
 import com.coder.toolbox.views.state.CoderOAuthSessionContext
 import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.WizardModel
-import com.coder.toolbox.views.state.WizardStep.CONNECT
-import com.coder.toolbox.views.state.WizardStep.SIGNED_IN
+import com.coder.toolbox.views.state.WizardStep.Connecting
+import com.coder.toolbox.views.state.WizardStep.SignedIn
 import com.jetbrains.toolbox.api.ui.components.LabelField
 import com.jetbrains.toolbox.api.ui.components.RowGroup
 import com.jetbrains.toolbox.api.ui.components.ValidationErrorField
@@ -62,7 +62,7 @@ class ConnectStep(
 
     @Synchronized
     private fun prepareConnection(): Job? {
-        if (disposed || signInJob != null || model.currentStep() != CONNECT) return null
+        if (disposed || signInJob != null || model.currentStep() !is Connecting) return null
 
         errorField.textState.update { context.i18n.pnotr("") }
         if (context.settingsStore.requiresTokenAuth && model.isNotReadyForAuth()) {
@@ -160,7 +160,7 @@ class ConnectStep(
     private fun reportConnectionFailure(job: Job, url: URL, ex: Exception) {
         job.ensureActive()
         if (signInJob !== job) return
-        if (model.currentStep() == SIGNED_IN) {
+        if (model.currentStep() == SignedIn) {
             context.logger.warn(ex, "Failed to update session credentials after sign-in")
             return
         }
@@ -179,7 +179,8 @@ class ConnectStep(
 
     @Synchronized
     override fun onBack() {
-        if (disposed || model.currentStep() != CONNECT || model.connectionOrigin == ConnectionOrigin.SAVED_SESSION) return
+        val phase = model.currentStep() as? Connecting ?: return
+        if (disposed || phase.origin == ConnectionOrigin.SAVED_SESSION) return
         try {
             context.logger.info("Back button was pressed, cancelling in-progress connection setup...")
             signInJob?.cancel(CancellationException(USER_HIT_THE_BACK_BUTTON))

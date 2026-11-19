@@ -230,18 +230,23 @@ running potentially malicious or tampered binaries.
 1. **Binary Download**: When connecting to a Coder deployment, the plugin downloads the appropriate Coder CLI binary for
    the user's operating system and architecture from the deployment's `/bin/` endpoint.
 
-2. **Signature Download**: After downloading the binary, the plugin attempts to download the corresponding `.asc`
+2. **Signature Download**: After downloading the binary, the plugin attempts to download the corresponding `.v2.asc`
    signature file from the same location. The signature file is named according to the binary (e.g.,
-   `coder-linux-amd64.asc` for `coder-linux-amd64`).
+   `coder-linux-amd64.v2.asc` for `coder-linux-amd64`).
 
-3. **Fallback Signature Sources**: If the signature is not available from the deployment, the plugin can optionally fall
-   back to downloading signatures from `releases.coder.com`. This is controlled by the `fallbackOnCoderForSignatures`
+3. **Bundled Signatures**: Deployments released before Coder's current release signing key have no `.v2.asc` signature.
+   If the signature is not available from the deployment, the plugin uses the signature that ships with the plugin for
+   the release of the deployment's version. Coder made these signatures with the current key for the releases from
+   2.29.0 to 2.39.4. They are the signatures that `releases.coder.com` serves for those releases.
+
+4. **Fallback Signature Sources**: If the plugin has no signature for the release, it can optionally fall back to
+   downloading signatures from `releases.coder.com`. This is controlled by the `fallbackOnCoderForSignatures`
    setting.
 
-4. **GPG Verification**: The plugin uses the BouncyCastle library to verify the detached GPG signature against the
+5. **GPG Verification**: The plugin uses the BouncyCastle library to verify the detached GPG signature against the
    downloaded binary using Coder's trusted public key.
 
-5. **User Interaction**: If signature verification fails or signatures are unavailable, the plugin presents security
+6. **User Interaction**: If signature verification fails or signatures are unavailable, the plugin presents security
    warnings to users, allowing them to accept the risk and continue or abort the operation.
 
 ### Verification Process
@@ -266,6 +271,7 @@ Users can control signature verification behavior through plugin settings:
 ### Security Considerations
 
 - The plugin embeds Coder's trusted public key in the plugin resources
+- The plugin embeds the signatures that Coder made with that key for the releases published before it
 - Verification uses detached signatures, which are more secure than attached signatures
 - Users are warned about security risks when verification fails
 - The system gracefully handles cases where signatures are unavailable
@@ -863,11 +869,19 @@ process listings, shell history, or command-line audit logs.
 
 ## Releasing
 
-1. Check that the changelog lists all the important changes.
-2. Update the `gradle.properties` version.
-3. Publish the resulting draft release after validating it.
-4. Merge the resulting changelog PR.
-5. **Compliance Reminder for auto-approval**  
+Releases are cut from `main` by the `Release` workflow (`.github/workflows/release.yml`). One person starts a
+release and a member of `clients` other than that person approves it.
+
+1. Check that the changelog lists all the important changes under `Unreleased`.
+2. Update `version` in `gradle.properties` and merge that to `main`.
+3. Start the release: Actions > Release > Run workflow on `main`, with the version (for example `v0.9.7`, matching
+   `gradle.properties`) and the full SHA of the commit on `main` to release. Or:
+   `gh workflow run release.yml -f version=v0.9.7 -f commit=<sha>`.
+4. A member of `clients` other than you approves the `release-approval` deployment. The workflow then creates the
+   tag, publishes the plugin to the JetBrains Marketplace, creates the GitHub release and opens the changelog pull
+   request. Nobody can push release tags by hand.
+5. Merge the changelog pull request.
+6. **Compliance Reminder for auto-approval**  
    JetBrains enabled auto-approval for the plugin, so we need to ensure we continue to meet the following requirements:
     - do **not** use Kotlin experimental APIs.
     - do **not** add any lambdas, handlers, or class handles to Java runtime hooks.

@@ -57,6 +57,6 @@ class PageRouter {
         startSession()
         val wizard = activePage ?: return
         activePage = null
-        wizard.model.goTo(WizardStep.SIGNED_IN)
+        wizard.model.goTo(WizardStep.SignedIn)
     }
 }

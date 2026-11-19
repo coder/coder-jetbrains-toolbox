@@ -5,6 +5,12 @@ It follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- Reject ambiguous workspace links and OAuth callbacks. Workspace links must identify the deployment by its HTTP(S) origin.
+
+## [0.9.6] - 2026-11-19
+
 ### Changed
 
 - stream build status and provisioner output while updating, restarting, or stopping workspaces, falling back to
@@ -24,10 +30,9 @@ It follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
-- Reject ambiguous workspace links and OAuth callbacks. Workspace links must identify the deployment by its HTTP(S) origin.
-
+- Verify the Coder CLI with Coder's new release signing key. The previous key is no longer trusted. The plugin ships
+  with new signatures for Coder 2.29.0 to 2.39.4.
 - Restrict HTTP redirects and deployment credentials to their original destination. Disable redirects in CLI v2.38.0 and newer.
-
 - Ask for confirmation before a workspace link opens an unknown Coder deployment. Links select the deployment by
   scheme, host, and port. For a known deployment, Toolbox asks before using a link token if the accounts differ or
   it cannot verify the saved account.
@@ -467,7 +472,8 @@ It follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   update and delete actions and also quick shortcuts to templates, web terminal and dashboard.
 - support for light & dark themes
 
-[Unreleased]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.5...HEAD
+[Unreleased]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.6...HEAD
+[0.9.6]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/coder/coder-jetbrains-toolbox-plugin/compare/v0.9.2...v0.9.3
