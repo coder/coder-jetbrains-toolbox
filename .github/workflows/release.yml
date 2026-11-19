@@ -181,8 +181,9 @@ jobs:
           java-version: 21
 
       # The unreleased section of the changelog, before patchChangelog moves it under the version.
+      # Keep --quiet before the task so the wrapper also suppresses download output.
       - name: Collect the release notes
-        run: ./gradlew getChangelog --unreleased --no-header --console=plain -q > "$RUNNER_TEMP/RELEASE_NOTES.md"
+        run: ./gradlew --quiet getChangelog --unreleased --no-header --console=plain > "$RUNNER_TEMP/RELEASE_NOTES.md"
 
       - name: Patch the changelog
         run: ./gradlew patchChangelog
