@@ -24,6 +24,8 @@ It follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Verify the Coder CLI with Coder's new release signing key. The previous key is no longer trusted. The plugin ships
+  with new signatures for Coder 2.29.0 to 2.39.4.
 - Restrict HTTP redirects and deployment credentials to their original destination. Disable redirects in CLI v2.38.0 and newer.
 
 - Ask for confirmation before a workspace link opens an unknown Coder deployment. Links select the deployment by
