@@ -144,7 +144,7 @@ internal class URLExtensionsTest {
     @Test
     fun `malformed query encoding is rejected for all parameters`() {
         for (query in listOf("token=%FF", "folder=%FF", "%FF=value")) {
-            kotlin.test.assertFailsWith<IllegalArgumentException>(query) {
+            assertFailsWith<IllegalArgumentException>(query) {
                 URI("jetbrains://gateway/coder?$query").toQueryParameters()
             }
         }

@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
+import java.nio.file.Paths
 import kotlin.io.path.writeText
 
 class IdeFeedManagerOfflineTest {
@@ -276,7 +277,7 @@ class IdeFeedManagerOfflineTest {
     fun `given cache files are missing when loading ides then it handles gracefully and returns empty list`() =
         runTest {
             // Given: cache files are deleted/missing
-            val tempDir = java.nio.file.Paths.get(context.settingsStore.globalDataDirectory)
+            val tempDir = Paths.get(context.settingsStore.globalDataDirectory)
             tempDir.resolve("release.json").toFile().delete()
             tempDir.resolve("eap.json").toFile().delete()
 
@@ -305,7 +306,7 @@ class IdeFeedManagerOfflineTest {
                     IdeRelease("241.1", "2024.1", IdeType.RELEASE, "2024-01-01")
                 )
             )
-            val tempDir = java.nio.file.Paths.get(context.settingsStore.globalDataDirectory)
+            val tempDir = Paths.get(context.settingsStore.globalDataDirectory)
             writeProductsToFile(tempDir.resolve("release.json"), listOf(nullBuildProduct, validProduct))
             val newIdeFeedManager = IdeFeedManager(context, null) { true }
 
