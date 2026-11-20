@@ -25,9 +25,9 @@ import com.coder.toolbox.util.InMemoryPluginSecretStore
 import com.coder.toolbox.util.pluginTestSettingsStore
 import com.coder.toolbox.views.CoderSetupWizardPage
 import com.coder.toolbox.views.SuspendBiConsumer
+import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.PageRouter
 import com.coder.toolbox.views.state.StoredOAuthSession
-import com.coder.toolbox.views.state.ConnectionOrigin
 import com.coder.toolbox.views.state.WizardStep
 import com.coder.toolbox.views.state.toSessionContext
 import com.jetbrains.toolbox.api.core.diagnostics.Logger
@@ -229,7 +229,8 @@ class CoderRemoteProviderTest {
         val url = mockCli.deploymentURL
         val stored = storedOAuthSession()
         val session = stored.toSessionContext()
-        val refreshed = session.tokenResponse!!.copy(accessToken = "new-access-token", refreshToken = "new-refresh-token")
+        val refreshed =
+            session.tokenResponse!!.copy(accessToken = "new-access-token", refreshToken = "new-refresh-token")
         val secrets = mockContext.secrets
         every { secrets.oauthSessionFor(url.toString()) } returns stored
         every { mockContext.deploymentUrl } returns url
@@ -799,7 +800,10 @@ class CoderRemoteProviderTest {
                 assertNull(remoteProvider.getOverrideUiPage(), "Finishing link sign-in should show the workspace list")
                 displayedWizard.captured.afterHide()
             }
-            assertNull(remoteProvider.getOverrideUiPage(), "The first lookup should restore the saved session in the background")
+            assertNull(
+                remoteProvider.getOverrideUiPage(),
+                "The first lookup should restore the saved session in the background"
+            )
             runCurrent()
             assertTrue(restoreStarted.isCompleted)
             remoteProvider.handleUri(workspaceLink(linkedDeployment.toString()))
@@ -809,9 +813,19 @@ class CoderRemoteProviderTest {
             verify(exactly = 1) { anyConstructed<CoderRestClient>().close() }
             coVerify(exactly = 1) { mockCli.login("link-token") }
             verify(exactly = 1) { secrets.storeApiTokenFor(linkedDeployment, "link-token") }
-            coVerify(exactly = 1) { linkHandler.handle(match { it["workspace"] == "dev" }, linkedDeployment, any(), mockCli) }
+            coVerify(exactly = 1) {
+                linkHandler.handle(
+                    match { it["workspace"] == "dev" },
+                    linkedDeployment,
+                    any(),
+                    mockCli
+                )
+            }
             verify(exactly = 1) { environmentsPage.showPluginEnvironmentsPage(false) }
-            assertNull(remoteProvider.getOverrideUiPage(), "The workspace list should still be visible after the handoff")
+            assertNull(
+                remoteProvider.getOverrideUiPage(),
+                "The workspace list should still be visible after the handoff"
+            )
         } finally {
             remoteProvider.close()
             unmockkStatic(::ensureCLI)
@@ -1149,10 +1163,12 @@ class CoderRemoteProviderTest {
         coVerify(exactly = 0) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
     }
 
-    @ValueSource(strings = [
-        "jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com/",
-        "jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com/&%75rl=https://other.example.com",
-    ])
+    @ValueSource(
+        strings = [
+            "jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com/",
+            "jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com/&%75rl=https://other.example.com",
+        ]
+    )
     @ParameterizedTest
     fun `known certificate deployment reopens without a trust prompt`(link: String) = runTest {
         every { mockContext.settingsStore.requiresMTlsAuth } returns true
@@ -1238,27 +1254,28 @@ class CoderRemoteProviderTest {
 
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun `returning from Settings after sign-in opens the workspace list once even if beforeShow runs twice`() = runTest {
-        every { mockContext.cs } returns backgroundScope
-        coEvery { mockClient.workspaces(any()) } returns emptyList()
-        val wizard = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
-        val pages = mockContext.envPageManager
-        wizard.beforeShow()
-        runCurrent()
-        wizard.afterHide()
+    fun `returning from Settings after sign-in opens the workspace list once even if beforeShow runs twice`() =
+        runTest {
+            every { mockContext.cs } returns backgroundScope
+            coEvery { mockClient.workspaces(any()) } returns emptyList()
+            val wizard = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
+            val pages = mockContext.envPageManager
+            wizard.beforeShow()
+            runCurrent()
+            wizard.afterHide()
 
-        completeSignIn()
-        runCurrent()
-        verify(exactly = 0) { pages.showPluginEnvironmentsPage(false) }
-        assertNull(remoteProvider.getOverrideUiPage())
+            completeSignIn()
+            runCurrent()
+            verify(exactly = 0) { pages.showPluginEnvironmentsPage(false) }
+            assertNull(remoteProvider.getOverrideUiPage())
 
-        // Both visibility callbacks arrive before the step observer runs.
-        repeat(2) { wizard.beforeShow() }
-        runCurrent()
-        verify(exactly = 1) { pages.showPluginEnvironmentsPage(false) }
-        wizard.afterHide()
-        remoteProvider.close()
-    }
+            // Both visibility callbacks arrive before the step observer runs.
+            repeat(2) { wizard.beforeShow() }
+            runCurrent()
+            verify(exactly = 1) { pages.showPluginEnvironmentsPage(false) }
+            wizard.afterHide()
+            remoteProvider.close()
+        }
 
     @Suppress("UNCHECKED_CAST")
     private suspend fun completeSignIn() {
@@ -1339,11 +1356,13 @@ class CoderRemoteProviderTest {
         verify { underlyingLogger.error(match<String> { it.contains("valid HTTP(S) host and port") }) }
     }
 
-    @ValueSource(strings = [
-        "jetbrains://gateway/coder?url=https://coder.example.com/team&token=private-value",
-        "jetbrains://gateway/com.coder.toolbox/auth-extra?code=private-value",
-        "jetbrains://gateway/com.coder.toolbox?url=https://user@host&token=private-value",
-    ])
+    @ValueSource(
+        strings = [
+            "jetbrains://gateway/coder?url=https://coder.example.com/team&token=private-value",
+            "jetbrains://gateway/com.coder.toolbox/auth-extra?code=private-value",
+            "jetbrains://gateway/com.coder.toolbox?url=https://user@host&token=private-value",
+        ]
+    )
     @ParameterizedTest
     fun `invalid workspace links and OAuth callbacks stop before sign-in`(link: String) = runTest {
         remoteProvider.handleUri(URI(link))
@@ -1434,7 +1453,10 @@ class CoderRemoteProviderTest {
 
         assertEquals(WizardStep.Connecting(ConnectionOrigin.SAVED_SESSION), model.currentStep())
         assertEquals(expectedApiToken, model.token)
-        assertEquals(if (expectOAuth) requireNotNull(savedOAuthSession).toSessionContext() else null, model.oauthSession)
+        assertEquals(
+            if (expectOAuth) requireNotNull(savedOAuthSession).toSessionContext() else null,
+            model.oauthSession
+        )
     }
 
     @Test

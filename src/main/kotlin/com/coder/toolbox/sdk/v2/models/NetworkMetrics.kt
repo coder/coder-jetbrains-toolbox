@@ -48,7 +48,7 @@ data class NetworkMetrics(
             val totalLatency = requireNotNull(latency) { "Relay metrics require total latency." }
             val workspaceLatency = totalLatency - relayLatency
             "You ↔ $relay (${formatter.format(relayLatency)}ms) ↔ Workspace " +
-                "(${formatter.format(workspaceLatency)}ms). You are connected through a relay"
+                    "(${formatter.format(workspaceLatency)}ms). You are connected through a relay"
         }
     }
 }

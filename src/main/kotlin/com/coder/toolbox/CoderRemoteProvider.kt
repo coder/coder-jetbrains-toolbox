@@ -508,9 +508,11 @@ class CoderRemoteProvider(
      */
     override suspend fun handleUri(uri: URI) {
         try {
-            require(uri.scheme.equals("jetbrains", ignoreCase = true) &&
-                    uri.rawAuthority.equals("gateway", ignoreCase = true) && uri.rawFragment == null &&
-                    uri.rawPath in setOf("/com.coder.toolbox", "/coder", "/com.coder.toolbox/auth")) {
+            require(
+                uri.scheme.equals("jetbrains", ignoreCase = true) &&
+                        uri.rawAuthority.equals("gateway", ignoreCase = true) && uri.rawFragment == null &&
+                        uri.rawPath in setOf("/com.coder.toolbox", "/coder", "/com.coder.toolbox/auth")
+            ) {
                 "Unrecognized Toolbox link."
             }
             val params = uri.toQueryParameters()
@@ -645,7 +647,9 @@ class CoderRemoteProvider(
             "The deployment URL must have a valid HTTP(S) host and port."
         }
         val saved = context.secrets.readSavedDeploymentUrl(origin.toURL())
-        if (!saved.isNullOrEmpty() && saved.validateStrictWebUrl() !is Invalid && saved.toHttpUrlOrNull()?.origin() == origin) {
+        if (!saved.isNullOrEmpty() && saved.validateStrictWebUrl() !is Invalid && saved.toHttpUrlOrNull()
+                ?.origin() == origin
+        ) {
             return saved.toURL()
         }
         return origin.toURL()

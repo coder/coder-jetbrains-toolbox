@@ -43,12 +43,16 @@ fun String.validateStrictWebUrl(originOnly: Boolean = false): WebUrlValidationRe
     when {
         address == null || uri.rawAuthority.isNullOrEmpty() || uri.isOpaque || address.port == 0 ->
             Invalid("The deployment URL must have a valid HTTP(S) host and port.")
+
         uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null ->
             Invalid("The deployment URL cannot include credentials, a query, or a fragment.")
+
         !SAFE_DEPLOYMENT_URL.matches(this) || uri.rawPath.split('/').any { it == "." || it == ".." } ->
             Invalid("The deployment URL contains unsupported characters or path segments.")
+
         originOnly && uri.rawPath.isNotEmpty() && uri.rawPath != "/" ->
             Invalid("A workspace link must specify a deployment origin without a path.")
+
         else -> Valid
     }
 } catch (_: java.net.URISyntaxException) {

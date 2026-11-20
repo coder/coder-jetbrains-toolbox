@@ -109,9 +109,11 @@ internal class URLExtensionsTest {
 
     @Test
     fun `invalid deployment URLs are rejected without displaying their values`() {
-        for (url in listOf("/relative", "file:///tmp", "https:/missing", "https://host:99999",
+        for (url in listOf(
+            "/relative", "file:///tmp", "https:/missing", "https://host:99999",
             "https://user@host", "https://host/?private", "https://host/#private", "https://host/a%20b",
-            "https://host/dollar$", "https://host/../team", "https://host;other")) {
+            "https://host/dollar$", "https://host/../team", "https://host;other"
+        )) {
             val result = url.validateStrictWebUrl()
             assertTrue(result is WebUrlValidationResult.Invalid)
             assertFalse(result.reason.contains(url))
@@ -128,7 +130,12 @@ internal class URLExtensionsTest {
     fun `repeated query parameters keep their first value after decoding names`() {
         for (name in listOf("url", "token", "state", "code", "error", "folder", "tag")) {
             val encodedName = "%${name.first().code.toString(16)}${name.drop(1)}"
-            for (query in listOf("$name=a&$name=a", "$name=a&$name=b", "$name=a&$encodedName=b", "$encodedName=a&$name=b")) {
+            for (query in listOf(
+                "$name=a&$name=a",
+                "$name=a&$name=b",
+                "$name=a&$encodedName=b",
+                "$encodedName=a&$name=b"
+            )) {
                 assertEquals(mapOf(name to "a"), URI("jetbrains://gateway/coder?$query").toQueryParameters(), query)
             }
         }
