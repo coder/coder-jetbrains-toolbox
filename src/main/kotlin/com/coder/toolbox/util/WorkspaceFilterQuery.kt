@@ -33,10 +33,14 @@ fun String.parseFilterQuery(): Map<String, String> {
  */
 fun Map<String, String?>.stringifyFilterQuery(): String =
     entries
-        .filter { !it.value.isNullOrBlank() }
-        .joinToString(" ") { (key, value) ->
-            if (value!!.contains(" ")) "$key:\"$value\"" else "$key:$value"
+        .mapNotNull { (key, value) ->
+            when {
+                value.isNullOrBlank() -> null
+                value.contains(" ") -> "$key:\"$value\""
+                else -> "$key:$value"
+            }
         }
+        .joinToString(" ")
 
 /**
  * Returns a copy of this query with [key] set to [value], preserving the other terms and their

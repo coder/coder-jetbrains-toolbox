@@ -33,12 +33,12 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import java.net.URI
 import java.util.UUID
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.fail
 
 class CoderProtocolHandlerTest {
@@ -182,7 +182,7 @@ class CoderProtocolHandlerTest {
 
         runBlocking {
             testCases.forEach { testCase ->
-                kotlin.test.assertEquals(
+                assertEquals(
                     testCase.expectedAgentId,
                     handler.getMatchingAgent(testCase.params, ws)?.id,
                     "Failed: ${testCase.description}"
@@ -221,7 +221,7 @@ class CoderProtocolHandlerTest {
 
         runBlocking {
             testCases.forEach { testCase ->
-                kotlin.test.assertNull(
+                assertNull(
                     handler.getMatchingAgent(testCase.params, ws)?.id,
                     "Failed: ${testCase.description}"
                 )
@@ -253,7 +253,7 @@ class CoderProtocolHandlerTest {
 
         runBlocking {
             testCases.forEach { testCase ->
-                kotlin.test.assertEquals(
+                assertEquals(
                     testCase.expectedAgentId,
                     handler.getMatchingAgent(testCase.params, ws)?.id,
                     "Failed: ${testCase.description}"
@@ -272,7 +272,7 @@ class CoderProtocolHandlerTest {
         )
 
         runBlocking {
-            kotlin.test.assertNull(
+            assertNull(
                 handler.getMatchingAgent(testCase.params, ws),
                 "Failed: ${testCase.description}"
             )
@@ -304,7 +304,7 @@ class CoderProtocolHandlerTest {
 
         runBlocking {
             testCases.forEach { testCase ->
-                kotlin.test.assertNull(
+                assertNull(
                     handler.getMatchingAgent(testCase.params, ws),
                     "Failed: ${testCase.description}"
                 )

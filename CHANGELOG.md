@@ -5,6 +5,14 @@ It follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- Validate workspace link routes and deployment URLs before connecting, and validate saved URLs before restoring credentials. Workspace links must identify the deployment by its HTTP(S) origin.
+
+### Fixed
+
+- Split query fields before decoding so encoded separators remain part of their values, and decode each field only once. Repeated parameters use the first value.
+
 ## [0.9.6] - 2026-11-19
 
 ### Changed

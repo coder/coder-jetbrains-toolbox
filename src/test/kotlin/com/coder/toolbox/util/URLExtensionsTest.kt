@@ -98,89 +98,63 @@ internal class URLExtensionsTest {
     }
 
     @Test
-    fun `valid https URL with path and query should return Valid`() {
-        val result = "https://coder.com/bin/coder-linux-amd64?query=1".validateStrictWebUrl()
-        assertEquals(WebUrlValidationResult.Valid, result)
+    fun `manual setup accepts base paths and links require an origin`() {
+        val url = "https://coder.example.com/team/"
+        assertEquals(WebUrlValidationResult.Valid, url.validateStrictWebUrl())
+        assertTrue(url.validateStrictWebUrl(originOnly = true) is WebUrlValidationResult.Invalid)
+        for (origin in listOf("http://localhost:3000", "https://[::1]:8443/", "https://ほげ.example/")) {
+            assertEquals(WebUrlValidationResult.Valid, origin.validateStrictWebUrl(originOnly = true))
+        }
     }
 
     @Test
-    fun `relative URL should return Invalid with appropriate message`() {
-        val url = "/bin/coder-linux-amd64"
-        val result = url.validateStrictWebUrl()
-        assertEquals(
-            WebUrlValidationResult.Invalid("The URL \"/bin/coder-linux-amd64\" is missing a scheme (like https://). Please enter a full web address like \"https://example.com\""),
-            result
-        )
+    fun `invalid deployment URLs are rejected without displaying their values`() {
+        for (url in listOf(
+            "/relative", "file:///tmp", "https:/missing", "https:coder.example.com", "https://host:99999",
+            "https://user@host", "https://host/?private", "https://host/#private", "https://host/a%20b",
+            "https://host/dollar$", "https://host/../team", "https://host;other"
+        )) {
+            val result = url.validateStrictWebUrl()
+            assertTrue(result is WebUrlValidationResult.Invalid)
+            assertFalse(result.reason.contains(url))
+        }
     }
 
     @Test
-    fun `opaque URI like mailto should return Invalid`() {
-        val url = "mailto:user@coder.com"
-        val result = url.validateStrictWebUrl()
-        assertEquals(
-            WebUrlValidationResult.Invalid("The URL \"mailto:user@coder.com\" is invalid because it is not in the standard format. Please enter a full web address like \"https://example.com\""),
-            result
-        )
+    fun `query components are split before decoding and decoded exactly once`() {
+        val params = URI("jetbrains://gateway/coder?folder=a%26b%3Dc%2B%252F&owner=a+b").toQueryParameters()
+        assertEquals(mapOf("folder" to "a&b=c+%2F", "owner" to "a b"), params)
     }
 
     @Test
-    fun `unsupported scheme like ftp should return Invalid`() {
-        val url = "ftp://coder.com"
-        val result = url.validateStrictWebUrl()
-        assertEquals(
-            WebUrlValidationResult.Invalid("The URL \"ftp://coder.com\" must start with http:// or https://, not \"ftp\""),
-            result
-        )
+    fun `repeated query parameters keep their first value after decoding names`() {
+        for (name in listOf("url", "token", "state", "code", "error", "folder", "tag")) {
+            val encodedName = "%${name.first().code.toString(16)}${name.drop(1)}"
+            for (query in listOf(
+                "$name=a&$name=a",
+                "$name=a&$name=b",
+                "$name=a&$encodedName=b",
+                "$encodedName=a&$name=b"
+            )) {
+                assertEquals(mapOf(name to "a"), URI("jetbrains://gateway/coder?$query").toQueryParameters(), query)
+            }
+        }
     }
 
     @Test
-    fun `http URL with missing authority should return Invalid`() {
-        val url = "http:///bin/coder-linux-amd64"
-        val result = url.validateStrictWebUrl()
-        assertEquals(
-            WebUrlValidationResult.Invalid("The URL \"http:///bin/coder-linux-amd64\" does not include a valid website name. Please enter a full web address like \"https://example.com\""),
-            result
-        )
+    fun `repeated query parameters preserve an empty first value`() {
+        for (query in listOf("token=&token=later", "token&%74oken=later")) {
+            assertEquals(mapOf("token" to ""), URI("jetbrains://gateway/coder?$query").toQueryParameters(), query)
+        }
     }
 
     @Test
-    fun `malformed URI should return Invalid with parsing error message`() {
-        val url = "http://[invalid-uri]"
-        val result = url.validateStrictWebUrl()
-        assertEquals(
-            WebUrlValidationResult.Invalid("The input \"http://[invalid-uri]\" is not a valid web address. Please enter a full web address like \"https://example.com\""),
-            result
-        )
-    }
-
-    @Test
-    fun `URI without colon should return Invalid as URI is not absolute`() {
-        val url = "http//coder.com"
-        val result = url.validateStrictWebUrl()
-        assertEquals(
-            WebUrlValidationResult.Invalid("The URL \"http//coder.com\" is missing a scheme (like https://). Please enter a full web address like \"https://example.com\""),
-            result
-        )
-    }
-
-    @Test
-    fun `URI without double forward slashes should return Invalid because the URI is not hierarchical`() {
-        val url = "http:coder.com"
-        val result = url.validateStrictWebUrl()
-        assertEquals(
-            WebUrlValidationResult.Invalid("The URL \"http:coder.com\" is invalid because it is not in the standard format. Please enter a full web address like \"https://example.com\""),
-            result
-        )
-    }
-
-    @Test
-    fun `URI without a single forward slash should return Invalid because the URI does not have a hostname`() {
-        val url = "https:/coder.com"
-        val result = url.validateStrictWebUrl()
-        assertEquals(
-            WebUrlValidationResult.Invalid("The URL \"https:/coder.com\" does not include a valid website name. Please enter a full web address like \"https://example.com\""),
-            result
-        )
+    fun `malformed query encoding is rejected for all parameters`() {
+        for (query in listOf("token=%FF", "folder=%FF", "%FF=value")) {
+            assertFailsWith<IllegalArgumentException>(query) {
+                URI("jetbrains://gateway/coder?$query").toQueryParameters()
+            }
+        }
     }
 
     @Test

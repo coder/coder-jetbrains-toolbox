@@ -179,7 +179,7 @@ internal class CoderCLIManagerTest {
     @Test
     @EnabledOnOs(LINUX, MAC)
     fun `support bundle scopes deployment workspace and optional agent without shell interpolation`() = runBlocking {
-        val root = java.nio.file.Files.createTempDirectory("coder bundle test")
+        val root = Files.createTempDirectory("coder bundle test")
         val binary = root.resolve("coder")
         binary.toFile().writeText(
             """#!/bin/sh
@@ -488,7 +488,10 @@ internal class CoderCLIManagerTest {
     @Test
     fun testDownloadRealCLI() {
         val url = System.getenv("CODER_TOOLBOX_TEST_DEPLOYMENT")
-        assumeTrue(!url.isNullOrBlank() && url != "mock", "Set a deployment that serves its CLI without a cross-origin redirect.")
+        assumeTrue(
+            !url.isNullOrBlank() && url != "mock",
+            "Set a deployment that serves its CLI without a cross-origin redirect."
+        )
 
         val ccm = CoderCLIManager(
             context.copy(

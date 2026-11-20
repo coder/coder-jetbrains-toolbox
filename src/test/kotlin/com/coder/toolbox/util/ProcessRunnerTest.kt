@@ -132,7 +132,7 @@ internal class ProcessRunnerTest {
     @Test
     @IgnoreOnWindows
     fun `runProcess terminates the process on timeout`() {
-        val pidFile = java.nio.file.Files.createTempFile("coder-process-timeout", ".pid")
+        val pidFile = Files.createTempFile("coder-process-timeout", ".pid")
         try {
             assertFailsWith<ProcessTimeoutException> {
                 runProcess(
@@ -143,7 +143,7 @@ internal class ProcessRunnerTest {
             val pid = pidFile.toFile().readText().trim().toLong()
             assertFalse(ProcessHandle.of(pid).map { it.isAlive }.orElse(false))
         } finally {
-            java.nio.file.Files.deleteIfExists(pidFile)
+            Files.deleteIfExists(pidFile)
         }
     }
 
