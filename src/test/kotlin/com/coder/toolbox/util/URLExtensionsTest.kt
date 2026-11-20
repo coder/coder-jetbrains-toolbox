@@ -110,7 +110,7 @@ internal class URLExtensionsTest {
     @Test
     fun `invalid deployment URLs are rejected without displaying their values`() {
         for (url in listOf(
-            "/relative", "file:///tmp", "https:/missing", "https://host:99999",
+            "/relative", "file:///tmp", "https:/missing", "https:coder.example.com", "https://host:99999",
             "https://user@host", "https://host/?private", "https://host/#private", "https://host/a%20b",
             "https://host/dollar$", "https://host/../team", "https://host;other"
         )) {
