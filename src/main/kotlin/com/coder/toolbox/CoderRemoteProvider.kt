@@ -644,7 +644,7 @@ class CoderRemoteProvider(
         val origin = requireNotNull(deploymentURL.toHttpUrlOrNull()?.origin()) {
             "The deployment URL must have a valid HTTP(S) host and port."
         }
-        val saved = context.secrets.savedDeploymentUrl(origin.toURL())
+        val saved = context.secrets.readSavedDeploymentUrl(origin.toURL())
         if (!saved.isNullOrEmpty() && saved.validateStrictWebUrl() !is Invalid && saved.toHttpUrlOrNull()?.origin() == origin) {
             return saved.toURL()
         }

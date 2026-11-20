@@ -332,19 +332,23 @@ class ReloadableSSLSocketFactory(
     private var delegate: SSLSocketFactory = loadSocketFactory()
 
     private fun loadSocketFactory(): SSLSocketFactory {
-        if (!settings.certPath.isNullOrBlank() && !settings.keyPath.isNullOrBlank()) {
-            lastCertHash = sha1(FileInputStream(expand(settings.certPath!!)))
-            lastKeyHash = sha1(FileInputStream(expand(settings.keyPath!!)))
+        val certPath = settings.certPath
+        val keyPath = settings.keyPath
+        if (!certPath.isNullOrBlank() && !keyPath.isNullOrBlank()) {
+            lastCertHash = sha1(FileInputStream(expand(certPath)))
+            lastKeyHash = sha1(FileInputStream(expand(keyPath)))
         }
         return coderSocketFactory(settings)
     }
 
     fun reload(): Boolean {
-        if (settings.certPath.isNullOrBlank() || settings.keyPath.isNullOrBlank()) {
+        val certPath = settings.certPath
+        val keyPath = settings.keyPath
+        if (certPath.isNullOrBlank() || keyPath.isNullOrBlank()) {
             return false
         }
-        val newCertHash = sha1(FileInputStream(expand(settings.certPath!!)))
-        val newKeyHash = sha1(FileInputStream(expand(settings.keyPath!!)))
+        val newCertHash = sha1(FileInputStream(expand(certPath)))
+        val newKeyHash = sha1(FileInputStream(expand(keyPath)))
         if (lastCertHash != newCertHash || lastKeyHash != newKeyHash) {
             delegate = loadSocketFactory()
             return true

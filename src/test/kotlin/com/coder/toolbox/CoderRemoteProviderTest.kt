@@ -1104,6 +1104,7 @@ class CoderRemoteProviderTest {
     @CsvSource(
         "true,  jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com",
         "false, jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com&token=",
+        "false, jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com&token=&token=later",
         "false, jetbrains://gateway/com.coder.toolbox?url=https://other.example.com&token=%20",
     )
     @ParameterizedTest(name = "Reject {1} when connected={0}")
@@ -1138,7 +1139,7 @@ class CoderRemoteProviderTest {
         val origin = URI("https://coder.example.com").toURL()
         val saved = "https://coder.example.com/team/"
         every { mockContext.settingsStore.requiresMTlsAuth } returns true
-        every { mockContext.secrets.savedDeploymentUrl(origin) } returns saved
+        every { mockContext.secrets.readSavedDeploymentUrl(origin) } returns saved
         every { mockContext.secrets.isUrlTrusted(URI(saved).toURL()) } returns true
 
         remoteProvider.handleUri(URI("jetbrains://gateway/coder?url=https://coder.example.com/"))
@@ -1148,13 +1149,17 @@ class CoderRemoteProviderTest {
         coVerify(exactly = 0) { mockUi.showYesNoPopup(any(), any(), any(), any()) }
     }
 
-    @Test
-    fun `known certificate deployment reopens without a trust prompt`() = runTest {
+    @ValueSource(strings = [
+        "jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com/",
+        "jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com/&%75rl=https://other.example.com",
+    ])
+    @ParameterizedTest
+    fun `known certificate deployment reopens without a trust prompt`(link: String) = runTest {
         every { mockContext.settingsStore.requiresMTlsAuth } returns true
         every { mockContext.settingsStore.requiresTokenAuth } returns false
         every { mockContext.secrets.isUrlTrusted(URI("https://coder.example.com").toURL()) } returns true
 
-        remoteProvider.handleUri(URI("jetbrains://gateway/com.coder.toolbox?url=https://coder.example.com/"))
+        remoteProvider.handleUri(URI(link))
 
         val page = remoteProvider.getOverrideUiPage() as CoderSetupWizardPage
         assertEquals("https://coder.example.com", page.model.url.toString())
@@ -1336,8 +1341,6 @@ class CoderRemoteProviderTest {
 
     @ValueSource(strings = [
         "jetbrains://gateway/coder?url=https://coder.example.com/team&token=private-value",
-        "jetbrains://gateway/com.coder.toolbox?token=private-value&%74oken=private-value",
-        "jetbrains://gateway/com.coder.toolbox/auth?state=a&state=b",
         "jetbrains://gateway/com.coder.toolbox/auth-extra?code=private-value",
         "jetbrains://gateway/com.coder.toolbox?url=https://user@host&token=private-value",
     ])

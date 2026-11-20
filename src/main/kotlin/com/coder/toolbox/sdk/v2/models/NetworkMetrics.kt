@@ -41,9 +41,14 @@ data class NetworkMetrics(
         return if (p2p == true) {
             "Direct (${formatter.format(latency)}ms). You're connected peer-to-peer"
         } else {
-            val derpLatency = derpLatency!![preferredDerp]
-            val workspaceLatency = latency!!.minus(derpLatency!!)
-            "You ↔ $preferredDerp (${formatter.format(derpLatency)}ms) ↔ Workspace (${formatter.format(workspaceLatency)}ms). You are connected through a relay"
+            val relay = requireNotNull(preferredDerp) { "Relay metrics require a preferred relay." }
+            val relayLatency = requireNotNull(derpLatency?.get(relay)) {
+                "Relay metrics require latency for the preferred relay."
+            }
+            val totalLatency = requireNotNull(latency) { "Relay metrics require total latency." }
+            val workspaceLatency = totalLatency - relayLatency
+            "You ↔ $relay (${formatter.format(relayLatency)}ms) ↔ Workspace " +
+                "(${formatter.format(workspaceLatency)}ms). You are connected through a relay"
         }
     }
 }

@@ -26,7 +26,13 @@ class WorkspaceFilterQueryTest {
     fun `stringify quotes values with spaces and drops blanks`() {
         assertEquals(
             "owner:me template:\"Heaven 3\"",
-            linkedMapOf("owner" to "me", "template" to "Heaven 3", "status" to null).stringifyFilterQuery()
+            linkedMapOf(
+                "owner" to "me",
+                "template" to "Heaven 3",
+                "status" to null,
+                "name" to "",
+                "organization" to " "
+            ).stringifyFilterQuery()
         )
     }
 

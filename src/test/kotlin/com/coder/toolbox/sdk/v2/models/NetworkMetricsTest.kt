@@ -2,6 +2,7 @@ package com.coder.toolbox.sdk.v2.models
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class NetworkMetricsTest {
 
@@ -83,6 +84,29 @@ class NetworkMetricsTest {
 
         val expected = "You ↔ derp1 (30.00ms) ↔ Workspace (50.00ms). You are connected through a relay"
         assertEquals(expected, metrics.toPretty())
+    }
+
+    @Test
+    fun `toPretty rejects incomplete relay metrics with a clear error`() {
+        val metrics = NetworkMetrics(
+            p2p = false,
+            latency = 80.0,
+            preferredDerp = "derp1",
+            derpLatency = mapOf("derp1" to 30.0),
+            uploadBytesSec = null,
+            downloadBytesSec = null,
+            usingCoderConnect = false
+        )
+        val cases = listOf(
+            metrics.copy(preferredDerp = null) to "Relay metrics require a preferred relay.",
+            metrics.copy(derpLatency = null) to "Relay metrics require latency for the preferred relay.",
+            metrics.copy(derpLatency = emptyMap()) to "Relay metrics require latency for the preferred relay.",
+            metrics.copy(latency = null) to "Relay metrics require total latency."
+        )
+        for ((incompleteMetrics, message) in cases) {
+            val error = assertFailsWith<IllegalArgumentException> { incompleteMetrics.toPretty() }
+            assertEquals(message, error.message)
+        }
     }
 
     @Test

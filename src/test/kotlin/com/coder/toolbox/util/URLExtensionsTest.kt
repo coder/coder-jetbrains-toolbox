@@ -122,8 +122,31 @@ internal class URLExtensionsTest {
     fun `query components are split before decoding and decoded exactly once`() {
         val params = URI("jetbrains://gateway/coder?folder=a%26b%3Dc%2B%252F&owner=a+b").toQueryParameters()
         assertEquals(mapOf("folder" to "a&b=c+%2F", "owner" to "a b"), params)
-        for (query in listOf("url=a&url=a", "state=a&%73tate=b", "token=%FF")) {
-            kotlin.test.assertFailsWith<IllegalArgumentException> { URI("jetbrains://gateway/coder?$query").toQueryParameters() }
+    }
+
+    @Test
+    fun `repeated query parameters keep their first value after decoding names`() {
+        for (name in listOf("url", "token", "state", "code", "error", "folder", "tag")) {
+            val encodedName = "%${name.first().code.toString(16)}${name.drop(1)}"
+            for (query in listOf("$name=a&$name=a", "$name=a&$name=b", "$name=a&$encodedName=b", "$encodedName=a&$name=b")) {
+                assertEquals(mapOf(name to "a"), URI("jetbrains://gateway/coder?$query").toQueryParameters(), query)
+            }
+        }
+    }
+
+    @Test
+    fun `repeated query parameters preserve an empty first value`() {
+        for (query in listOf("token=&token=later", "token&%74oken=later")) {
+            assertEquals(mapOf("token" to ""), URI("jetbrains://gateway/coder?$query").toQueryParameters(), query)
+        }
+    }
+
+    @Test
+    fun `malformed query encoding is rejected for all parameters`() {
+        for (query in listOf("token=%FF", "folder=%FF", "%FF=value")) {
+            kotlin.test.assertFailsWith<IllegalArgumentException>(query) {
+                URI("jetbrains://gateway/coder?$query").toQueryParameters()
+            }
         }
     }
 

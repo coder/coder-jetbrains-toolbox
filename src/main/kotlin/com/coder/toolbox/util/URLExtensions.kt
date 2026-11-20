@@ -9,6 +9,8 @@ import java.net.URI
 import java.net.URL
 import java.net.URLDecoder
 
+private const val UNICODE_REPLACEMENT_CHARACTER = '\uFFFD'
+
 fun String.toURL(): URL = URI.create(this).toURL()
 
 /** Canonical HTTP(S) origin, without credentials or a path; default ports are omitted. */
@@ -73,13 +75,15 @@ fun URI.toQueryParameters(): Map<String, String> = buildMap {
         if (field.isEmpty()) continue
         val name = decodeQueryComponent(field.substringBefore('='))
         val value = decodeQueryComponent(field.substringAfter('=', ""))
-        require(put(name, value) == null) { "A query parameter was supplied more than once." }
+        // Keep the first value when a parameter name appears more than once.
+        putIfAbsent(name, value)
     }
 }
 
 private fun decodeQueryComponent(raw: String): String {
     val decoded = URLDecoder.decode(raw, Charsets.UTF_8)
-    require('�' !in decoded) { "Invalid query parameter encoding." }
+    // URLDecoder replaces malformed UTF-8 with the Unicode replacement character (U+FFFD).
+    require(UNICODE_REPLACEMENT_CHARACTER !in decoded) { "Invalid query parameter encoding." }
     return decoded
 }
 

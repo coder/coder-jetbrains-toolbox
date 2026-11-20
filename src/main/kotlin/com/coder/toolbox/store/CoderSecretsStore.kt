@@ -49,7 +49,7 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
     fun isUrlTrusted(url: URL): Boolean {
         val requested = url.toString().toHttpUrlOrNull() ?: return false
         val origin = requested.origin()
-        val saved = savedDeploymentUrl(url)
+        val saved = readSavedDeploymentUrl(url)
         return if (saved != null) {
             saved.toHttpUrlOrNull() == requested
         } else {
@@ -58,7 +58,7 @@ class CoderSecretsStore(private val store: PluginSecretStore) {
         }
     }
 
-    fun savedDeploymentUrl(url: URL): String? = url.origin()?.let { store["deployment-url:$it"] }
+    fun readSavedDeploymentUrl(url: URL): String? = url.origin()?.let { store["deployment-url:$it"] }
 
     fun trustDeployment(url: URL) {
         val address = requireNotNull(url.toString().toHttpUrlOrNull()) { "Deployment trust requires an HTTP(S) URL" }
