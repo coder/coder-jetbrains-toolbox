@@ -39,7 +39,6 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.repository_owner == 'coder' }}
     permissions:
-      actions: read # check the selected commit's Build run and test jobs
       contents: read
     steps:
       - name: Checkout
@@ -66,29 +65,26 @@ jobs:
           plugin_version="$(git show "$COMMIT:gradle.properties" | sed -n 's/^version=//p' | tr -d '[:space:]')"
           [[ "v$plugin_version" == "$VERSION" ]] || fail "gradle.properties at $COMMIT has version=$plugin_version, not ${VERSION#v}."
 
-      - &check-release-ci
-        name: Check CI for the release commit
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          COMMIT: ${{ inputs.commit }}
-        with:
-          script: |
-            const checkReleaseCI = require('./.github/workflows/scripts/check-release-ci.js');
-            await checkReleaseCI({ github, context, core, commit: process.env.COMMIT });
+  test:
+    needs: validate
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test.yml
+    with:
+      commit: ${{ inputs.commit }}
 
   # The release is tagged only after a member of clients other than the person who started it
   # approves this job.
   approve:
     name: Approve and tag the release
-    needs: validate
+    needs: test
     runs-on: ubuntu-latest
     environment: release-approval
     permissions:
-      actions: read
       contents: read
       id-token: write # Cloud KMS signs the App's JWT
     steps:
-      # Use the dispatch commit for the CI check and fetch the history and tags for validation.
+      # For the tags and the history of main. Nothing from the tree runs in this job.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -132,9 +128,6 @@ jobs:
 
           echo "create=true" >> "$GITHUB_OUTPUT"
 
-      # CI can change while the release waits for approval.
-      - *check-release-ci
-
       # The App can also write to other repositories, so the token is asked for this one only.
       - name: Generate release App token
         id: app_token
@@ -167,11 +160,10 @@ jobs:
 
   publish:
     name: Publish the plugin
-    needs: [validate, approve]
+    needs: approve
     runs-on: ubuntu-latest
     environment: publish
     permissions:
-      actions: read
       contents: write # create the GitHub release
     steps:
       - name: Checkout the tag
@@ -202,9 +194,6 @@ jobs:
 
       - name: Patch the changelog
         run: ./gradlew patchChangelog
-
-      # A publish-only retry reuses the earlier jobs.
-      - *check-release-ci
 
       - name: Publish to the JetBrains Marketplace
         env:

@@ -873,12 +873,12 @@ Releases are cut from `main` by the `Release` workflow (`.github/workflows/relea
 release and a member of `clients` other than that person approves it.
 
 1. Check that the changelog lists all the important changes under `Unreleased`.
-2. Update `version` in `gradle.properties` and merge that to `main`. Wait for the `Coder Toolbox Plugin Build`
-   workflow to pass for the exact commit you want to release, including the Linux, macOS, and Windows tests.
+2. Update `version` in `gradle.properties` and merge that to `main`.
 3. Start the release: Actions > Release > Run workflow on `main`, with the version (for example `v0.9.7`, matching
    `gradle.properties`) and the full SHA of the commit on `main` to release. Or:
    `gh workflow run release.yml -f version=v0.9.7 -f commit=<sha>`.
-   The workflow checks CI before approval, tagging, and publication. If a check stops the release, retry after CI passes.
+   The release workflow runs the plugin tests on Linux, macOS, and Windows for that commit. All three must pass
+   before the workflow requests approval.
 4. A member of `clients` other than you approves the `release-approval` deployment. The workflow then creates the
    tag, publishes the plugin to the JetBrains Marketplace, creates the GitHub release and opens the changelog pull
    request. Nobody can push release tags by hand.
