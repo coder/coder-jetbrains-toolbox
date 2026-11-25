@@ -67,6 +67,7 @@ jobs:
 
   test:
     needs: validate
+    cache-mode: read
     permissions:
       contents: read
     uses: ./.github/workflows/test.yml
