@@ -73,45 +73,8 @@ jobs:
           COMMIT: ${{ inputs.commit }}
         with:
           script: |
-            const actions = github.rest.actions;
-            const commit = process.env.COMMIT;
-            async function latestPassingBuild() {
-              const runs = await github.paginate(actions.listWorkflowRuns, {
-                ...context.repo, workflow_id: 'build.yml', branch: 'main', event: 'push', head_sha: commit, per_page: 100
-              });
-              if (!runs.length) throw new Error(`No Build run for ${commit} on main.`);
-              const pending = runs.find(run => run.status !== 'completed');
-              if (pending) throw new Error(`Build is still pending: ${pending.html_url}`);
-
-              // A rerun keeps its run number but gets a new start time.
-              runs.sort((a, b) => b.run_started_at.localeCompare(a.run_started_at) || b.run_number - a.run_number);
-              const latest = runs[0];
-              const failed = runs.find(run => run.run_started_at === latest.run_started_at && run.conclusion !== 'success');
-              if (failed) throw new Error(`Build has not passed: ${failed.html_url}`);
-              return latest;
-            }
-
-            const run = await latestPassingBuild();
-            // A partial rerun keeps earlier results for jobs it did not repeat.
-            const jobs = await github.paginate(actions.listJobsForWorkflowRun, {
-              ...context.repo, run_id: run.id, filter: 'all', per_page: 100
-            });
-            jobs.sort((a, b) => b.run_attempt - a.run_attempt);
-            const required = ['test (ubuntu-latest)', 'test (macos-latest)', 'test (windows-latest)', 'Build'];
-            for (const name of required) {
-              const [latest, previous] = jobs.filter(job => job.name === name);
-              const passed = latest?.status === 'completed' && latest.conclusion === 'success';
-              if (!passed || latest.run_attempt === previous?.run_attempt || latest.run_attempt > run.run_attempt) {
-                throw new Error(`Expected one passing '${name}' job in its latest attempt: ${run.html_url}`);
-              }
-            }
-
-            // A new run or rerun can start while GitHub returns the job history.
-            const current = await latestPassingBuild();
-            if (current.id !== run.id || current.run_attempt !== run.run_attempt) {
-              throw new Error(`Build changed during validation. Retry once CI passes for ${commit}.`);
-            }
-            core.info(`CI passed: ${run.html_url}/attempts/${run.run_attempt}`);
+            const checkReleaseCI = require('./.github/workflows/scripts/check-release-ci.js');
+            await checkReleaseCI({ github, context, core, commit: process.env.COMMIT });
 
   # The release is tagged only after a member of clients other than the person who started it
   # approves this job.
@@ -125,7 +88,7 @@ jobs:
       contents: read
       id-token: write # Cloud KMS signs the App's JWT
     steps:
-      # For the tags and the history of main. Nothing from the tree runs in this job.
+      # Use the dispatch commit for the CI check and fetch the history and tags for validation.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
