@@ -3,9 +3,9 @@ name: Plugin tests
 on:
   workflow_call:
     inputs:
-      commit:
-        description: Full SHA of the commit to test
-        required: true
+      release_commit:
+        description: Validated release SHA. Build runs use the event SHA.
+        required: false
         type: string
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.commit }}
+          ref: ${{ inputs.release_commit || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0

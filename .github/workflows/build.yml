@@ -14,8 +14,6 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/test.yml
-    with:
-      commit: ${{ github.sha }}
 
   build:
     name: Build
@@ -60,4 +58,3 @@ jobs:
         with:
           name: zip-artifacts
           path: ./build/distributions/*.zip
-
