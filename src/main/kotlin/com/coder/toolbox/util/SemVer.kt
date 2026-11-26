@@ -40,11 +40,26 @@ class SemVer(val major: Long = 0, val minor: Long = 0, val patch: Long = 0) : Co
     }
 
     companion object {
+        private val releaseBuild = Regex("""v?(\d+\.\d+\.\d+)(?:\+.*)?""")
+
+        /**
+         * Returns the release's numeric version as written, ignoring build metadata and excluding prereleases.
+         *
+         * - `"2.29.0"` returns `"2.29.0"`.
+         * - `"v2.29.0+de07351b8"` returns `"2.29.0"`.
+         * - `"02.29.0+build-1"` returns `"02.29.0"`.
+         * - `"v2.29.0-rc.1+de07351b8"` returns `null`.
+         * - `"v2.29"` returns `null`.
+         */
+        internal fun releaseVersionOrNull(buildVersion: String): String? =
+            releaseBuild.matchEntire(buildVersion)?.groupValues?.get(1)
+
         private val pattern = """^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$""".toRegex()
 
         @JvmStatic
         fun parse(semVer: String): SemVer {
-            val matchResult = pattern.matchEntire(semVer.trimStart('v')) ?: throw InvalidVersionException("$semVer could not be parsed")
+            val matchResult = pattern.matchEntire(semVer.trimStart('v'))
+                ?: throw InvalidVersionException("$semVer could not be parsed")
             return SemVer(
                 if (matchResult.groupValues[1].isNotEmpty()) matchResult.groupValues[1].toLong() else 0,
                 if (matchResult.groupValues[2].isNotEmpty()) matchResult.groupValues[2].toLong() else 0,

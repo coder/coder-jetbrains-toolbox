@@ -3,12 +3,13 @@ package com.coder.toolbox.cli.downloader
 import com.coder.toolbox.CoderToolboxContext
 import com.coder.toolbox.cli.ex.ResponseException
 import com.coder.toolbox.util.OS
-import com.coder.toolbox.util.hasSameOrigin
+import com.coder.toolbox.util.SemVer
 import com.coder.toolbox.util.getHeaders
 import com.coder.toolbox.util.getOS
+import com.coder.toolbox.util.hasSameOrigin
 import com.coder.toolbox.util.sha1
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.Types
+import com.squareup.moshi.adapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.ResponseBody
@@ -43,7 +44,6 @@ private val SUPPORTED_BIN_MIME_TYPES = listOf(
 )
 
 private const val BUNDLED_SIGNATURES = "/META-INF/release-signatures.json"
-private val RELEASE_BUILD = Regex("""v?(\d+\.\d+\.\d+)(\+.*)?""")
 
 /**
  * Handles the download steps of Coder CLI
@@ -250,7 +250,7 @@ class CoderDownloadService(
         buildVersion: String,
         showTextProgress: (String) -> Unit
     ): DownloadResult {
-        val release = releaseVersion(buildVersion)
+        val release = SemVer.releaseVersionOrNull(buildVersion)
         if (release == null) {
             context.logger.info("No signature is published on releases.coder.com for $buildVersion")
             return DownloadResult.NotFound
@@ -261,10 +261,10 @@ class CoderDownloadService(
         )
     }
 
-    fun bundledSignature(buildVersion: String): DownloadResult {
+    fun writeBundledSignature(buildVersion: String): DownloadResult {
         val source = javaClass.getResource(BUNDLED_SIGNATURES) ?: return DownloadResult.NotFound
-        val signature = releaseVersion(buildVersion)
-            ?.let { bundledSignatures(source)[it] }
+        val signature = SemVer.releaseVersionOrNull(buildVersion)
+            ?.let { readBundledSignatures(source)[it] }
             ?.get(context.settingsStore.defaultCliBinaryNameByOsAndArch)
         if (signature == null) {
             context.logger.info("No signature is bundled with the plugin for $buildVersion")
@@ -277,14 +277,9 @@ class CoderDownloadService(
     }
 }
 
-private fun releaseVersion(buildVersion: String): String? =
-    RELEASE_BUILD.matchEntire(buildVersion)?.groupValues?.get(1)
-
-internal fun bundledSignatures(source: URL): Map<String, Map<String, String>> {
-    val type = Types.newParameterizedType(
-        Map::class.java,
-        String::class.java,
-        Types.newParameterizedType(Map::class.java, String::class.java, String::class.java),
-    )
-    return Moshi.Builder().build().adapter<Map<String, Map<String, String>>>(type).fromJson(source.readText()).orEmpty()
-}
+@OptIn(ExperimentalStdlibApi::class)
+internal fun readBundledSignatures(source: URL) =
+    Moshi.Builder().build()
+        .adapter<Map<String, Map<String, String>>?>()
+        .fromJson(source.readText())
+        .orEmpty()

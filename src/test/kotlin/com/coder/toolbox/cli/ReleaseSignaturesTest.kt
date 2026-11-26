@@ -1,6 +1,6 @@
 package com.coder.toolbox.cli
 
-import com.coder.toolbox.cli.downloader.bundledSignatures
+import com.coder.toolbox.cli.downloader.readBundledSignatures
 import org.bouncycastle.bcpg.ArmoredInputStream
 import org.bouncycastle.openpgp.PGPPublicKeyRingCollection
 import org.bouncycastle.openpgp.PGPSignatureList
@@ -29,7 +29,7 @@ internal class ReleaseSignaturesTest {
             PGPPublicKeyRingCollection(PGPUtil.getDecoderStream(it), JcaKeyFingerprintCalculator())
         }
 
-        val releases = bundledSignatures(javaClass.getResource("/META-INF/release-signatures.json")!!)
+        val releases = readBundledSignatures(javaClass.getResource("/META-INF/release-signatures.json")!!)
 
         assertTrue(releases.isNotEmpty())
         releases.forEach { (release, signatures) ->
