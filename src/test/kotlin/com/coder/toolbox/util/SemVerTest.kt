@@ -3,8 +3,23 @@ package com.coder.toolbox.util
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 
 internal class SemVerTest {
+    @Test
+    fun `release version preserves the numeric text and drops the prefix and build metadata`() {
+        assertEquals("2.29.0", SemVer.releaseVersionOrNull("2.29.0"))
+        assertEquals("2.29.0", SemVer.releaseVersionOrNull("v2.29.0+de07351b8"))
+        assertEquals("02.29.0", SemVer.releaseVersionOrNull("02.29.0+build-1"))
+    }
+
+    @Test
+    fun `prereleases and malformed version cores have no release version`() {
+        assertNull(SemVer.releaseVersionOrNull("v2.29.0-rc.1+de07351b8"))
+        assertNull(SemVer.releaseVersionOrNull("v2.29"))
+        assertNull(SemVer.releaseVersionOrNull("vv2.29.0"))
+    }
+
     @Test
     fun testParseSemVer() {
         val tests =

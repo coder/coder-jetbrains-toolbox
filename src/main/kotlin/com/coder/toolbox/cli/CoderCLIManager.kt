@@ -179,7 +179,7 @@ class CoderCLIManager(
 
             if (signatureResult.isNotDownloaded()) {
                 signatureResult = withContext(Dispatchers.IO) {
-                    downloader.bundledSignature(buildVersion)
+                    downloader.writeBundledSignature(buildVersion)
                 }
             }
 
